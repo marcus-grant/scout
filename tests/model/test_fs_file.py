@@ -1,3 +1,4 @@
+# TODO: Add fixtures & helpers from hash.py
 from datetime import datetime
 import os
 from pyfakefs.fake_filesystem_unittest import Patcher
@@ -17,7 +18,7 @@ def test_file_from_path(patcher):
     # Mocking
     dt_pre = datetime.now()  # Timestamp before file creation
     content = "Hello, World!\n"
-    patcher.fs.create_file("hello.txt", content)
+    patcher.fs.create_file("hello.txt", contents=content)
     dt_post = datetime.now()  # Timestamp after file creation
     f = FsFile.from_path("hello.txt")
     # Assetions
