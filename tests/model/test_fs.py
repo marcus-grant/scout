@@ -1,3 +1,4 @@
+# TODO: Refactor tests organized into testclasses for each class
 import unittest.mock as mock
 import os
 import pytest
@@ -71,3 +72,33 @@ def test_file_init(mock_directory, dirpath, filename, id):
     assert file.name == filename
     assert file.parent == parent
     assert file.id == id
+
+
+# @pytest.mark.parametrize(
+#     "path",
+#     [("/"), ("/home/user/Documents"), ("relative/path")],
+# )
+# def test_dirtreenode_mkroot(path):
+#     # Arrange
+#     rootdir = Directory.from_path(path)
+#     # Act
+#     root = DirTreeNode.mkroot(rootdir)
+#     # Assert
+#     assert root.dir.path == path
+#     assert root.dir == rootdir
+#     assert root.parent is None
+#     assert root.subdirs == []
+#     assert root.depth == 0
+#
+#
+# def test_dirtreenode_init_defaults():
+#     dir = Directory.from_path("/")
+#     node_all_defaults = DirTreeNode(dir=dir)
+#     assert node_all_defaults.dir == dir
+#     assert node_all_defaults.dir.path == "/"
+#     assert node_all_defaults.parent is None
+#     assert node_all_defaults.subdirs == []
+#     assert node_all_defaults.depth == 0
+#
+#
+# # def test_dirtreenode_mkroot
