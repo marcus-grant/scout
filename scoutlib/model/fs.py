@@ -38,6 +38,15 @@ class Directory:
         id = kwargs.get("id", None)
         return cls(name=name, path=path, id=id)
 
+    def parent_path(self) -> str:
+        return os.path.dirname(self.path)
+
+    def find_subdirs(self, all_dirs: list["Directory"]) -> list["Directory"]:
+        return [d for d in all_dirs if d.parent_path() == self.path]
+
+    def find_files(self, all_files: list["File"]) -> list["File"]:
+        return [f for f in all_files if f.parent.path == self.path]
+
 
 @attrs.define(kw_only=True)
 class File:
@@ -47,6 +56,7 @@ class File:
     parent: Directory
     id: Optional[int] = attrs.field(default=None)
 
+    # TODO: Add ability to search Directories for parent
     @classmethod
     def from_path(cls, path: PathLike, **kwargs) -> "File":
         name = os.path.basename(path)
@@ -56,3 +66,41 @@ class File:
 
     def path(self) -> str:
         return os.path.join(self.parent.path, self.name)
+
+
+# NOTE: Don't know if this is best approach, str handling paths might be simpler
+# @attrs.define(kw_only=True)
+# class DirTreeNode:
+#     """
+#     Represents the node of a directory tree.
+#     Use this to help with the relationships between directories.
+#     While keeping Directories & Files available as flat colelctions.
+#     """
+#
+#     dir: Directory
+#     parent: Optional["DirTreeNode"] = attrs.field(default=None)
+#     subdirs: list["DirTreeNode"] = attrs.field(factory=list)
+#     depth: int = attrs.field(default=0)
+#
+#     @classmethod
+#     def mkroot(cls, dir: Directory) -> "DirTreeNode":
+#         return cls(dir=dir)
+#
+#     def mksubdir(self, subdir: Directory) -> None:
+#         subdepth = self.depth + 1
+#         subnode = DirTreeNode(dir=subdir, parent=self, depth=subdepth)
+#         self.subdirs.append(subnode)
+#
+#     # def rmsubdir(self, subdir: Directory) -> None:
+#     #     for i, node in enumerate(self.subdirs):
+#     #         if node.dir == subdir:
+#     #             del self.subdirs[i]
+#     #             return
+#
+#     # def cd( self, rel_path: str) -> Optional["DirTreeNode"]:
+#     #     if rel_path == "":
+#     #         return self
+#     #     for node in self.subdirs:
+#     #         if rel_path in node.dir.path:
+#     #             return node.cd(rel_path)
+#     #     return None
