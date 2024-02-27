@@ -3,8 +3,6 @@ from typing import Optional
 
 from scoutlib.model.fs import Directory, File
 
-Dir = Directory
-
 
 # Function to use Directory class to create a list of all directories of a path
 def find_all_dirs(rootpath: str = os.sep) -> list[Directory]:
@@ -14,7 +12,7 @@ def find_all_dirs(rootpath: str = os.sep) -> list[Directory]:
     dirs = [Directory.from_path(rootpath)]
     for rootpath, dirnames, _ in os.walk(rootpath):
         for dirname in dirnames:
-            dirs.append(Dir.from_path(os.path.join(rootpath, dirname)))
+            dirs.append(Directory.from_path(os.path.join(rootpath, dirname)))
     return dirs
 
 
