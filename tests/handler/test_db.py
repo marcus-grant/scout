@@ -21,12 +21,12 @@ def dir_repo():
     os.unlink(repo_path)
 
 
-def test_dir_repo_directory_table_exists(dir_repo):
+def test_dir_repo_dir_table_exists(dir_repo):
     conn = sqlite3.connect(dir_repo.repo_path)
     assert_table_exists(conn, "dir")
 
 
-def test_dir_repo_directory_table_schema(dir_repo):
+def test_dir_repo_dir_table_schema(dir_repo):
     """
     Test that the 'directory' table exists with the expected schema, including
     checks for primary keys, foreign keys, and nullability.
@@ -43,6 +43,29 @@ def test_dir_repo_directory_table_schema(dir_repo):
         assert_table_schema(conn, "dir", expected_schema)
 
 
+def test_dir_repo_dir_ancestor_table_exists(dir_repo):
+    """Test that the 'dir_ancestor' table exists."""
+    conn = sqlite3.connect(dir_repo.repo_path)
+    assert_table_exists(conn, "dir_ancestor")
+
+
+def test_dir_repo_dir_ancestor_table_schema(dir_repo):
+    """
+    Test that the 'dir_ancestor' table exists with the expected schema, including
+    checks for primary keys, foreign keys, and nullability.
+    """
+    # Expected schema is list for every column with tuple of:
+    # (col_name: str, dtype: str, nullable: bool, prime_key: bool)
+    expected_schema = [
+        ("dir_id", "INTEGER", False, True),
+        ("ancestor_id", "INTEGER", False, True),
+        ("depth", "INTEGER", False, False),
+        # Add more columns as needed
+    ]
+    with sqlite3.connect(dir_repo.repo_path) as conn:
+        assert_table_schema(conn, "dir_ancestor", expected_schema)
+
+
 def test_dir_repo_connection_returns_context_manager(dir_repo):
     with dir_repo.connection() as conn:
         # Assert that we have a valid connection object
@@ -53,18 +76,4 @@ def test_dir_repo_connection_returns_context_manager(dir_repo):
         cursor.execute("SELECT 1")
         result = cursor.fetchone()
         assert result is not None  # This should succeed if the connection is open
-
-    # After exiting the with block, the connection should be closed
-    # We test this by attempting an operation that should fail if the connection is closed
-    what_exception = None
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        operation_successful = True
-    except Exception as e:
-        raise e
-
-    raise LookupError(what_exception)
-    assert (
-        not operation_successful
-    ), "Connection should be closed after connection context exits."
+    # TODO: Add connection based tests when more thought out

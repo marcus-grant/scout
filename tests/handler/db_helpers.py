@@ -35,12 +35,12 @@ def assert_table_schema(
     }
 
     # Validate schema
-    for colname, dtype, nullable, pkey in expected_schema:
+    for colname, dtype, nullable, key in expected_schema:
         # Destructure actual characteristics of table columns
         (
             real_dtype,
             real_nullable,
-            real_pkey,
+            real_key,
         ) = real_schema_dict[colname]
         # raise LookupError(real_schema_dict)
 
@@ -58,5 +58,5 @@ def assert_table_schema(
         ), f"Column '{colname}' should {'' if nullable else 'NOT'} be nullable."
 
         assert (
-            real_pkey == pkey
-        ), f"Column {colname} should {pkey and 'NOT'} be a primary key."
+            real_key == key
+        ), f"Column {colname} should {'' if key else 'NOT'} be a primary key."
