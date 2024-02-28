@@ -1,7 +1,9 @@
 # TODO: Consider adding name and/or description strs to members
 # TODO: Create context manager for db connection to improve DRYness
 import sqlite3
-from typing import Optional
+from pathlib import Path
+from os import sep
+from typing import Optional, Union
 
 from scoutlib.model.fs import Directory
 
@@ -12,13 +14,25 @@ class DirRepo:
     Directory objects in a SQLite database.
     """
 
-    def __init__(self, repo_path: str):
-        self.repo_path = repo_path
+    path_db: Path
+    path: Path
+
+    def __init__(self, db_path: Union[str, Path], path: Optional[Path] = None):
+        if isinstance(db_path, str):
+            db_path = Path(db_path)
+        self.path_db = db_path
+        if path is None:  # Default behvior is to house db in dir of repo
+            self.path = self.path_db.parent
+        else:
+            self.path = path
         self._init_db()
+
+    def db_path(self):
+        return self.path / "dir.db"
 
     def _init_db(self):
         """Initialize db & create directory table if not there."""
-        with sqlite3.connect(self.repo_path) as conn:
+        with sqlite3.connect(self.path_db) as conn:
             query = """ CREATE TABLE IF NOT EXISTS dir (
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                             name TEXT NOT NULL
@@ -34,14 +48,39 @@ class DirRepo:
                         );"""
             conn.cursor().execute(query)
             conn.commit()
-            # id PRIMARY KEY (dir_id, ancestor_id),
-            # FOREIGN KEY (dir_id) REFERENCES dir(id),
-            # FOREIGN KEY (ancestor_id) REFERENCES dir(id),
-            # depth INTEGER NOT NULL
-
             return conn
 
     # TODO: I don't know if this is the best way to do this
     def connection(self) -> sqlite3.Connection:
         """Yields a connection context manager for the SQLite db."""
-        return sqlite3.connect(self.repo_path)
+        return sqlite3.connect(self.path_db)
+
+    def normalize_path(self, path: Union[str, Path]) -> Path:
+        """
+        Normalize a path string into a list of path components.
+        Order determines depth, so the first element is the repo root.
+        Returns None if the path is not within the repo.
+        Returns an empty list if the path is the repo root.
+        """
+        path = Path(path) if isinstance(path, str) else path
+        try:
+            return path.relative_to(self.path)
+        except ValueError:
+            raise ValueError(f"Path, {path}, not within DirRepo!")
+
+    # def add(self, directory: Directory):
+    #     """
+    #     Add a directory to the repository.
+    #     Fails if the directory already exists.
+    #     """
+
+    # def get(
+    #     self, path: Optional[Union[str, Path]] = None, id: Optional[int] = None
+    # ) -> Optional[Directory]:
+    #     """
+    #     Retrieve a directory object from the repository by
+    #     a few different means:
+    #     - By path
+    #     - By id
+    #     """
+    #     return None
