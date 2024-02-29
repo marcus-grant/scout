@@ -1,7 +1,9 @@
 # TODO: Refactor tests organized into testclasses for each class
+# TODO: Need test cases asserting different factory methods result in same
 import unittest.mock as mock
 import os
 import pytest
+from pathlib import Path, PurePath
 
 from scoutlib.model.fs import Directory, File
 
@@ -24,25 +26,41 @@ def mock_directory_from_path():
 
 # Test section for standard constructor for Directory
 def test_directory_init():
-    # Arrange
-    name = "test"
-    path = "/test/a"
-    # Act
-    dir = Directory(name=name, path=path)
-    # Assert
-    assert dir.name == name
-    assert dir.path == path
+    testpath = "/test/a/b/c"
+    dir = Directory(path=testpath)
+    assert dir.path == PurePath(testpath), f"Expected '/test/a', got {dir.path}"
+    assert dir.id is None, f"Expected None, got {dir.id}"
+    assert dir.name == "c", f"Expected 'c', got {dir.name}"
+
+    testpath = "/a/b"
+    dir = Directory(path=testpath, id=42)
+    assert dir.path == PurePath("/a/b"), f"Expected '/a/b', got {dir.path}"
+    assert dir.id == 42, f"Expected 42, got {dir.id}"
+    assert dir.name == "b", f"Expected 'b', got {dir.name}"
+
+    # Assert exception when no path is given
+    with pytest.raises(TypeError):
+        Directory()  # type: ignore
 
 
 # Test section for Directory.from_path
 def test_directory_from_path():
     # Arrange
-    path = "/test/a"
+    testpath = "/test/a"
     # Act
-    dir = Directory.from_path(path)
+    dir = Directory.from_path(testpath)
     # Assert
     assert dir.name == "a"
-    assert dir.path == path
+    assert dir.path == PurePath(testpath)
+
+
+def test_directory_eq():
+    assert Directory.from_path("/test/a") == Directory.from_path("/test/a")
+    assert Directory.from_path("/test/b", id=42) == Directory.from_path(
+        "/test/b", id=42
+    )
+    assert Directory.from_path("/test/c") != Directory.from_path("/test/d")
+    assert Directory.from_path("/test/e", id=42) != Directory.from_path("/test/e")
 
 
 # Test section for standard constructor for File

@@ -3,8 +3,8 @@ import attrs
 
 # from datetime import datetime as dt
 import os
-from pathlib import Path
-from typing import Any, Optional
+from pathlib import Path, PurePath
+from typing import Any, Optional, Union
 
 from scoutlib.model.hash import HashMD5
 
@@ -24,28 +24,44 @@ class Validator:
             raise ValueError(f"Invalid Directory.id value: {value}, must be >= 0")
 
 
-@attrs.define
 class Directory:
+    # TODO: Since name depends on path, should be changed to computed field
+    # TODO: Refactor to use path objects along with str to path
     """Represents a single directory"""
 
-    name: str = attrs.field(default="")  # Base name of the directory
-    path: str = attrs.field(default="")  # Full path to the directory
-    id: Optional[int] = attrs.field(default=None)
+    path: PurePath
+    id: Optional[int]
+
+    def __init__(self, path: Union[str, PurePath], id: Optional[int] = None):
+        self.path = PurePath(path) if isinstance(path, str) else path
+        self.id = id
 
     @classmethod
-    def from_path(cls, path: str, **kwargs) -> "Directory":
-        name = os.path.basename(path)
-        id = kwargs.get("id", None)
-        return cls(name=name, path=path, id=id)
+    def from_path(cls, path: str, id: Optional[int] = None) -> "Directory":
+        return cls(path=path, id=id)
 
-    def parent_path(self) -> str:
-        return os.path.dirname(self.path)
+    @property
+    def name(self) -> Optional[str]:
+        # raise LookupError(f"Directory.name = {self.path.name}")
+        return self.path.name
+
+    @property
+    def parent(self) -> "Directory":
+        return Directory(self.path.parent)
 
     def find_subdirs(self, all_dirs: list["Directory"]) -> list["Directory"]:
-        return [d for d in all_dirs if d.parent_path() == self.path]
+        return [d for d in all_dirs if d.path.parent == self.path]
 
     def find_files(self, all_files: list["File"]) -> list["File"]:
         return [f for f in all_files if f.parent.path == self.path]
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Directory):
+            return False
+        for attr in ["name", "path", "id"]:
+            if getattr(self, attr) != getattr(other, attr):
+                return False
+        return True
 
 
 @attrs.define(kw_only=True)
