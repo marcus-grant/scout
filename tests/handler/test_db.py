@@ -28,80 +28,93 @@ def test_dir_repo_dir_table_exists(dir_repo):
     assert_table_exists(conn, "dir")
 
 
-def test_dir_repo_dir_table_schema(dir_repo):
+def test_dir_repo_dir_table(dir_repo):
     """
     Test that the 'directory' table exists with the expected schema, including
     checks for primary keys, foreign keys, and nullability.
     """
-    # TODO: Deprecate, favoring more declarative schema testing
-    # Expected schema is list for every column with tuple of:
-    # (col_name: str, dtype: str, nullable: bool, prime_key: bool)
-    expected_schema = [
-        ("id", "INTEGER", False, True),
-        ("name", "TEXT", False, False),
-        # Add more columns as needed
-    ]
-
     with sqlite3.connect(dir_repo.path_db) as conn:
-        assert_table_schema(conn, "dir", expected_schema)
+        # First ensure the table exists
+        table_query = """SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='dir'"""
+        assert (
+            "dir" in conn.execute(table_query).fetchone()
+        ), "Table 'dir' does not exist."
+
+        # Now query the schema and assert it's valid
+        # Pragma schema queries come in form of:
+        # list of (cid, name, type, notnull, dflt_value, key) per column
+        schema_query = "PRAGMA table_info(dir)"
+        real_schema = conn.execute(schema_query).fetchall()
+
+        # Expected schema is list for every column with tuple of:
+        # (num: int, name: str, dtype: str, nullable: bool, prime_key: bool)
+        # Bools are represented as 0|1, but python evaluates them as False|True
+        expected_schema = [
+            (0, "id", "INTEGER", True, None, True),
+            (1, "name", "TEXT", True, None, False),
+        ]
+
+        # Check column count
+        assert len(real_schema) == len(
+            expected_schema
+        ), f"Expected {len(expected_schema)} columns, got {len(real_schema)}"
+
+        # Check id column
+        assert (
+            real_schema[0] == expected_schema[0]
+        ), "Bad dir table shcema in id column."
+
+        # Check name column
+        assert (
+            real_schema[1] == expected_schema[1]
+        ), "Bad dir table schema in name column."
 
 
-def test_dir_repo_dir_ancestor_table_exists(dir_repo):
-    """Test that the 'dir_ancestor' table exists."""
-    conn = sqlite3.connect(dir_repo.path_db)
-    assert_table_exists(conn, "dir_ancestor")
-
-
-def test_dir_repo_dir_ancestor_table_schema(dir_repo):
+def test_dir_repo_dir_ancestor_table(dir_repo):
     """
-    Test that the 'dir_ancestor' table exists with the expected schema, including
-    checks for primary keys, foreign keys, and nullability.
+    Test that the 'dir_ancestor' table exists with the expected schema,
+    including checks for primary keys, foreign keys, and nullability.
     """
-    # Expected schema is list for every column with tuple of:
-    # (col_name: str, dtype: str, nullable: bool, prime_key: bool)
-    expected_schema = [
-        ("dir_id", "INTEGER", False, True),
-        ("ancestor_id", "INTEGER", False, True),
-        ("depth", "INTEGER", False, False),
-        # Add more columns as needed
-    ]
     with sqlite3.connect(dir_repo.path_db) as conn:
-        assert_table_schema(conn, "dir_ancestor", expected_schema)
+        # First ensure the table exists
+        table_query = """SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='dir_ancestor'"""
+        assert (
+            "dir_ancestor" in conn.execute(table_query).fetchone()
+        ), "Table 'dir_ancestor' does not exist."
 
+        # Now query the schema and assert it's valid
         schema_query = "PRAGMA table_info(dir_ancestor)"
         real_schema = conn.execute(schema_query).fetchall()
 
         # Pragma schema queries come in form of:
         # list of (cid, name, type, notnull, dflt_value, key) per column
-        COL1, COL2, COL3 = 0, 1, 2
-        NAME, DTYPE, NOTNULL, DEFAULT, ISKEY = 1, 2, 3, 4, 5
+        expected_schema = [
+            (0, "dir_id", "INTEGER", True, None, 1),
+            (1, "ancestor_id", "INTEGER", 1, None, 2),
+            (2, "depth", "INTEGER", True, None, False),
+        ]
 
         # Check number of columns
-        assert len(real_schema) == 3  # 3 columns
+        assert len(real_schema) == len(expected_schema), f"""
+            Expected {len(expected_schema)} columns in 'dir_ancestor',
+            got {len(real_schema)}"""
 
         # Check dir_id column
-        dir_col = real_schema[COL1]
-        assert dir_col[NAME] == "dir_id"
-        assert dir_col[DTYPE] == "INTEGER"
-        assert dir_col[NOTNULL]
-        assert dir_col[DEFAULT] is None
-        assert dir_col[ISKEY]
+        assert (
+            real_schema[0] == expected_schema[0]
+        ), "Bad dir_ancestor schema in dir_id column."
 
         # Check ancestor_id column
-        ancestor_col = real_schema[COL2]
-        assert ancestor_col[NAME] == "ancestor_id"
-        assert ancestor_col[DTYPE] == "INTEGER"
-        assert ancestor_col[NOTNULL] == 1
-        assert ancestor_col[DEFAULT] is None
-        assert ancestor_col[ISKEY]
+        assert (
+            real_schema[1] == expected_schema[1]
+        ), "Bad dir_ancestor schema in ancestor_id column."
 
         # Check depth column
-        depth_col = real_schema[COL3]
-        assert depth_col[NAME] == "depth"
-        assert depth_col[DTYPE] == "INTEGER"
-        assert depth_col[NOTNULL] == 1
-        assert depth_col[DEFAULT] is None
-        assert not depth_col[ISKEY]
+        assert (
+            real_schema[2] == expected_schema[2]
+        ), "Bad dir_ancestor schema in depth column."
 
 
 def test_dir_repo_connection_returns_context_manager(dir_repo):

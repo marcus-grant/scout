@@ -1,7 +1,7 @@
 # TODO: Consider adding name and/or description strs to members
 # TODO: Create context manager for db connection to improve DRYness
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePath
 from os import sep
 from typing import Optional, Union
 
@@ -14,12 +14,12 @@ class DirRepo:
     Directory objects in a SQLite database.
     """
 
-    path_db: Path
-    path: Path
+    path_db: PurePath
+    path: PurePath
 
-    def __init__(self, db_path: Union[str, Path], path: Optional[Path] = None):
+    def __init__(self, db_path: Union[str, PurePath], path: Optional[PurePath] = None):
         if isinstance(db_path, str):
-            db_path = Path(db_path)
+            db_path = PurePath(db_path)
         self.path_db = db_path
         if path is None:  # Default behvior is to house db in dir of repo
             self.path = self.path_db.parent
@@ -55,14 +55,14 @@ class DirRepo:
         """Yields a connection context manager for the SQLite db."""
         return sqlite3.connect(self.path_db)
 
-    def normalize_path(self, path: Union[str, Path]) -> Path:
+    def normalize_path(self, path: Union[str, PurePath]) -> PurePath:
         """
         Normalize a path string into a list of path components.
         Order determines depth, so the first element is the repo root.
         Returns None if the path is not within the repo.
         Returns an empty list if the path is the repo root.
         """
-        path = Path(path) if isinstance(path, str) else path
+        path = PurePath(path) if isinstance(path, str) else path
         try:
             return path.relative_to(self.path)
         except ValueError:
@@ -75,7 +75,7 @@ class DirRepo:
     #     """
 
     # def get(
-    #     self, path: Optional[Union[str, Path]] = None, id: Optional[int] = None
+    #     self, path: Optional[Union[str, PurePath]] = None, id: Optional[int] = None
     # ) -> Optional[Directory]:
     #     """
     #     Retrieve a directory object from the repository by
