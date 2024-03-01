@@ -1,5 +1,6 @@
+# TODO: Test constraints & indices on tables
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
 import pytest
 import sqlite3
 import tempfile
@@ -30,8 +31,8 @@ def test_dir_repo_dir_table_exists(dir_repo):
 
 def test_dir_repo_dir_table(dir_repo):
     """
-    Test that the 'directory' table exists with the expected schema, including
-    checks for primary keys, foreign keys, and nullability.
+    Test that the 'directory' table exists with the expected schema,
+    including checks for primary keys, foreign keys, and nullability.
     """
     with sqlite3.connect(dir_repo.path_db) as conn:
         # First ensure the table exists
@@ -52,7 +53,7 @@ def test_dir_repo_dir_table(dir_repo):
         # Bools are represented as 0|1, but python evaluates them as False|True
         expected_schema = [
             (0, "id", "INTEGER", True, None, True),
-            (1, "name", "TEXT", True, None, False),
+            (1, "path", "TEXT", True, None, False),
         ]
 
         # Check column count
@@ -184,10 +185,40 @@ def test_dir_repo_normalize_path(dir_repo):
     ), "Not returning path relative to repo root"
 
 
-def test_dir_repo_get_by_id(dir_repo):
-    """
-    Test that get() correctly retrieves a directory by id.
-    """
-    assert dir_repo.get(id=1) == Directory.from_path(
-        dir_repo.path, id=1
-    ), "Should return None if no directory exists"
+# Dir Tree: (id)
+# a(1)/ ─┬─ b(2)/─── c(3)/
+#        ├─ d(4)/
+#        ├─ e(5)/
+# f(6)/ ─┬─ g(7)/
+#        └─ h(8)/
+
+
+def test_dir_repo_dir_get_path(dir_repo):
+    with dir_repo.connection() as conn:
+        # Insert some test data
+        conn.execute("INSERT INTO dir (path) VALUES ('a')")
+        conn.execute("INSERT INTO dir (path) VALUES ('a/b')")
+        conn.execute("INSERT INTO dir (path) VALUES ('a/b/c')")
+        conn.execute("INSERT INTO dir (path) VALUES ('a/d')")
+        conn.execute("INSERT INTO dir (path) VALUES ('a/e')")
+        conn.execute("INSERT INTO dir (path) VALUES ('f')")
+        conn.execute("INSERT INTO dir (path) VALUES ('f/g')")
+        conn.execute("INSERT INTO dir (path) VALUES ('f/h')")
+        conn.commit()
+
+    # with dir_repo.connection() as conn:
+    #     # Query the data
+    #     dir_rows = conn.execute("SELECT * FROM dir").fetchall()
+    #     raise LookupError(f"dir_rows = {dir_rows}")
+    #
+    base = dir_repo.path
+    assert dir_repo.get_path(base / "a") == Directory(id=1, path=(base / PurePath("a")))
+    assert dir_repo.get_path(base / "a/b") == Directory(
+        id=2, path=(base / PurePath("a/b"))
+    )
+    assert dir_repo.get_path(base / "a/b/c") == Directory(
+        id=3, path=(base / PurePath("a/b/c"))
+    )
+    assert dir_repo.get_path(base / "a/d") == Directory(
+        id=4, path=(base / PurePath("a/d"))
+    )

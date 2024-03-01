@@ -28,6 +28,37 @@
     - Paths get materialized by checking for all rows `WHERE`
       a given descendant is the directory in question.
       - Can even `ORDER BY` depth to get the order of ancestors from root to dir
+- It's REALLY friggin hard to determine what's better,
+  materialized paths or closure tables for
+  this project without some testing.
+- Since materialized paths are easier to implement,
+  that's what I'll start with.
+- Below is a snippet of the table creation I used in an earlier commit.
+  - That commit hash is: 3a2542431c93e6b30334fa5cc99a0dca07e20f2b
+      
+```python
+    def _init_db(self):
+        """Initialize db & create directory table if not there."""
+        with sqlite3.connect(self.path_db) as conn:
+            query = """ CREATE TABLE IF NOT EXISTS dir (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            path TEXT NOT NULL UNIQUE
+                        );"""
+            conn.cursor().execute(query)
+            query = """CREATE TABLE IF NOT EXISTS dir_ancestor (
+                            dir_id INTEGER NOT NULL,
+                            ancestor_id INTEGER NOT NULL,
+                            depth INTEGER NOT NULL,
+                            PRIMARY KEY (dir_id, ancestor_id),
+                            FOREIGN KEY (dir_id) REFERENCES directory(id),
+                            FOREIGN KEY (ancestor_id) REFERENCES directory(id)
+                        );"""
+            conn.cursor().execute(query)
+            conn.commit()
+            return conn
+
+
+```
 
 ## Chippity Conversation
 

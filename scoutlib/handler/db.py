@@ -1,5 +1,7 @@
 # TODO: Consider adding name and/or description strs to members
 # TODO: Create context manager for db connection to improve DRYness
+# TODO: Consider an index for for dir.name & adding regular col for dir.depth
+# this could speed up join queries on paths
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -35,7 +37,8 @@ class DirRepo:
         with sqlite3.connect(self.path_db) as conn:
             query = """ CREATE TABLE IF NOT EXISTS dir (
                             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                            name TEXT NOT NULL
+                            path TEXT NOT NULL,
+                            CONSTRAINT path_unique UNIQUE (path)
                         );"""
             conn.cursor().execute(query)
             query = """CREATE TABLE IF NOT EXISTS dir_ancestor (
@@ -68,19 +71,21 @@ class DirRepo:
         except ValueError:
             raise ValueError(f"Path, {path}, not within DirRepo!")
 
-    # def add(self, directory: Directory):
-    #     """
-    #     Add a directory to the repository.
-    #     Fails if the directory already exists.
-    #     """
+    # TODO: Needs testing
+    def denormalize_path(self, path: Union[str, PurePath]) -> PurePath:
+        """
+        Denormalize a path string into a PurePath object.
+        """
+        path = PurePath(path) if isinstance(path, str) else path
+        return self.path / path
 
-    # def get(
-    #     self, path: Optional[Union[str, PurePath]] = None, id: Optional[int] = None
-    # ) -> Optional[Directory]:
-    #     """
-    #     Retrieve a directory object from the repository by
-    #     a few different means:
-    #     - By path
-    #     - By id
-    #     """
-    #     return None
+    def get_path(self, path: Union[PurePath, str]) -> Optional[Directory]:
+        path = self.normalize_path(path)
+        dir_row = None
+        with self.connection() as conn:
+            query = "SELECT * FROM dir WHERE path = ?"
+            dir_row = conn.execute(query, (str(path),)).fetchall()
+            if len(dir_row) <= 0:
+                return None
+        dir_row = dir_row[0]
+        return Directory(id=dir_row[0], path=self.denormalize_path(dir_row[1]))
