@@ -1,3 +1,6 @@
+# TODO: Deprecate this module, it's not needed anymore
+# NOTE: It's probably better to have extremely declarative tests that
+# avoid logic in tests as much as possible, it's more to type, but less error-prone.
 def assert_table_exists(conn, table_name):
     """Validates that a table exists in a connection's SQLite database."""
     cursor = conn.cursor()
