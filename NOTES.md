@@ -60,6 +60,86 @@
 
 ```
 
+## Example Closure Queries
+
+```sql
+DROP TABLE IF EXISTS dir;
+CREATE TABLE IF NOT EXISTS dir (
+  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  name TEXT
+);
+DROP TABLE IF EXISTS dir_ancestor;
+CREATE TABLE IF NOT EXISTS dir_ancestor (
+  dir_id INTEGER NOT NULL,
+  ancestor_id INTEGER NOT NULL,
+  depth INTEGER NOT NULL,
+  PRIMARY KEY (dir_id, ancestor_id),
+  FOREIGN KEY (dir_id) REFERENCES dir(id),
+  FOREIGN KEY (ancestor_id) REFERENCES dir(id)
+);
+
+-- Dir Tree: (id)
+-- a(1)/ ─┬─ b(2)/─── c(3)/
+--        ├─ d(4)/
+--        └─ e(5)/
+-- f(6)/ ─┬─ g(7)/
+--        └─ h(8)/
+INSERT INTO dir (name) VALUES ('a');
+INSERT INTO dir (name) VALUES ('b');
+INSERT INTO dir (name) VALUES ('c');
+INSERT INTO dir (name) VALUES ('d');
+INSERT INTO dir (name) VALUES ('e');
+INSERT INTO dir (name) VALUES ('f');
+INSERT INTO dir (name) VALUES ('g');
+INSERT INTO dir (name) VALUES ('h');
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(1, 1, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(2, 1, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(2, 2, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(3, 1, 2);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(3, 2, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(3, 3, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(4, 1, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(4, 4, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(5, 1, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(5, 5, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(6, 6, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(7, 6, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(7, 7, 0);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(8, 6, 1);
+INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES(8, 8, 0);
+
+-- CTE to recursively build paths
+-- Recursive CTE to build full directory paths
+WITH RECURSIVE DirPath AS (
+  SELECT
+    d.id,
+    d.name,
+    CAST('/' AS TEXT) || d.name AS path  -- Start path with root directory name
+  FROM dir d
+  WHERE NOT EXISTS (
+    -- Select directories that have no parent in dir_ancestor table
+    SELECT 1
+    FROM dir_ancestor da
+    WHERE da.dir_id = d.id AND da.depth > 0
+  )
+  UNION ALL
+  -- Recursively append parent directory names to build the full path
+  SELECT
+    d.id,
+    d.name,
+    dp.path || '/' || d.name
+  FROM dir d
+  JOIN dir_ancestor da ON d.id = da.dir_id
+  JOIN DirPath dp ON da.ancestor_id = dp.id
+)
+SELECT * FROM DirPath
+-- Optional: Order by path or id for better readability
+ORDER BY path, id;
+
+
+
+```
+
 ## Chippity Conversation
 
 ### 0. Overview
