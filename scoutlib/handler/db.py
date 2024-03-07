@@ -2,6 +2,9 @@
 # TODO: Create context manager for db connection to improve DRYness
 # TODO: Consider an index for for dir.name & adding regular col for dir.depth
 # this could speed up join queries on paths
+# TODO: Need to find a more normalized way to query against path;
+# we may keep path for ease of offline analysis, but during operations,
+# we should be using either a closure or self referencing parent FK.
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -92,73 +95,19 @@ class DirRepo:
         path = PurePath(path) if isinstance(path, str) else path
         return self.path / path
 
-    # TODO: Needs TESTING
-    def dir_from_table_row(self, row: tuple[int, str]) -> Directory:
-        return Directory(id=row[0], path=row[1])
-
     # TODO: Needs testing
     # TODO: Do we normalize the path?
     def select_dir_where_path(
-        self, pathlike: Union[Directory, PurePath, str]
-    ) -> Optional[tuple[int, str]]:
-        path = self.normalize_path(pathlike)
-        dir_row = None
-        with self.connection() as conn:
-            query = "SELECT * FROM dir WHERE path = ?"
-            dir_row = conn.execute(query, (str(path),)).fetchall()
-            if len(dir_row) <= 0:
-                return None
-        return dir_row[0]
-
-    # TODO: Needs more testing on deeper paths with dupe names
-    # TODO: Refactor name
-    def select_joined_path_ancestors(
         self, path: Union[Directory, PurePath, str]
     ) -> Optional[tuple[int, str]]:
-        """
-        Takes a path or directory model containing one and
-        returns a joined table of dir.id, dir.name,
-        containing (d is dir, a is dir_ancestor):
-        (d.id, d.name)
-        """
-
-        path = self.normalize_path(path)
-        leaf_dirname = path.name
-        leaf_dir_depth = len(path.parts) - 1
+        np = self.normalize_path(path)
+        dr = None  # (D)ir(R)ow
         with self.connection() as conn:
-            query = """
-                SELECT d.id, d.name
-                FROM dir d
-                JOIN dir_ancestor a ON a.ancestor_id = d.id
-                WHERE a.dir_id = (SELECT id FROM dir WHERE name = ?)"""
-            query = """
-                WITH possible_leaf_dirs AS (
-                    SELECT d.id
-                    FROM dir d
-                    JOIN dir_ancestor a ON a.dir_id = d.id
-                    WHERE d.name = ? AND a.depth = ?
-                )
-                SELECT a.dir_id, a.ancestor_id, a.depth, d.name, d.path
-                FROM dir d
-                JOIN dir_ancestor a ON a.ancestor_id = d.id
-                WHERE a.dir_id IN possible_leaf_dirs
-            """
-            # Execute the query with parameters
-            dir_rows = conn.execute(query, (leaf_dirname, leaf_dir_depth)).fetchall()
-            dir_rows_matching_path = []
-            # Now loop through every path component from parent to leaf
-            # Find the row that matches the dirname of the current component,
-            # Then append that row to the list of matching rows
-            for path_component in path.parts:
-                for row in dir_rows:
-                    if row[3] == path_component:
-                        dir_rows_matching_path.append(row)
-            # dir_rows = conn.execute(query, (str(leaf_dirname),)).fetchall()
-            # dir_rows = conn.execute(query).fetchall()
-            breakpoint()
-            if len(dir_rows) <= 0:
+            query = "SELECT * FROM dir WHERE path = ?"
+            dr = conn.execute(query, (str(np),)).fetchall()
+            if len(dr) <= 0:
                 return None
-            return dir_rows[0]
+        return dr[0]
 
     # TODO: Feels like wrong place for this
     def ancestor_paths(self, path: Union[PurePath, str]) -> list[PurePath]:

@@ -188,22 +188,22 @@ def test_dir_repo_normalize_path(dir_repo):
     ), "Not returning path relative to repo root"
 
 
-def test_directory_path_ancestors(dir_repo):
-    real_ancestors = dir_repo.ancestor_paths(PurePath("a/b/c/d"))
-    assert real_ancestors == [
-        PurePath("a"),
-        PurePath("a/b"),
-        PurePath("a/b/c"),
-        PurePath("a/b/c/d"),
-    ], f"Expected ['/a', '/a/b', '/a/b/c', '/a/b/c/d'], got {real_ancestors}"
-    # Now try with string off root of dir_repo
-    real_ancestors = dir_repo.ancestor_paths(f"{dir_repo.path}/a")
-    assert real_ancestors == [
-        PurePath("a"),
-    ], f"Expected ['/a'], got {real_ancestors}"
-    # Finally, an empty path
-    real_ancestors = dir_repo.ancestor_paths("")
-    assert real_ancestors == [], f"Expected [], got {real_ancestors}"
+@pytest.mark.parametrize(
+    "input_path,expected_ancestors",
+    [
+        # Test case 1: deep path
+        (PurePath("a/b/c"), [PurePath("a"), PurePath("a/b"), PurePath("a/b/c")]),
+        ("a", [PurePath("a")]),  # Test case 2: shallow path
+        ("", []),  # Test case 3: empty path
+    ],
+)
+def test_directory_path_ancestors(dir_repo, input_path, expected_ancestors):
+    if isinstance(input_path, str) and input_path:
+        input_path = f"{dir_repo.path}/{input_path}"
+    real_ancestors = dir_repo.ancestor_paths(input_path)
+    assert (
+        real_ancestors == expected_ancestors
+    ), f"Expected {expected_ancestors}, got {real_ancestors}"
 
 
 # test_repo:
@@ -272,35 +272,6 @@ def test_dir_repo_select_dir_where_path(test_repo):
     assert row[0] == 7, f"Expected dir.id = 7, got {row[0]}"
     row = test_repo.query_path("f/h")
     assert row[0] == 8, f"Expected dir.id = 8, got {row[0]}"
-
-
-def test_dir_repo_select_joined_path_ancestors(test_repo):
-    # Change dir entry of id 8 to have name 'd' to
-    # test duplicates with id 4.
-    # Dirnames are not unique, paths are.
-    # So this needs to be able to discriminate between them.
-    with test_repo.connection() as conn:
-        conn.execute("UPDATE dir SET name = 'd' WHERE id = 8")
-        conn.execute("UPDATE dir SET path = 'f/d' WHERE id = 8")
-        conn.commit()
-    row = test_repo.select_joined_path_ancestors("f/d")
-    assert row[0] == 8, f"Expected dir.id = 8, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("a")
-    # assert row[0] == 1, f"Expected dir.id = 1, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("a/b")
-    # assert row[0] == 2, f"Expected dir.id = 2, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("a/b/c")
-    # assert row[0] == 3, f"Expected dir.id = 3, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("a/d")
-    # assert row[0] == 4, f"Expected dir.id = 4, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("a/e")
-    # assert row[0] == 5, f"Expected dir.id = 5, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("f")
-    # assert row[0] == 6, f"Expected dir.id = 6, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("f/g")
-    # assert row[0] == 7, f"Expected dir.id = 7, got {row[0]}"
-    # row = test_repo.select_joined_path_ancestors("f/h")
-    # assert row[0] == 8, f"Expected dir.id = 8, got {row[0]}"
 
 
 # def test_dir_repo_add(dir_repo):
