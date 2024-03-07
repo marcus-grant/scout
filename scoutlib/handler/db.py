@@ -101,13 +101,12 @@ class DirRepo:
         self, path: Union[Directory, PurePath, str]
     ) -> Optional[tuple[int, str]]:
         np = self.normalize_path(path)
-        dr = None  # (D)ir(R)ow
+        res = None  # Result
         with self.connection() as conn:
             query = "SELECT * FROM dir WHERE path = ?"
-            dr = conn.execute(query, (str(np),)).fetchall()
-            if len(dr) <= 0:
-                return None
-        return dr[0]
+            res = conn.execute(query, (str(np),)).fetchone()
+        # breakpoint()
+        return res
 
     # TODO: Feels like wrong place for this
     def ancestor_paths(self, path: Union[PurePath, str]) -> list[PurePath]:
@@ -117,6 +116,51 @@ class DirRepo:
             ancestors.append(current)  # add current path to ancestors
             current = current.parent  # then update current path to its parent
         return ancestors[::-1]  # Now desired list is reverse of ancestors
+
+    def insert_into_dir(self, name: str, path: Union[PurePath, str]) -> Optional[int]:
+        """
+        Inserts a new record into the dir table.
+        Takes its anema nd path as arguments.
+        Returns the id of the new record if it was added,
+        as there could already be a record with the same unique path.
+        Otherwise returns None if it wasn't inserted.
+        """
+        np = self.normalize_path(path)
+        try:
+            with self.connection() as conn:
+                query = "INSERT INTO dir (name, path) VALUES (?, ?)"
+                cursor = conn.cursor()
+                cursor.execute(query, (name, str(np)))
+                conn.commit()
+                return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return None
+
+    # def add(self, dir: Directory):
+    #     """
+    #     Takes a directory, normalizes its path, and adds it to the database.
+    #     This includes the dir table and the dir_ancestor table.
+    #     It also adds the directory's ancestors to the dir_ancestor table.
+    #     Since the path is unique, it will catch the exception if it already exists.
+    #     """
+    #     aps = self.ancestor_paths(dir.path)
+    #     depth = 0
+    #     last_id = None
+    #     curr_id = None
+    #     with self.connection() as conn:
+    #         cursor = conn.cursor()
+    #         for ap in aps:
+    #             added = True
+    #             try:
+    #                 cursor.execute("INSERT INTO dir (name, path)",(ap,))
+    #             except sqlite3.IntegrityError:
+    #                 added = False
+    #             curr_id = cursor.lastrowid
+    #             if added and last_id is not None:
+    #                 cursor.execute(
+    #                     "INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES (?, ?, ?)",
+    #                     (curr_id, last_id, depth),
+    #                 )
 
     def get(
         self, path: Optional[Union[PurePath, str]], id=Optional[int]

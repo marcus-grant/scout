@@ -253,25 +253,59 @@ def test_repo(dir_repo):
     # os.unlink(dir_repo.path_db)
 
 
-def test_dir_repo_select_dir_where_path(test_repo):
-    row = test_repo.query_path("a")
-    assert row[0] == 1, f"Expected dir.id = 1, got {row[0]}"
-    row = test_repo.query_path("a")
-    assert row[0] == 1, f"Expected dir.id = 1, got {row[0]}"
-    row = test_repo.query_path("a/b")
-    assert row[0] == 2, f"Expected dir.id = 2, got {row[0]}"
-    row = test_repo.query_path("a/b/c")
-    assert row[0] == 3, f"Expected dir.id = 3, got {row[0]}"
-    row = test_repo.query_path("a/d")
-    assert row[0] == 4, f"Expected dir.id = 4, got {row[0]}"
-    row = test_repo.query_path("a/e")
-    assert row[0] == 5, f"Expected dir.id = 5, got {row[0]}"
-    row = test_repo.query_path("f")
-    assert row[0] == 6, f"Expected dir.id = 6, got {row[0]}"
-    row = test_repo.query_path("f/g")
-    assert row[0] == 7, f"Expected dir.id = 7, got {row[0]}"
-    row = test_repo.query_path("f/h")
-    assert row[0] == 8, f"Expected dir.id = 8, got {row[0]}"
+@pytest.mark.parametrize(
+    "path,id",
+    [
+        ("not/actually/there", None),
+        ("a", 1),
+        ("a/b", 2),
+        ("a/b/c", 3),
+        ("a/d", 4),
+        ("a/e", 5),
+        ("f", 6),
+        ("f/g", 7),
+        ("f/h", 8),
+    ],
+)
+def test_dir_repo_select_dir_where_path(test_repo, path, id):
+    if not id:
+        assert test_repo.select_dir_where_path(path) is None
+        return
+    real_id = test_repo.select_dir_where_path(path)[0]
+    assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
+
+
+@pytest.mark.parametrize(
+    "name, path, id",
+    [("a", "a", 1), ("b", "a/b", 1), ("c", "a/b/c", 1)],
+)
+def test_insert_into_dir_valid(dir_repo, name, path, id):
+    real_id = dir_repo.insert_into_dir(name, path)
+    assert real_id == id, f"Expected id = {id}, got {real_id}"
+    with dir_repo.connection() as conn:
+        row = conn.execute("SELECT * FROM dir WHERE path = ?", (path,)).fetchone()
+        assert row[0] == id, f"Expected id = {id}, got {row[0]}"
+        assert row[1] == name, f"Expected name = {name}, got {row[1]}"
+        assert row[2] == path, f"Expected path = {path}, got {row[2]}"
+
+
+def test_insert_into_dir_duplicate(dir_repo):
+    # Insert a record
+    dir_repo.insert_into_dir("a", "a")
+    # Try to insert a duplicate record
+    real_id = dir_repo.insert_into_dir("a", "a")
+    assert real_id is None, f"Expected None, got {real_id}"
+    with dir_repo.connection() as conn:
+        real_rows = conn.execute("SELECT * FROM dir WHERE path = 'a'").fetchall()
+        assert len(real_rows) == 1, f"Expected 1 row, got {len(real_rows)}"
+
+
+def test_insert_into_dir_raise(dir_repo):
+    with pytest.raises(ValueError) as excinfo:
+        dir_repo.insert_into_dir("a", dir_repo.path.parent)
+    assert str(excinfo.value) == f"Path, {dir_repo.path.parent}, not within DirRepo!"
+    with pytest.raises(TypeError) as excinfo:
+        dir_repo.insert_into_dir("a")
 
 
 # def test_dir_repo_add(dir_repo):
