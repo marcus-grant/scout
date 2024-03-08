@@ -1,3 +1,4 @@
+# TODO: Refactor to be its own package & rename to dirrepo or dir_repo
 # TODO: Consider adding name and/or description strs to members
 # TODO: Create context manager for db connection to improve DRYness
 # TODO: Consider an index for for dir.name & adding regular col for dir.depth
@@ -5,6 +6,7 @@
 # TODO: Need to find a more normalized way to query against path;
 # we may keep path for ease of offline analysis, but during operations,
 # we should be using either a closure or self referencing parent FK.
+# NOTE: If we go with materialized paths, they should probably be the PK.
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -105,7 +107,6 @@ class DirRepo:
         with self.connection() as conn:
             query = "SELECT * FROM dir WHERE path = ?"
             res = conn.execute(query, (str(np),)).fetchone()
-        # breakpoint()
         return res
 
     # TODO: Feels like wrong place for this
@@ -124,56 +125,67 @@ class DirRepo:
         Returns the id of the new record if it was added,
         as there could already be a record with the same unique path.
         Otherwise returns None if it wasn't inserted.
+        Remember, round trip considerations aren't important here,
+        we're dealing with round trip latencies limited by disk I/O.
         """
         np = self.normalize_path(path)
-        try:
-            with self.connection() as conn:
-                query = "INSERT INTO dir (name, path) VALUES (?, ?)"
-                cursor = conn.cursor()
-                cursor.execute(query, (name, str(np)))
-                conn.commit()
+        id = None
+        query_id = "SELECT id FROM dir WHERE path = ?"
+        query_insert = "INSERT INTO dir (name, path) VALUES (?, ?)"
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query_id, (str(np),))
+            id = cursor.fetchone()
+            if id:  # If it exists it's a duplicate just return the id
+                return id[0]
+            else:
+                cursor.execute(query_insert, (name, str(np)))
                 return cursor.lastrowid
-        except sqlite3.IntegrityError:
-            return None
 
-    # def add(self, dir: Directory):
-    #     """
-    #     Takes a directory, normalizes its path, and adds it to the database.
-    #     This includes the dir table and the dir_ancestor table.
-    #     It also adds the directory's ancestors to the dir_ancestor table.
-    #     Since the path is unique, it will catch the exception if it already exists.
-    #     """
-    #     aps = self.ancestor_paths(dir.path)
-    #     depth = 0
-    #     last_id = None
-    #     curr_id = None
-    #     with self.connection() as conn:
-    #         cursor = conn.cursor()
-    #         for ap in aps:
-    #             added = True
-    #             try:
-    #                 cursor.execute("INSERT INTO dir (name, path)",(ap,))
-    #             except sqlite3.IntegrityError:
-    #                 added = False
-    #             curr_id = cursor.lastrowid
-    #             if added and last_id is not None:
-    #                 cursor.execute(
-    #                     "INSERT INTO dir_ancestor (dir_id, ancestor_id, depth) VALUES (?, ?, ?)",
-    #                     (curr_id, last_id, depth),
-    #                 )
+    def insert_into_dir_ancestor(
+        self,
+        dir_ancestor_rows: list[tuple[int, int, int]],  # dir_id, ancestor_id, depth
+    ):
+        """
+        Inserts a dir_ancestor records into the dir_ancestor table.
+        """
+        ""
+        with self.connection() as conn:
+            cursor = conn.cursor()
+            for row in dir_ancestor_rows:
+                cursor.execute(
+                    """
+                    INSERT INTO dir_ancestor (dir_id, ancestor_id, depth)
+                    VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
+                    row,
+                )
+            conn.commit()
 
-    def get(
-        self, path: Optional[Union[PurePath, str]], id=Optional[int]
-    ) -> Optional[Directory]:
-        if path is not None:
-            dir_row = self.query_path(path)
-            if dir_row is None:
-                return None
-            return Directory(path=dir_row[1], id=dir_row[0])
-        return None
-
-    # TODO: Consider usage, what's to be done with directory that gets an ID?
-    # Should we return the directory with the ID? Should we send a dir & mutate its ID?
-    # def add(self, dir: Directory):
-    #     path = self.normalize_path(dir)
-    #     ancestor_paths = [PurePath(path.parts[: i + 1]) for i in range(len(path.parts))]
+    def add(self, directory: Directory):
+        # TODO: Come back to this method later when we know more how to use it.
+        # NOTE: There's a problem of how we handle ids here,
+        # it might be better to allow raising errors on adding dirs without parent.
+        """
+        Adds a Directory object's data to the database.
+        This includes:
+            - Splitting ancestors in path into separate records
+            - Adding the directory itself
+            - Adding to dir_ancestor table for each ancestor
+            - In-place updating the passed directory object with its id
+        """
+        # Normalize Leaf Dir Path (lp) to repo
+        lp = self.normalize_path(directory.path)
+        aps = self.ancestor_paths(lp)  # Get ancestor paths (aps)
+        # Add all ancestors to dir table noting that duplicates will be ignored
+        ids = []
+        for ap in aps:
+            id = self.insert_into_dir(ap.name, ap)
+            ids.append(id)
+        # Ensure the last id is the leaf dir id
+        directory.id = ids[-1]
+        # Now we need to arrange the dir_ancestor rows (da_rows)
+        da_rows = []
+        for i, ap in enumerate(aps):
+            for j in range(i, len(aps)):
+                da_rows.append((ids[i], ids[j], j - i + 1))
+        self.insert_into_dir_ancestor(da_rows)

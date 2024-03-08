@@ -294,7 +294,9 @@ def test_insert_into_dir_duplicate(dir_repo):
     dir_repo.insert_into_dir("a", "a")
     # Try to insert a duplicate record
     real_id = dir_repo.insert_into_dir("a", "a")
-    assert real_id is None, f"Expected None, got {real_id}"
+    assert (
+        real_id == 1
+    ), f"Expected returned ID of 1 of the duplicate row, got {real_id}"
     with dir_repo.connection() as conn:
         real_rows = conn.execute("SELECT * FROM dir WHERE path = 'a'").fetchall()
         assert len(real_rows) == 1, f"Expected 1 row, got {len(real_rows)}"
@@ -307,6 +309,53 @@ def test_insert_into_dir_raise(dir_repo):
     with pytest.raises(TypeError) as excinfo:
         dir_repo.insert_into_dir("a")
 
+
+def test_insert_into_dir_ancestor_success(dir_repo):
+    rows = [(1, 0, 1), (2, 1, 2), (3, 0, 1)]
+    dir_repo.insert_into_dir_ancestor(rows)
+    with dir_repo.connection() as conn:
+        real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+        assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
+    # assert result == rows[0][1], f"Expected top-level ancestor_id: {rows[0][1]}, got {result}"
+
+
+def test_insert_into_dir_ancestor_duplicate(dir_repo):
+    """Test that duplicate ancestor_dir rows are handled gracefully.
+    Note that 2 rows are expected, not 3 or 1.
+    This is becaues we should gracefully handle the duplicate row,
+    but still add all the unique rows in the input.
+    """
+    dir_repo.insert_into_dir_ancestor([(1, 0, 1), (1, 0, 1), (2, 0, 1)])
+    with dir_repo.connection() as conn:
+        real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+    assert len(real_rows) == 2, "Expected no duplicate ancestor_dir rows"
+
+
+def test_add_without_ancestors(dir_repo):
+    base = dir_repo.path
+    dir = Directory(path=base / "a")
+    dir_repo.add(dir)
+    assert dir.id == 1, f"Expected id = 1, got {dir.id}"
+    assert str(dir.path) == f"{base}/a", f"Expected path = {base}/a, got {dir.path}"
+    assert (
+        dir.name == dir_repo.path.name
+    ), f"Expected name = {dir_repo.path.name}, got {dir.name}"
+
+
+# DELETEME = {
+#     "dir_ancestor_data,expected_success",
+#     [
+#         # Test case with single ancestor relationship
+#         ([(1, 0, 1)], True),
+#         # Test case with multiple ancestor relationships
+#         ([(2, 0, 1), (3, 2, 2)], True),
+#         # Test case with a potential duplicate that should be handled gracefully
+#         (
+#             [(1, 0, 1), (1, 0, 1)],
+#             False,
+#         ),  # The expected_success is False here to indicate handling of duplicates
+#     ],
+# }
 
 # def test_dir_repo_add(dir_repo):
 #     # Dir Tree: (id)
