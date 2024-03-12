@@ -63,6 +63,9 @@ class Directory:
                 return False
         return True
 
+    def __repr__(self) -> str:
+        return f"Directory(path={self.path}, id={self.id})"
+
 
 @attrs.define(kw_only=True)
 class File:

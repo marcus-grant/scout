@@ -7,6 +7,8 @@
 # we may keep path for ease of offline analysis, but during operations,
 # we should be using either a closure or self referencing parent FK.
 # NOTE: If we go with materialized paths, they should probably be the PK.
+# TODO: Redesign functions to enable more efficient bulk operations
+# TODO: Consider insert_many_into_dir for better performing bulk inserts
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -161,7 +163,7 @@ class DirRepo:
                 )
             conn.commit()
 
-    def add(self, directory: Directory):
+    def add(self, directory: Directory) -> list[Directory]:
         # TODO: Come back to this method later when we know more how to use it.
         # NOTE: There's a problem of how we handle ids here,
         # it might be better to allow raising errors on adding dirs without parent.
@@ -181,11 +183,16 @@ class DirRepo:
         for ap in aps:
             id = self.insert_into_dir(ap.name, ap)
             ids.append(id)
-        # Ensure the last id is the leaf dir id
-        directory.id = ids[-1]
+        directory.id = ids[-1]  # Ensure last id on leaf dir id
+
         # Now we need to arrange the dir_ancestor rows (da_rows)
         da_rows = []
         for i, ap in enumerate(aps):
-            for j in range(i, len(aps)):
-                da_rows.append((ids[i], ids[j], j - i + 1))
-        self.insert_into_dir_ancestor(da_rows)
+            for j in range(i, -1, -1):  # Reverse order from i to 0 of ids
+                da_rows.append((ids[i], ids[j], i - j))
+        self.insert_into_dir_ancestor(da_rows)  # Insert rows to dir_ancestor
+
+        # Now create directories with assigned ids and other attrs given
+        daps = [self.denormalize_path(ap) for ap in aps]
+        dirs = [Directory(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
+        return dirs

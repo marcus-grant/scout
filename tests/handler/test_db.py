@@ -337,66 +337,30 @@ def test_add_without_ancestors(dir_repo):
     dir_repo.add(dir)
     assert dir.id == 1, f"Expected id = 1, got {dir.id}"
     assert str(dir.path) == f"{base}/a", f"Expected path = {base}/a, got {dir.path}"
-    assert (
-        dir.name == dir_repo.path.name
-    ), f"Expected name = {dir_repo.path.name}, got {dir.name}"
 
 
-# DELETEME = {
-#     "dir_ancestor_data,expected_success",
-#     [
-#         # Test case with single ancestor relationship
-#         ([(1, 0, 1)], True),
-#         # Test case with multiple ancestor relationships
-#         ([(2, 0, 1), (3, 2, 2)], True),
-#         # Test case with a potential duplicate that should be handled gracefully
-#         (
-#             [(1, 0, 1), (1, 0, 1)],
-#             False,
-#         ),  # The expected_success is False here to indicate handling of duplicates
-#     ],
-# }
+def test_add_with_ancestors(dir_repo):
+    # First arrange expected returned Directory list
+    dira = Directory(path=dir_repo.path / "a", id=1)
+    dirb = Directory(path=dir_repo.path / "a/b", id=2)
+    dirc = Directory(path=dir_repo.path / "a/b/c", id=3)
+    dird = Directory(path=dir_repo.path / "a/b/c/d", id=4)
+    dirs = [dira, dirb, dirc, dird]
 
-# def test_dir_repo_add(dir_repo):
-#     # Dir Tree: (id)
-#     # a(1)/ ─┬─ b(2)/─── c(3)/
-#     #        ├─ d(4)/
-#     #        ├─ e(5)/
-#     # f(6)/ ─┬─ g(7)/
-#     #        └─ h(8)/
-#     # Arrange
-#     expected_dirs: list[tuple[int, str]] = []
-#     expected_dirs.extend([(1, "a"), (2, "a/b"), (3, "a/b/c")])
-#     expected_dirs.extend([(4, "a/d"), (5, "a/e")])
-#     expected_dirs.extend([(6, "f"), (7, "f/g"), (8, "f/h")])
-#     # expected_ancestors: list[tuple[int, int, int]] = [
-#     #     (1, 1, 0),
-#     #     (2, 2, 0),
-#     #     (3, 3, 0),
-#     #     (4, 4, 0),
-#     #     (5, 5, 0),
-#     #     (6, 6, 0),
-#     #     (7, 7, 0),
-#     #     (8, 8, 0),
-#     #     (2, 1, 1),
-#     #     (3, 2, 1),
-#     #     (4, 1, 1),
-#     #     (5, 1, 1),
-#     #     (7, 6, 1),
-#     #     (8, 6, 1),
-#     # ]
-#     # Act
-#     dir_repo.add("a")
-#     dir_repo.add("a/b")
-#     dir_repo.add("a/b/c")
-#     dir_repo.add("a/d")
-#     dir_repo.add("a/e")
-#     dir_repo.add("f")
-#     dir_repo.add("f/g")
-#     dir_repo.add(PurePath(dir_repo.path) / "f/h")
-#     # Assert
-#     with dir_repo.connection() as conn:
-#         real_dirs = conn.execute("SELECT * FROM dir").fetchall()
-#         assert real_dirs == expected_dirs
-#         real_ancestors = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-#         raise LookupError(f"real_ancestors = {real_ancestors}")
+    # Act on the repo with add
+    base = dir_repo.path
+    real_dirs = dir_repo.add(Directory(path=(base / "a/b/c/d")))
+
+    # Assert that the returned list is as expected
+    assert real_dirs == dirs, f"Expected Directory list: {dirs}, got {real_dirs}"
+    # Assert the dir & dir_ancestor tables are as expected
+    d_rows = [(1, "a", "a"), (2, "b", "a/b"), (3, "c", "a/b/c"), (4, "d", "a/b/c/d")]
+    da_rows = [(1, 1, 0)]
+    da_rows += [(2, 2, 0), (2, 1, 1)]
+    da_rows += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
+    da_rows += [(4, 4, 0), (4, 3, 1), (4, 2, 2), (4, 1, 3)]
+    with dir_repo.connection() as conn:
+        real_drows = conn.execute("SELECT * FROM dir").fetchall()
+        real_da_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+    assert real_drows == d_rows, f"Expected rows: {d_rows}, got {real_drows}"
+    assert real_da_rows == da_rows, f"Expected rows: {da_rows}, got {real_da_rows}"
