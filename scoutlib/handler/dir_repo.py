@@ -99,18 +99,6 @@ class DirRepo:
         path = PurePath(path) if isinstance(path, str) else path
         return self.path / path
 
-    # TODO: Needs testing
-    # TODO: Do we normalize the path?
-    def select_dir_where_path(
-        self, path: Union[Directory, PurePath, str]
-    ) -> Optional[tuple[int, str]]:
-        np = self.normalize_path(path)
-        res = None  # Result
-        with self.connection() as conn:
-            query = "SELECT * FROM dir WHERE path = ?"
-            res = conn.execute(query, (str(np),)).fetchone()
-        return res
-
     # TODO: Feels like wrong place for this
     def ancestor_paths(self, path: Union[PurePath, str]) -> list[PurePath]:
         current = self.normalize_path(path)
@@ -196,3 +184,13 @@ class DirRepo:
         daps = [self.denormalize_path(ap) for ap in aps]
         dirs = [Directory(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
+
+    def select_dir_where_path(
+        self, path: Union[Directory, PurePath, str]
+    ) -> Optional[tuple[int, str]]:
+        np = self.normalize_path(path)
+        res = None  # Result
+        with self.connection() as conn:
+            query = "SELECT * FROM dir WHERE path = ?"
+            res = conn.execute(query, (str(np),)).fetchone()
+        return res

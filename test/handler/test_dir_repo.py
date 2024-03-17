@@ -2,13 +2,15 @@
 # TODO: Normalize: Rethink need for ValueError, relatives could be relative to reporoot
 # TODO: Test denormalize_path
 import os
-from pathlib import Path, PurePath
+from pathlib import PurePath
 import pytest
 import sqlite3
 import tempfile
 
 from scoutlib.handler.dir_repo import DirRepo
 from scoutlib.model.fs import Directory
+
+PP = PurePath
 
 
 @pytest.fixture
@@ -95,24 +97,20 @@ def test_table_dir_ancestor(base_repo):
         ]
 
         # Check number of columns
-        assert len(real_schema) == len(expected_schema), f"""
-            Expected {len(expected_schema)} columns in 'dir_ancestor',
-            got {len(real_schema)}"""
+        msg = "Expected 3 columns in 'dir_ancestor', got {len(real_schema)}"
+        assert len(real_schema) == len(expected_schema), msg
 
         # Check dir_id column
-        assert (
-            real_schema[0] == expected_schema[0]
-        ), "Bad dir_ancestor schema in dir_id column."
+        msg = "Bad dir_ancestor schema in dir_id column."
+        assert real_schema[0] == expected_schema[0], msg
 
         # Check ancestor_id column
-        assert (
-            real_schema[1] == expected_schema[1]
-        ), "Bad dir_ancestor schema in ancestor_id column."
+        msg = "Bad dir_ancestor schema in ancestor_id column."
+        assert real_schema[1] == expected_schema[1], msg
 
         # Check depth column
-        assert (
-            real_schema[2] == expected_schema[2]
-        ), "Bad dir_ancestor schema in depth column."
+        msg = "Bad dir_ancestor schema in depth column."
+        assert real_schema[2] == expected_schema[2], msg
 
 
 def test_connect(base_repo):
@@ -122,8 +120,7 @@ def test_connect(base_repo):
         assert conn is not None
         assert isinstance(conn, sqlite3.Connection)
         # Perform a simple operation to ensure the connection is open
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
+        cursor = conn.cursor().execute("SELECT 1")
         result = cursor.fetchone()
         assert result is not None  # This should succeed if the connection is open
 
@@ -150,7 +147,7 @@ def test_normalize_path(base_repo):
 
     # Empty string, should be root of repo
     msg = "Root path, should return '.', aka root of repo."
-    assert base_repo.normalize_path("") == PurePath("."), msg
+    assert base_repo.normalize_path("") == PP("."), msg
 
     # Relative path, should be relative to repo root
     relpath = "foo/bar"
@@ -166,97 +163,30 @@ def test_normalize_path(base_repo):
 
 
 @pytest.mark.parametrize(
-    "input_path,expected_ancestors",
-    [
-        # Test case 1: deep path
-        (PurePath("a/b/c"), [PurePath("a"), PurePath("a/b"), PurePath("a/b/c")]),
-        ("a", [PurePath("a")]),  # Test case 2: shallow path
+    "path,ancestors",  # Input path & expected ancestors
+    [  # Test case 1: deep path
+        (PP("a/b/c"), [PP("a"), PP("a/b"), PP("a/b/c")]),
+        ("a", [PP("a")]),  # Test case 2: shallow path
         ("", []),  # Test case 3: empty path
     ],
 )
-def test_directory_path_ancestors(base_repo, input_path, expected_ancestors):
-    if isinstance(input_path, str) and input_path:
-        input_path = f"{base_repo.path}/{input_path}"
-    real_ancestors = base_repo.ancestor_paths(input_path)
-    assert (
-        real_ancestors == expected_ancestors
-    ), f"Expected {expected_ancestors}, got {real_ancestors}"
-
-
-# test_repo:
-# Dir Tree: (id)
-# a(1)/ ─┬─ b(2)/─── c(3)/
-#        ├─ d(4)/
-#        └─ e(5)/
-# f(6)/ ─┬─ g(7)/
-#        └─ h(8)/
-@pytest.fixture
-def test_repo(base_repo):
-    # Uses base_repo initialized DirRepo and adds test data to it
-    # Then yields it to test functions asking for it.
-    # Finally tears it all down
-
-    with base_repo.connection() as conn:
-        # Insert some test data
-        query = "INSERT INTO dir (name, path) VALUES (?, ?)"
-        conn.execute(query, ("a", "a"))
-        conn.execute(query, ("b", "a/b"))
-        conn.execute(query, ("c", "a/b/c"))
-        conn.execute(query, ("d", "a/d"))
-        conn.execute(query, ("e", "a/e"))
-        conn.execute(query, ("f", "f"))
-        conn.execute(query, ("g", "f/g"))
-        conn.execute(query, ("h", "f/h"))
-        query = "INSERT INTO dir_ancestor VALUES (?, ?, ?)"
-        conn.execute(query, (1, 1, 0))
-        conn.execute(query, (2, 2, 0))
-        conn.execute(query, (2, 1, 1))
-        conn.execute(query, (3, 3, 0))
-        conn.execute(query, (3, 2, 1))
-        conn.execute(query, (3, 1, 2))
-        conn.execute(query, (4, 4, 0))
-        conn.execute(query, (4, 1, 1))
-        conn.execute(query, (5, 5, 0))
-        conn.execute(query, (5, 1, 1))
-        conn.execute(query, (6, 6, 0))
-        conn.execute(query, (7, 7, 0))
-        conn.execute(query, (7, 6, 1))
-        conn.execute(query, (8, 8, 0))
-        conn.execute(query, (8, 6, 1))
-        conn.commit()
-    yield base_repo
-    # NOTE: Might not be necessary
-    # Teardown, so we don't leave temp files around
-    # os.unlink(base_repo.path_db)
-
-
-@pytest.mark.parametrize(
-    "path,id",
-    [
-        ("not/actually/there", None),
-        ("a", 1),
-        ("a/b", 2),
-        ("a/b/c", 3),
-        ("a/d", 4),
-        ("a/e", 5),
-        ("f", 6),
-        ("f/g", 7),
-        ("f/h", 8),
-    ],
-)
-def test_base_repo_select_dir_where_path(test_repo, path, id):
-    if not id:
-        assert test_repo.select_dir_where_path(path) is None
-        return
-    real_id = test_repo.select_dir_where_path(path)[0]
-    assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
+def test_ancestor_paths(base_repo, path, ancestors):
+    """
+    DirRepo.ancestor_paths() returns correct ancestors of a path.
+    In this test, the ancestors of 'a/b/c' are 'a', 'a/b', and 'a/b/c'.
+    """
+    if isinstance(path, str) and path:
+        path = f"{base_repo.path}/{path}"
+    real_ancestors = base_repo.ancestor_paths(path)
+    assert real_ancestors == ancestors, f"Expected {ancestors}, got {real_ancestors}"
 
 
 @pytest.mark.parametrize(
     "name, path, id",
     [("a", "a", 1), ("b", "a/b", 1), ("c", "a/b/c", 1)],
 )
-def test_insert_into_dir_valid(base_repo, name, path, id):
+def test_insert_into_dir(base_repo, name, path, id):
+    """DirRepo.insert_into_dir() inserts correct records & returns correct id."""
     real_id = base_repo.insert_into_dir(name, path)
     assert real_id == id, f"Expected id = {id}, got {real_id}"
     with base_repo.connection() as conn:
@@ -267,19 +197,20 @@ def test_insert_into_dir_valid(base_repo, name, path, id):
 
 
 def test_insert_into_dir_duplicate(base_repo):
+    """DirRepo.insert_into_dir() handles duplicate records gracefully."""
     # Insert a record
     base_repo.insert_into_dir("a", "a")
     # Try to insert a duplicate record
     real_id = base_repo.insert_into_dir("a", "a")
-    assert (
-        real_id == 1
-    ), f"Expected returned ID of 1 of the duplicate row, got {real_id}"
+    msg = f"Expected ID of 1 of duplicate dir row, got {real_id}"
+    assert real_id == 1, msg
     with base_repo.connection() as conn:
         real_rows = conn.execute("SELECT * FROM dir WHERE path = 'a'").fetchall()
         assert len(real_rows) == 1, f"Expected 1 row, got {len(real_rows)}"
 
 
 def test_insert_into_dir_raise(base_repo):
+    """DirRepo.insert_into_dir() raises ValueError for invalid paths."""
     with pytest.raises(ValueError) as excinfo:
         base_repo.insert_into_dir("a", base_repo.path.parent)
     assert str(excinfo.value) == f"Path, {base_repo.path.parent}, not within DirRepo!"
@@ -287,17 +218,18 @@ def test_insert_into_dir_raise(base_repo):
         base_repo.insert_into_dir("a")
 
 
-def test_insert_into_dir_ancestor_success(base_repo):
+def test_insert_into_dir_ancestor(base_repo):
+    """DirRepo.insert_into_dir_ancestor() inserts correct records."""
     rows = [(1, 0, 1), (2, 1, 2), (3, 0, 1)]
     base_repo.insert_into_dir_ancestor(rows)
     with base_repo.connection() as conn:
         real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-        assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
-    # assert result == rows[0][1], f"Expected top-level ancestor_id: {rows[0][1]}, got {result}"
+    assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
 
 
 def test_insert_into_dir_ancestor_duplicate(base_repo):
-    """Test that duplicate ancestor_dir rows are handled gracefully.
+    """
+    DirRepo.insert_into_dir_ancestor() handles duplicate records gracefully.
     Note that 2 rows are expected, not 3 or 1.
     This is becaues we should gracefully handle the duplicate row,
     but still add all the unique rows in the input.
@@ -309,14 +241,27 @@ def test_insert_into_dir_ancestor_duplicate(base_repo):
 
 
 def test_add_without_ancestors(base_repo):
+    """DirRepo.add() adds a directory without ancestors correctly."""
     base = base_repo.path
     dir = Directory(path=base / "a")
     base_repo.add(dir)
     assert dir.id == 1, f"Expected id = 1, got {dir.id}"
     assert str(dir.path) == f"{base}/a", f"Expected path = {base}/a, got {dir.path}"
+    dir_b = Directory(path=base / "b")
+    base_repo.add(dir_b)
+    assert dir_b.id == 2, f"Expected id = 2, got {dir_b.id}"
+    assert str(dir_b.path) == f"{base}/b", f"Expected path = {base}/b, got {dir_b.path}"
 
 
 def test_add_with_ancestors(base_repo):
+    """
+    DirRepo.add() adds a directory with ancestors correctly.
+        - dir table has a, a/b, a/b/c, a/b/c/d as individual records
+        - they all have 1...4 as their id respectively
+        - all other dependant columns are as expected
+        - dir_ancestor table has all the expected foreign keys
+        - dir_ancestor records are in right order
+    """
     # First arrange expected returned Directory list
     dira = Directory(path=base_repo.path / "a", id=1)
     dirb = Directory(path=base_repo.path / "a/b", id=2)
@@ -341,3 +286,49 @@ def test_add_with_ancestors(base_repo):
         real_da_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
     assert real_drows == d_rows, f"Expected rows: {d_rows}, got {real_drows}"
     assert real_da_rows == da_rows, f"Expected rows: {da_rows}, got {real_da_rows}"
+
+
+# TODO: Should teardown be added?
+@pytest.fixture
+def test_repo(base_repo):
+    """
+    Create a DirRepo with a preset directory tree for testing like so:
+    Dir Tree: (id)
+    a(1)/ ─┬─ b(2)/─── c(3)/
+           ├─ d(4)/
+           └─ e(5)/
+    f(6)/ ─┬─ g(7)/
+           └─ h(8)/
+    """
+
+    # Use tested add method to create dirtree in dir & dir_ancestor tables
+    base_repo.add(Directory(path=base_repo.path / "a/b/c"))
+    base_repo.add(Directory(path=base_repo.path / "a/d"))
+    base_repo.add(Directory(path=base_repo.path / "a/e"))
+    base_repo.add(Directory(path=base_repo.path / "f/g"))
+    base_repo.add(Directory(path=base_repo.path / "f/h"))
+
+    yield base_repo
+
+
+@pytest.mark.parametrize(
+    "path,id",
+    [
+        ("no/exist", None),
+        ("a", 1),
+        ("a/b", 2),
+        ("a/b/c", 3),
+        ("a/d", 4),
+        ("a/e", 5),
+        ("f", 6),
+        ("f/g", 7),
+        ("f/h", 8),
+    ],
+)
+def test_select_dir_where_path(test_repo, path, id):
+    """Test that select_dir_where_path returns expected id for given path."""
+    if not id:
+        assert test_repo.select_dir_where_path(path) is None
+        return
+    real_id = test_repo.select_dir_where_path(path)[0]
+    assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
