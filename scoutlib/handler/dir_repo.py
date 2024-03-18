@@ -39,6 +39,7 @@ class DirRepo:
     def db_path(self):
         return self.path / "dir.db"
 
+    # TODO: path should be column 1, not 2
     def _init_db(self):
         """Initialize db & create directory table if not there."""
         with sqlite3.connect(self.path_db) as conn:

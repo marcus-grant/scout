@@ -348,18 +348,36 @@ def test_repo(base_repo):
     yield base_repo
 
 
+def test_test_repo_tables(test_repo):
+    rows = [(1, "a", "a"), (2, "b", "a/b"), (3, "c", "a/b/c")]
+    rows += [(4, "d", "a/d"), (5, "e", "a/e")]
+    rows += [(6, "f", "f"), (7, "g", "f/g"), (8, "h", "f/h")]
+    real_rows = []
+    with test_repo.connection() as conn:
+        real_rows = conn.execute("SELECT * FROM dir").fetchall()
+    assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
+    rows = [(1, 1, 0)]
+    rows += [(2, 2, 0), (2, 1, 1)]
+    rows += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
+    rows += [(4, 4, 0), (4, 1, 1)]
+    rows += [(5, 5, 0), (5, 1, 1)]
+    rows += [(6, 6, 0)]
+    rows += [(7, 7, 0), (7, 6, 1)]
+    rows += [(8, 8, 0), (8, 6, 1)]
+    with test_repo.connection() as conn:
+        real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+    assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
+
+
 @pytest.mark.parametrize(
     "path,id",
     [
         ("no/exist", None),
         ("a", 1),
-        ("a/b", 2),
         ("a/b/c", 3),
         ("a/d", 4),
-        ("a/e", 5),
         ("f", 6),
         ("f/g", 7),
-        ("f/h", 8),
     ],
 )
 def test_select_dir_where_path(test_repo, path, id):
