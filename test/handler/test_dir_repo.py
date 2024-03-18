@@ -161,6 +161,43 @@ def test_normalize_path(base_repo):
     msg += f"{abspath}, got {base_repo.normalize_path(abspath)}"
     assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
 
+    # Redo foobar absolute path with Directory object
+    abspath = Directory(path=abspath)
+    msg = "Expected relative path to repo; "
+    msg += f"{abspath.path}, got {base_repo.normalize_path(abspath)}"
+    assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
+
+
+def test_denormalize_path(base_repo):
+    """
+    DirRepo.denormalize_path() takes path presumed within repo...
+    - Relative path returned as absolute path appended to repo root
+    - Absolute path returned as itself IFF within the repo otherwise ValueError
+    - Empty path returned as repo root's path
+    """
+    base = base_repo.path
+    path = PP("a/b/c")  # Test case 1: relative path
+    real_path = base_repo.denormalize_path(path)
+    assert real_path == base / PP("a/b/c"), f"Expected '{base}/a/b/c', got {real_path}"
+
+    path = "a"  # Top level relpath ensuring lack of sep and str input OK
+    real_path = base_repo.denormalize_path(path)
+    assert real_path == base / PP("a"), f"Expected '{base}/a', got {real_path}"
+
+    path = ""  # Empty strings should be OK & represent root of repo
+    real_path = base_repo.denormalize_path(path)
+    assert real_path == base, f"Expected repo root {base}, got {real_path}"
+
+    path = base / PP("a")  # Absolute path within repo
+    real_path = base_repo.denormalize_path(path)
+    assert real_path == path, f"Expected '{base}/a', got {real_path}"
+
+    path = base.parent / "outside"  # Absolute path outside repo is error
+    # Assert ValueError gets raised
+    with pytest.raises(ValueError) as excinfo:
+        base_repo.denormalize_path(path)
+    assert str(excinfo.value) == f"Path, {path}, not within DirRepo {base}!"
+
 
 @pytest.mark.parametrize(
     "path,ancestors",  # Input path & expected ancestors
@@ -332,3 +369,7 @@ def test_select_dir_where_path(test_repo, path, id):
         return
     real_id = test_repo.select_dir_where_path(path)[0]
     assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
+
+
+def test_get(test_repo):
+    pass

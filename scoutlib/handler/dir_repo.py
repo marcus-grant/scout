@@ -66,7 +66,7 @@ class DirRepo:
         """Yields a connection context manager for the SQLite db."""
         return sqlite3.connect(self.path_db)
 
-    # TODO: Test directory case
+    ### Path Helper Methods ###
     def normalize_path(self, pathlike: Union[str, PurePath, Directory]) -> PurePath:
         """
         Normalize a path string into a list of path components.
@@ -91,12 +91,16 @@ class DirRepo:
         except ValueError:
             raise ValueError(f"Path, {path}, not within DirRepo!")
 
-    # TODO: Needs testing
     def denormalize_path(self, path: Union[str, PurePath]) -> PurePath:
         """
         Denormalize a path string into a PurePath object.
         """
         path = PurePath(path) if isinstance(path, str) else path
+        if path.is_absolute():
+            try:
+                path = path.relative_to(self.path)  # Ensure it's relative to repo
+            except ValueError:
+                raise ValueError(f"Path, {path}, not within DirRepo {self.path}!")
         return self.path / path
 
     # TODO: Feels like wrong place for this
@@ -108,6 +112,7 @@ class DirRepo:
             current = current.parent  # then update current path to its parent
         return ancestors[::-1]  # Now desired list is reverse of ancestors
 
+    ### SQL Query Helper Methods ###
     def insert_into_dir(self, name: str, path: Union[PurePath, str]) -> Optional[int]:
         """
         Inserts a new record into the dir table.
@@ -151,6 +156,17 @@ class DirRepo:
                 )
             conn.commit()
 
+    def select_dir_where_path(
+        self, path: Union[Directory, PurePath, str]
+    ) -> Optional[tuple[int, str]]:
+        np = self.normalize_path(path)
+        res = None  # Result
+        with self.connection() as conn:
+            query = "SELECT * FROM dir WHERE path = ?"
+            res = conn.execute(query, (str(np),)).fetchone()
+        return res
+
+    ### Repo Actions ###
     def add(self, directory: Directory) -> list[Directory]:
         # TODO: Come back to this method later when we know more how to use it.
         # NOTE: There's a problem of how we handle ids here,
@@ -184,13 +200,3 @@ class DirRepo:
         daps = [self.denormalize_path(ap) for ap in aps]
         dirs = [Directory(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
-
-    def select_dir_where_path(
-        self, path: Union[Directory, PurePath, str]
-    ) -> Optional[tuple[int, str]]:
-        np = self.normalize_path(path)
-        res = None  # Result
-        with self.connection() as conn:
-            query = "SELECT * FROM dir WHERE path = ?"
-            res = conn.execute(query, (str(np),)).fetchone()
-        return res
