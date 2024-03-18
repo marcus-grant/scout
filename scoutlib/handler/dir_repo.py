@@ -166,6 +166,14 @@ class DirRepo:
             res = conn.execute(query, (str(np),)).fetchone()
         return res
 
+    def select_dir_where_id(self, id: int) -> Optional[tuple[int, str]]:
+        """Returns the dir row tuple with matching id, or None if no match."""
+        res = None  # Result
+        with self.connection() as conn:
+            query = "SELECT * FROM dir WHERE id = ?"
+            res = conn.execute(query, (id,)).fetchone()
+        return res
+
     ### Repo Actions ###
     def add(self, directory: Directory) -> list[Directory]:
         # TODO: Come back to this method later when we know more how to use it.
@@ -200,3 +208,6 @@ class DirRepo:
         daps = [self.denormalize_path(ap) for ap in aps]
         dirs = [Directory(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
+
+    def get(self, path_or_dir: Union[Directory, PurePath, str]) -> Optional[Directory]:
+        pass

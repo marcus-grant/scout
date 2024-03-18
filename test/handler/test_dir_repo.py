@@ -371,5 +371,34 @@ def test_select_dir_where_path(test_repo, path, id):
     assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
 
 
-def test_get(test_repo):
-    pass
+@pytest.mark.parametrize(
+    "id,path",
+    [
+        (None, "no/exist"),
+        (3, "a/b/c"),
+        (5, "a/e"),
+        (6, "f"),
+        (8, "f/h"),
+    ],
+)
+def test_select_dir_where_id(test_repo, id, path):
+    """DirRepo.select_dir_where_id() returns correct Directory object."""
+    row = test_repo.select_dir_where_id(id)
+    # If id is None, we should get None
+    if not id:
+        assert row is None, "Dir with path 'no/exist' should return an table row"
+        return
+    msg = f"Expected Directory.id = {id} when select by id, got {row[0]}"
+    assert row[0] == id, msg
+    msg = f"Expected Directory.path = {path} when select id={id}, got {row[1]}"
+    assert str(row[2]) == path, msg
+
+
+# def test_get(test_repo):
+#     """
+#     DirRepo.get():
+#     - Returns a directory object from
+#     """
+#      dir = test_repo.get("a/b/c")
+#      assert dir.id == 3, f"Expected id = 3, got {dir.id}"
+#     pass
