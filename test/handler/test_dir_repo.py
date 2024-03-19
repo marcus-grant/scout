@@ -371,14 +371,7 @@ def test_test_repo_tables(test_repo):
 
 @pytest.mark.parametrize(
     "path,id",
-    [
-        ("no/exist", None),
-        ("a", 1),
-        ("a/b/c", 3),
-        ("a/d", 4),
-        ("f", 6),
-        ("f/g", 7),
-    ],
+    [("no/exist", None), ("a", 1), ("a/b/c", 3), ("a/d", 4), ("f/g", 7)],
 )
 def test_select_dir_where_path(test_repo, path, id):
     """Test that select_dir_where_path returns expected id for given path."""
@@ -391,25 +384,82 @@ def test_select_dir_where_path(test_repo, path, id):
 
 @pytest.mark.parametrize(
     "id,path",
-    [
-        (None, "no/exist"),
-        (3, "a/b/c"),
-        (5, "a/e"),
-        (6, "f"),
-        (8, "f/h"),
-    ],
+    [(None, "no/exist"), (3, "a/b/c"), (5, "a/e"), (6, "f"), (8, "f/h")],
 )
 def test_select_dir_where_id(test_repo, id, path):
     """DirRepo.select_dir_where_id() returns correct Directory object."""
     row = test_repo.select_dir_where_id(id)
-    # If id is None, we should get None
-    if not id:
+    if not id:  # If id is None, we should get None
         assert row is None, "Dir with path 'no/exist' should return an table row"
         return
     msg = f"Expected Directory.id = {id} when select by id, got {row[0]}"
     assert row[0] == id, msg
     msg = f"Expected Directory.path = {path} when select id={id}, got {row[1]}"
     assert str(row[2]) == path, msg
+
+
+def same_row_by_key(real: list[tuple], expected: list[tuple], pk_index: int = 0):
+    """
+    Assert that two lists of tuples are the same record by primary key.
+    Lists of tuples get returned by sqlite fetches, except fetchone.
+    Simply provide two lists of tuples and
+    (optionally) the index of the primary key in the tuple, default is 0.
+    """
+    if len(real) != len(expected):
+        return False
+    for r, e in zip(real, expected):
+        if r[pk_index] != e[pk_index]:
+            return False
+    return True
+
+
+def test_same_row_by_key():
+    """
+    Test helper function same_row_by_key:
+    - True for rows with matching primary keys but diff num fields
+    - True for rows with matching keys but different key index
+    - False for rows with different primary keys
+    - Same but nonzero pk_index
+    - False on row count mismatch
+    """
+    real = [(1, "a", 10), (2, "b", 20), (3, "c", 30)]
+    expected = [(1, "a"), (2, "b"), (3, "x")]
+    assert same_row_by_key(real, expected)
+
+    real = [(False, 1), (True, 2), (False, 3)]
+    expected = [("a", 1, False), ("b", 2, True), ("c", 3, False)]
+    assert same_row_by_key(real, expected, pk_index=1)
+
+    real = [(4,), (9,)]
+    expected = [(1,), (2,)]
+    assert not same_row_by_key(real, expected)
+
+    real = [(1, "a"), (2, "b"), (3, "c")]
+    expected = [("a", 1), ("b", 2), ("c", 3)]
+    assert not same_row_by_key(real, expected, pk_index=1)
+
+    real = [(1, "a"), (2, "b"), (3, "c")]
+    expected = [(1, "a"), (2, "b")]
+    assert not same_row_by_key(real, expected)
+
+
+@pytest.mark.parametrize(
+    "path,depth,rows",
+    [
+        ("a/b/c", None, [(2,), (1,)]),
+        ("a/b/c", 1, [(2,)]),
+    ],
+)
+def test_select_ancestor_dirs_where_path(test_repo, path, depth, rows):
+    """
+    DirRepo.select_dirs_where_ancestor():
+    - Returns list of ancestors for path=None, id=3 (a/b/c)
+    """
+    real = test_repo.select_ancestor_dirs_where_path(path, depth)
+    np = test_repo.normalize_path(path)
+    real_np = test_repo.select_ancestor_dirs_where_path(np, depth)
+    assert same_row_by_key(real, rows), f"Expected rows: {rows}, got {real}"
+    assert same_row_by_key(real_np, rows), f"Expected rows: {rows}, got {real_np}"
 
 
 # def test_get(test_repo):

@@ -159,7 +159,7 @@ class DirRepo:
 
     def select_dir_where_path(
         self, path: Union[Directory, PurePath, str]
-    ) -> Optional[tuple[int, str]]:
+    ) -> Optional[tuple[int, str, str]]:
         np = self.normalize_path(path)
         res = None  # Result
         with self.connection() as conn:
@@ -167,7 +167,7 @@ class DirRepo:
             res = conn.execute(query, (str(np),)).fetchone()
         return res
 
-    def select_dir_where_id(self, id: int) -> Optional[tuple[int, str]]:
+    def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
         """Returns the dir row tuple with matching id, or None if no match."""
         res = None  # Result
         with self.connection() as conn:
