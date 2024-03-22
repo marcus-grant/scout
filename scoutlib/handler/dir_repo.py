@@ -9,6 +9,7 @@
 # NOTE: If we go with materialized paths, they should probably be the PK.
 # TODO: Redesign functions to enable more efficient bulk operations
 # TODO: Consider insert_many_into_dir for better performing bulk inserts
+# TODO: The way we handle query building is messy, consider a query builder & refactor
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -174,6 +175,30 @@ class DirRepo:
             query = "SELECT * FROM dir WHERE id = ?"
             res = conn.execute(query, (id,)).fetchone()
         return res
+
+    def ancestor_dirs_where_path(
+        self,
+        path: Union[PurePath, str],
+        depth: Optional[int] = 2**31 - 1,
+    ) -> list[tuple[int, str, str]]:
+        np = self.normalize_path(path)
+        if depth is None:
+            depth = 2**31 - 1
+        with self.connection() as conn:
+            query = """
+                SELECT ancestor_dirs.*
+                FROM ( -- query for dir.id with given path
+                    SELECT d.id AS target_dir_id
+                    FROM dir d
+                    WHERE d.path = ?
+                ) AS target_dir -- target_dir.id now holds dir.id of target path
+                JOIN dir_ancestor da ON target_dir.target_dir_id = da.dir_id
+                JOIN dir ancestor_dirs ON da.ancestor_id = ancestor_dirs.id
+                WHERE da.depth <= ? and da.depth > 0
+                ORDER BY da.depth
+            """
+            res = conn.execute(query, (str(np), depth)).fetchall()
+            return res
 
     ### Repo Actions ###
     def add(self, directory: Directory) -> list[Directory]:

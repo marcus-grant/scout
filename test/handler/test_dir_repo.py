@@ -398,7 +398,7 @@ def test_select_dir_where_id(test_repo, id, path):
     assert str(row[2]) == path, msg
 
 
-def same_row_by_key(real: list[tuple], expected: list[tuple], pk_index: int = 0):
+def same_row(real: list[tuple], expected: list[tuple], pk_index: int = 0):
     """
     Assert that two lists of tuples are the same record by primary key.
     Lists of tuples get returned by sqlite fetches, except fetchone.
@@ -413,9 +413,9 @@ def same_row_by_key(real: list[tuple], expected: list[tuple], pk_index: int = 0)
     return True
 
 
-def test_same_row_by_key():
+def test_same_row():
     """
-    Test helper function same_row_by_key:
+    Test helper function same_row:
     - True for rows with matching primary keys but diff num fields
     - True for rows with matching keys but different key index
     - False for rows with different primary keys
@@ -424,42 +424,43 @@ def test_same_row_by_key():
     """
     real = [(1, "a", 10), (2, "b", 20), (3, "c", 30)]
     expected = [(1, "a"), (2, "b"), (3, "x")]
-    assert same_row_by_key(real, expected)
+    assert same_row(real, expected)
 
     real = [(False, 1), (True, 2), (False, 3)]
     expected = [("a", 1, False), ("b", 2, True), ("c", 3, False)]
-    assert same_row_by_key(real, expected, pk_index=1)
+    assert same_row(real, expected, pk_index=1)
 
     real = [(4,), (9,)]
     expected = [(1,), (2,)]
-    assert not same_row_by_key(real, expected)
+    assert not same_row(real, expected)
 
     real = [(1, "a"), (2, "b"), (3, "c")]
     expected = [("a", 1), ("b", 2), ("c", 3)]
-    assert not same_row_by_key(real, expected, pk_index=1)
+    assert not same_row(real, expected, pk_index=1)
 
     real = [(1, "a"), (2, "b"), (3, "c")]
     expected = [(1, "a"), (2, "b")]
-    assert not same_row_by_key(real, expected)
+    assert not same_row(real, expected)
 
 
-@pytest.mark.parametrize(
-    "path,depth,rows",
-    [
-        ("a/b/c", None, [(2,), (1,)]),
-        ("a/b/c", 1, [(2,)]),
-    ],
-)
-def test_select_ancestor_dirs_where_path(test_repo, path, depth, rows):
+def test_ancestor_dirs_where_path(test_repo):
+    """DirRepo.select_dirs_where_ancestor() returns:
+    - Ancestor rows of ids [2, 1] and no depth limit for (a/b/c)
+    - Same result when depth is a high number
+    - Same but depth=1, limits it to row of id 2
+    - Ancestor row of id 6 for (f/g) with None in depth
+    - Empty list for repo top level directory (f)
+    - Absolute & relative repo paths make no difference
     """
-    DirRepo.select_dirs_where_ancestor():
-    - Returns list of ancestors for path=None, id=3 (a/b/c)
-    """
-    real = test_repo.select_ancestor_dirs_where_path(path, depth)
-    np = test_repo.normalize_path(path)
-    real_np = test_repo.select_ancestor_dirs_where_path(np, depth)
-    assert same_row_by_key(real, rows), f"Expected rows: {rows}, got {real}"
-    assert same_row_by_key(real_np, rows), f"Expected rows: {rows}, got {real_np}"
+    assert same_row(
+        test_repo.ancestor_dirs_where_path("a/b/c"),
+        test_repo.ancestor_dirs_where_path(test_repo.path / "a/b/c"),
+    )
+    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c"), [(2,), (1,)])
+    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c", depth=99), [(2,), (1,)])
+    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c", depth=1), [(2,)])
+    assert same_row(test_repo.ancestor_dirs_where_path("f/g"), [(6,)])
+    assert same_row(test_repo.ancestor_dirs_where_path("f"), [])
 
 
 # def test_get(test_repo):
