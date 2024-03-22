@@ -450,8 +450,7 @@ def test_ancestor_dirs_where_path(test_repo):
     - Same but depth=1, limits it to row of id 2
     - Ancestor row of id 6 for (f/g) with None in depth
     - Empty list for repo top level directory (f)
-    - Absolute & relative repo paths make no difference
-    """
+    - Absolute & relative repo paths make no difference"""
     assert same_row(
         test_repo.ancestor_dirs_where_path("a/b/c"),
         test_repo.ancestor_dirs_where_path(test_repo.path / "a/b/c"),
@@ -461,6 +460,20 @@ def test_ancestor_dirs_where_path(test_repo):
     assert same_row(test_repo.ancestor_dirs_where_path("a/b/c", depth=1), [(2,)])
     assert same_row(test_repo.ancestor_dirs_where_path("f/g"), [(6,)])
     assert same_row(test_repo.ancestor_dirs_where_path("f"), [])
+
+
+def test_ancestor_dirs_where_id(test_repo):
+    """DirRepo.select_dirs_where_ancestor() has same spec as
+    test_ancestor_dirs_where_path but with id instead of path as arg"""
+    assert same_row(
+        test_repo.ancestor_dirs_where_id(3),
+        test_repo.ancestor_dirs_where_id(3),
+    )
+    assert same_row(test_repo.ancestor_dirs_where_id(3), [(2,), (1,)])
+    assert same_row(test_repo.ancestor_dirs_where_id(3, depth=99), [(2,), (1,)])
+    assert same_row(test_repo.ancestor_dirs_where_id(3, depth=1), [(2,)])
+    assert same_row(test_repo.ancestor_dirs_where_id(7), [(6,)])
+    assert same_row(test_repo.ancestor_dirs_where_id(6), [])
 
 
 # def test_get(test_repo):
