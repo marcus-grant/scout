@@ -451,15 +451,14 @@ def test_ancestor_dirs_where_path(test_repo):
     - Ancestor row of id 6 for (f/g) with None in depth
     - Empty list for repo top level directory (f)
     - Absolute & relative repo paths make no difference"""
-    assert same_row(
-        test_repo.ancestor_dirs_where_path("a/b/c"),
-        test_repo.ancestor_dirs_where_path(test_repo.path / "a/b/c"),
-    )
-    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c"), [(2,), (1,)])
-    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c", depth=99), [(2,), (1,)])
-    assert same_row(test_repo.ancestor_dirs_where_path("a/b/c", depth=1), [(2,)])
-    assert same_row(test_repo.ancestor_dirs_where_path("f/g"), [(6,)])
-    assert same_row(test_repo.ancestor_dirs_where_path("f"), [])
+    fn = test_repo.ancestor_dirs_where_path
+
+    assert same_row(fn("a/b/c"), fn(test_repo.path / "a/b/c"))
+    assert same_row(fn("a/b/c"), [(2,), (1,)])
+    assert same_row(fn("a/b/c", depth=99), [(2,), (1,)])
+    assert same_row(fn("a/b/c", depth=1), [(2,)])
+    assert same_row(fn("f/g"), [(6,)])
+    assert same_row(fn("f"), [])
 
 
 def test_ancestor_dirs_where_id(test_repo):
@@ -474,6 +473,39 @@ def test_ancestor_dirs_where_id(test_repo):
     assert same_row(test_repo.ancestor_dirs_where_id(3, depth=1), [(2,)])
     assert same_row(test_repo.ancestor_dirs_where_id(7), [(6,)])
     assert same_row(test_repo.ancestor_dirs_where_id(6), [])
+
+
+def test_descendant_dirs_where_path(test_repo):
+    """DirRepo.select_dirs_where_descendant() returns:
+    - Descendant row ids of just 3 for path (a/b)
+    - Descendant rows of ids [2, 4, 5, 3] and no depth limit for (a)
+    - Same result when depth is a high number
+    - Same but depth=1, limits it to rows of id [2, 4, 5]
+    - Descendant rows of id [7, 8] for (f)
+    - Empty list for leaf directory (a/b/c)
+    - Emptly list for other leaf (a/d)"""
+    fn = test_repo.descendant_dirs_where_path
+    assert same_row(fn("a"), fn(test_repo.path / "a"))
+    assert same_row(fn("a/b"), [(3,)])
+    assert same_row(fn("a"), [(2,), (4,), (5,), (3,)])
+    assert same_row(fn("a", depth=99), [(2,), (4,), (5,), (3,)])
+    assert same_row(fn("a", depth=1), [(2,), (4,), (5,)])
+    assert same_row(fn("f"), [(7,), (8,)])
+    assert same_row(fn("a/d"), [])
+
+
+def test_descendant_dirs_where_id(test_repo):
+    """DirRepo.select_dirs_where_descendant() has same spec as
+    test_descendant_dirs_where_path but with id instead of path as arg"""
+    fn = test_repo.descendant_dirs_where_id
+
+    assert same_row(fn(1), fn(1))
+    assert same_row(fn(2), [(3,)])
+    assert same_row(fn(1), [(2,), (4,), (5,), (3,)])
+    assert same_row(fn(1, depth=99), [(2,), (4,), (5,), (3,)])
+    assert same_row(fn(1, depth=1), [(2,), (4,), (5,)])
+    assert same_row(fn(4), [])
+    assert same_row(fn(3), [])
 
 
 # def test_get(test_repo):

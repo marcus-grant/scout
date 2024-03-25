@@ -10,6 +10,7 @@
 # TODO: Redesign functions to enable more efficient bulk operations
 # TODO: Consider insert_many_into_dir for better performing bulk inserts
 # TODO: The way we handle query building is messy, consider a query builder & refactor
+# TODO: Ensure docstrings are on every method
 import sqlite3
 from pathlib import Path, PurePath
 from os import sep
@@ -220,6 +221,53 @@ class DirRepo:
             """
             res = conn.execute(query, (id, depth)).fetchall()
             return res
+
+    def descendant_dirs_where_path(
+        self,
+        path: Union[PurePath, str],
+        depth: Optional[int] = 2**31 - 1,
+    ) -> list[tuple[int, str, str]]:
+        if depth is None:
+            depth = 2**31 - 1
+        np = self.normalize_path(path)
+        res = []
+        with self.connection() as conn:
+            query = """
+                SELECT descendant_dirs.*
+                FROM ( -- query for dir.id with given path
+                    SELECT d.id AS target_dir_id
+                    FROM dir d
+                    WHERE d.path = ?
+                ) AS target_dir -- target_dir.id now holds dir.id of target path
+                JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
+                JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
+                WHERE da.depth <= ? and da.depth > 0
+                ORDER BY da.depth
+            """
+            res = conn.execute(query, (str(np), depth)).fetchall()
+        return res
+
+    def descendant_dirs_where_id(
+        self, id: int, depth: Optional[int] = 2**31 - 1
+    ) -> list[tuple[int, str, str]]:
+        if depth is None:
+            depth = 2**31 - 1
+        res = []
+        with self.connection() as conn:
+            query = """
+            SELECT descendant_dirs.*
+            FROM ( -- query for dir.id with given id
+                SELECT d.id AS target_dir_id
+                FROM dir d
+                WHERE d.id = ?
+            ) AS target_dir -- target_dir.id now holds dir.id of target path
+            JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
+            JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
+            WHERE da.depth <= ? and da.depth > 0
+            ORDER BY da.depth
+            """
+            res = conn.execute(query, (id, depth)).fetchall()
+        return res
 
     ### Repo Actions ###
     def add(self, directory: Directory) -> list[Directory]:
