@@ -16,13 +16,13 @@ from pathlib import Path, PurePath
 from os import sep
 from typing import Optional, Union
 
-from scoutlib.model.fs import Directory
+from scoutlib.model.dir import Dir
 
 
 class DirRepo:
     """
     Repository pattern class for managing storage layer of
-    Directory objects in a SQLite database.
+    Dir objects in a SQLite database.
     """
 
     path_db: PurePath
@@ -70,7 +70,7 @@ class DirRepo:
         return sqlite3.connect(self.path_db)
 
     ### Path Helper Methods ###
-    def normalize_path(self, pathlike: Union[str, PurePath, Directory]) -> PurePath:
+    def normalize_path(self, pathlike: Union[str, PurePath, Dir]) -> PurePath:
         """
         Normalize a path string into a list of path components.
         Order determines depth, so the first element is the repo root.
@@ -80,7 +80,7 @@ class DirRepo:
         # If pathlike is directory assign path to pathlike.path
         # If it's a string, convert to PurePath
         # If it's already a purepath, assign to path
-        if isinstance(pathlike, Directory):
+        if isinstance(pathlike, Dir):
             path = pathlike.path
         elif isinstance(pathlike, str):
             path = PurePath(pathlike)
@@ -160,7 +160,7 @@ class DirRepo:
             conn.commit()
 
     def select_dir_where_path(
-        self, path: Union[Directory, PurePath, str]
+        self, path: Union[Dir, PurePath, str]
     ) -> Optional[tuple[int, str, str]]:
         np = self.normalize_path(path)
         res = None  # Result
@@ -270,12 +270,12 @@ class DirRepo:
         return res
 
     ### Repo Actions ###
-    def add(self, directory: Directory) -> list[Directory]:
+    def add(self, directory: Dir) -> list[Dir]:
         # TODO: Come back to this method later when we know more how to use it.
         # NOTE: There's a problem of how we handle ids here,
         # it might be better to allow raising errors on adding dirs without parent.
         """
-        Adds a Directory object's data to the database.
+        Adds a Dir object's data to the database.
         This includes:
             - Splitting ancestors in path into separate records
             - Adding the directory itself
@@ -301,8 +301,8 @@ class DirRepo:
 
         # Now create directories with assigned ids and other attrs given
         daps = [self.denormalize_path(ap) for ap in aps]
-        dirs = [Directory(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
+        dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
 
-    def get(self, path_or_dir: Union[Directory, PurePath, str]) -> Optional[Directory]:
+    def get(self, path_or_dir: Union[Dir, PurePath, str]) -> Optional[Dir]:
         pass

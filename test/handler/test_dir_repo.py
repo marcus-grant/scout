@@ -8,7 +8,7 @@ import sqlite3
 import tempfile
 
 from scoutlib.handler.dir_repo import DirRepo
-from scoutlib.model.fs import Directory
+from scoutlib.model.dir import Dir
 
 PP = PurePath
 
@@ -161,8 +161,8 @@ def test_normalize_path(base_repo):
     msg += f"{abspath}, got {base_repo.normalize_path(abspath)}"
     assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
 
-    # Redo foobar absolute path with Directory object
-    abspath = Directory(path=abspath)
+    # Redo foobar absolute path with Dir object
+    abspath = Dir(path=abspath)
     msg = "Expected relative path to repo; "
     msg += f"{abspath.path}, got {base_repo.normalize_path(abspath)}"
     assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
@@ -280,11 +280,11 @@ def test_insert_into_dir_ancestor_duplicate(base_repo):
 def test_add_without_ancestors(base_repo):
     """DirRepo.add() adds a directory without ancestors correctly."""
     base = base_repo.path
-    dir = Directory(path=base / "a")
+    dir = Dir(path=base / "a")
     base_repo.add(dir)
     assert dir.id == 1, f"Expected id = 1, got {dir.id}"
     assert str(dir.path) == f"{base}/a", f"Expected path = {base}/a, got {dir.path}"
-    dir_b = Directory(path=base / "b")
+    dir_b = Dir(path=base / "b")
     base_repo.add(dir_b)
     assert dir_b.id == 2, f"Expected id = 2, got {dir_b.id}"
     assert str(dir_b.path) == f"{base}/b", f"Expected path = {base}/b, got {dir_b.path}"
@@ -299,19 +299,19 @@ def test_add_with_ancestors(base_repo):
         - dir_ancestor table has all the expected foreign keys
         - dir_ancestor records are in right order
     """
-    # First arrange expected returned Directory list
-    dira = Directory(path=base_repo.path / "a", id=1)
-    dirb = Directory(path=base_repo.path / "a/b", id=2)
-    dirc = Directory(path=base_repo.path / "a/b/c", id=3)
-    dird = Directory(path=base_repo.path / "a/b/c/d", id=4)
+    # First arrange expected returned Dir list
+    dira = Dir(path=base_repo.path / "a", id=1)
+    dirb = Dir(path=base_repo.path / "a/b", id=2)
+    dirc = Dir(path=base_repo.path / "a/b/c", id=3)
+    dird = Dir(path=base_repo.path / "a/b/c/d", id=4)
     dirs = [dira, dirb, dirc, dird]
 
     # Act on the repo with add
     base = base_repo.path
-    real_dirs = base_repo.add(Directory(path=(base / "a/b/c/d")))
+    real_dirs = base_repo.add(Dir(path=(base / "a/b/c/d")))
 
     # Assert that the returned list is as expected
-    assert real_dirs == dirs, f"Expected Directory list: {dirs}, got {real_dirs}"
+    assert real_dirs == dirs, f"Expected Dir list: {dirs}, got {real_dirs}"
     # Assert the dir & dir_ancestor tables are as expected
     d_rows = [(1, "a", "a"), (2, "b", "a/b"), (3, "c", "a/b/c"), (4, "d", "a/b/c/d")]
     da_rows = [(1, 1, 0)]
@@ -339,11 +339,11 @@ def test_repo(base_repo):
     """
 
     # Use tested add method to create dirtree in dir & dir_ancestor tables
-    base_repo.add(Directory(path=base_repo.path / "a/b/c"))
-    base_repo.add(Directory(path=base_repo.path / "a/d"))
-    base_repo.add(Directory(path=base_repo.path / "a/e"))
-    base_repo.add(Directory(path=base_repo.path / "f/g"))
-    base_repo.add(Directory(path=base_repo.path / "f/h"))
+    base_repo.add(Dir(path=base_repo.path / "a/b/c"))
+    base_repo.add(Dir(path=base_repo.path / "a/d"))
+    base_repo.add(Dir(path=base_repo.path / "a/e"))
+    base_repo.add(Dir(path=base_repo.path / "f/g"))
+    base_repo.add(Dir(path=base_repo.path / "f/h"))
 
     yield base_repo
 
@@ -387,14 +387,14 @@ def test_select_dir_where_path(test_repo, path, id):
     [(None, "no/exist"), (3, "a/b/c"), (5, "a/e"), (6, "f"), (8, "f/h")],
 )
 def test_select_dir_where_id(test_repo, id, path):
-    """DirRepo.select_dir_where_id() returns correct Directory object."""
+    """DirRepo.select_dir_where_id() returns correct Dir object."""
     row = test_repo.select_dir_where_id(id)
     if not id:  # If id is None, we should get None
         assert row is None, "Dir with path 'no/exist' should return an table row"
         return
-    msg = f"Expected Directory.id = {id} when select by id, got {row[0]}"
+    msg = f"Expected Dir.id = {id} when select by id, got {row[0]}"
     assert row[0] == id, msg
-    msg = f"Expected Directory.path = {path} when select id={id}, got {row[1]}"
+    msg = f"Expected Dir.path = {path} when select id={id}, got {row[1]}"
     assert str(row[2]) == path, msg
 
 

@@ -1,22 +1,22 @@
 import os
 from typing import Optional
 
-from scoutlib.model.fs import Directory, File
+from scoutlib.model.dir import Dir
 
 
-# Function to use Directory class to create a list of all directories of a path
-def find_all_dirs(rootpath: str = os.sep) -> list[Directory]:
+# Function to use Dir class to create a list of all directories of a path
+def find_all_dirs(rootpath: str = os.sep) -> list[Dir]:
     """Finds all directories under the given start_path."""
     if not os.path.isdir(rootpath):
         return []
-    dirs = [Directory.from_path(rootpath)]
+    dirs = [Dir.from_path(rootpath)]
     for rootpath, dirnames, _ in os.walk(rootpath):
         for dirname in dirnames:
-            dirs.append(Directory.from_path(os.path.join(rootpath, dirname)))
+            dirs.append(Dir.from_path(os.path.join(rootpath, dirname)))
     return dirs
 
 
-def find_common_root(dirs: list[Directory]) -> Optional[Directory]:
+def find_common_root(dirs: list[Dir]) -> Optional[Dir]:
     """Finds the deepest shared root directory from a list of directories."""
     if len(dirs) == 0:  # If there are no directories, None
         return None
@@ -32,7 +32,7 @@ def find_common_root(dirs: list[Directory]) -> Optional[Directory]:
     return root
 
 
-def dirs_sorted_dfs(dirs: list[Directory]) -> list[Directory]:
+def dirs_sorted_dfs(dirs: list[Dir]) -> list[Dir]:
     """
     Sorts a list of directories in depth-first order.
     Sorts primarily by lexical order from path,
@@ -43,10 +43,10 @@ def dirs_sorted_dfs(dirs: list[Directory]) -> list[Directory]:
         return []
 
     # Create a sort key function to help sort by depth and then name
-    def sort_key(d: Directory):
+    def sort_key(d: Dir):
         return (
             d.path,  # Secondary sort by lexical order from pathstring
-            d.path.count(os.sep),  # Count path separators to get depth
+            str(d.path).count(os.sep),  # Count path separators to get depth
         )
 
     return sorted(dirs, key=sort_key)
