@@ -304,7 +304,6 @@ class DirRepo:
         dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
 
-    # TODO: Must be normalized first, then denormalized
     def getone(
         self,
         id: Optional[int] = None,
@@ -325,7 +324,7 @@ class DirRepo:
         if id_used:
             res = self.select_dir_where_id(id_used)
         elif path_used:
-            res = self.select_dir_where_path(path_used)
+            res = self.select_dir_where_path(self.normalize_path(path_used))
         if res:
             return Dir(id=res[0], path=self.denormalize_path(res[2]))
         return None
