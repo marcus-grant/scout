@@ -508,18 +508,14 @@ def test_descendant_dirs_where_id(test_repo):
     assert same_row(fn(3), [])
 
 
-# TODO: The tests need to consider that paths are:
-#           - First sent in denormalized form unless relative
-#           - Then normalized to repo root
-#           - Need to test for both Path and str inputs
 @pytest.mark.parametrize(
     "id,path,dir,exp",
     [
         (8, "f/g", Dir(id=1, path="a"), Dir(id=8, path="f/h")),
         (None, "f/g", Dir(id=1, path="a"), Dir(id=7, path="f/g")),
         (None, None, Dir(id=1, path="a"), Dir(id=1, path="a")),
-        (3, "a/e", Dir(id=1, path="f"), Dir(id=3, path="a/b/c")),
-        (None, "a/e", Dir(id=1, path="f"), Dir(id=5, path="a/e")),
+        (3, PP("a/e"), Dir(id=1, path="f"), Dir(id=3, path="a/b/c")),
+        (None, PP("a/e"), Dir(id=1, path="f"), Dir(id=5, path="a/e")),
         (None, None, Dir(id=6, path="f"), Dir(id=6, path="f")),
         (None, None, None, ValueError),
     ],
@@ -544,5 +540,31 @@ def test_getone(test_repo, id, path, dir, exp):
         with pytest.raises(ValueError):
             test_repo.getone(id=id, path=path, dir=dir)
         return
-    exp.path = test_repo.path / exp.path  # Denorm. path for comparison of repo
+    # Returned directories need to be denormalized and checked as normal
+    # They're parametrized as normalized to be shorter
+    exp.path = test_repo.path / exp.path
     assert test_repo.getone(id=id, path=path, dir=dir) == exp
+
+
+def test_getone_abspath_same(test_repo):
+    """Ensure absolute paths including the repo root and
+    are recorded are same as relative paths within.
+    This also ensures paths get normalized before query then
+    denormalized when the results are returned.
+    """
+    fn = test_repo.getone
+    assert fn(path=test_repo.path / "a/b/c") == fn(path="a/b/c")
+    assert fn(path=str(test_repo.path) + "/f") == fn(path="f")
+    assert fn(path=test_repo.path / "f/g") == fn(path="f/g")
+
+
+def test_getone_not_exist(test_repo):
+    """Ensure that getone returns None for non-existent paths within repo"""
+    assert test_repo.getone(path="no/exist") is None
+    assert test_repo.getone(path="a/b/noexist") is None
+
+
+def test_getone_raise_outside(test_repo):
+    """Ensure that getone raises ValueError for paths outside repo"""
+    with pytest.raises(ValueError):
+        test_repo.getone(path=test_repo.path.parent / "noexist")
