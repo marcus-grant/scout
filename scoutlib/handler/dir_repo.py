@@ -270,7 +270,7 @@ class DirRepo:
         return res
 
     ### Repo Actions ###
-    def add(self, directory: Dir) -> list[Dir]:
+    def add(self, dir: Dir) -> list[Dir]:
         # TODO: Come back to this method later when we know more how to use it.
         # NOTE: There's a problem of how we handle ids here,
         # it might be better to allow raising errors on adding dirs without parent.
@@ -283,14 +283,14 @@ class DirRepo:
             - In-place updating the passed directory object with its id
         """
         # Normalize Leaf Dir Path (lp) to repo
-        lp = self.normalize_path(directory.path)
+        lp = self.normalize_path(dir.path)
         aps = self.ancestor_paths(lp)  # Get ancestor paths (aps)
         # Add all ancestors to dir table noting that duplicates will be ignored
         ids = []
         for ap in aps:
             id = self.insert_into_dir(ap.name, ap)
             ids.append(id)
-        directory.id = ids[-1]  # Ensure last id on leaf dir id
+        dir.id = ids[-1]  # Ensure last id on leaf dir id
 
         # Now we need to arrange the dir_ancestor rows (da_rows)
         da_rows = []
@@ -304,5 +304,28 @@ class DirRepo:
         dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
 
-    def get(self, path_or_dir: Union[Dir, PurePath, str]) -> Optional[Dir]:
-        pass
+    # TODO: Must be normalized first, then denormalized
+    def getone(
+        self,
+        id: Optional[int] = None,
+        path: Optional[Union[PurePath, str]] = None,
+        dir: Optional[Dir] = None,
+    ) -> Optional[Dir]:
+        id_used = None
+        path_used = None
+        if id is not None:
+            id_used = id
+        elif path is not None:
+            path_used = path
+        elif dir is not None:
+            id_used = dir.id
+        else:
+            raise ValueError("Must provide either id, path, or dir argument.")
+        res = None
+        if id_used:
+            res = self.select_dir_where_id(id_used)
+        elif path_used:
+            res = self.select_dir_where_path(path_used)
+        if res:
+            return Dir(id=res[0], path=self.denormalize_path(res[2]))
+        return None

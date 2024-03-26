@@ -508,11 +508,41 @@ def test_descendant_dirs_where_id(test_repo):
     assert same_row(fn(3), [])
 
 
-# def test_get(test_repo):
-#     """
-#     DirRepo.get():
-#     - Returns a directory object from
-#     """
-#      dir = test_repo.get("a/b/c")
-#      assert dir.id == 3, f"Expected id = 3, got {dir.id}"
-#     pass
+# TODO: The tests need to consider that paths are:
+#           - First sent in denormalized form unless relative
+#           - Then normalized to repo root
+#           - Need to test for both Path and str inputs
+@pytest.mark.parametrize(
+    "id,path,dir,exp",
+    [
+        (8, "f/g", Dir(id=1, path="a"), Dir(id=8, path="f/h")),
+        (None, "f/g", Dir(id=1, path="a"), Dir(id=7, path="f/g")),
+        (None, None, Dir(id=1, path="a"), Dir(id=1, path="a")),
+        (3, "a/e", Dir(id=1, path="f"), Dir(id=3, path="a/b/c")),
+        (None, "a/e", Dir(id=1, path="f"), Dir(id=5, path="a/e")),
+        (None, None, Dir(id=6, path="f"), Dir(id=6, path="f")),
+        (None, None, None, ValueError),
+    ],
+)
+def test_getone(test_repo, id, path, dir, exp):
+    """
+    DirRepo.getone() returns:
+    - These test the order of precedence for id, path, and dir in that order
+      - Dir for id=8 (f/h), despite dir & path having different values
+      - Dir for path f/g and id=None, despite dir being different
+      - Dir for in dir id=1, path=a, when no other arg present
+    - Other set of pats, ids, dirs to ensure correct return despite changes
+      - Dir for id=3 (a/b/c), despite dir and id being different
+      - Dir for path a/e and id=None, despite dir being different
+      - Dir for in dir id=6, path=f, when no other arg present
+    - Some None returns for non-existent dir records
+      - Path
+    - Raise ValueError for non-existent id, path, or dir
+
+    """
+    if exp == ValueError:
+        with pytest.raises(ValueError):
+            test_repo.getone(id=id, path=path, dir=dir)
+        return
+    exp.path = test_repo.path / exp.path  # Denorm. path for comparison of repo
+    assert test_repo.getone(id=id, path=path, dir=dir) == exp
