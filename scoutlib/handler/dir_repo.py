@@ -328,3 +328,30 @@ class DirRepo:
         if res:
             return Dir(id=res[0], path=self.denormalize_path(res[2]))
         return None
+
+    def get_ancestors(
+        self,
+        id: Optional[int] = None,
+        path: Optional[PurePath] = None,
+        dir: Optional[Dir] = None,
+    ):
+        dir_rows = []
+        if id is not None:
+            dir_rows = self.ancestor_dirs_where_id(id)
+        elif path is not None:
+            dir_rows = self.ancestor_dirs_where_path(self.normalize_path(path))
+        elif dir is not None:
+            if dir.id:
+                dir_rows = self.ancestor_dirs_where_id(dir.id)
+            elif dir.path:
+                np = self.normalize_path(dir.path)
+                dir_rows = self.ancestor_dirs_where_path(np)
+            else:
+                raise ValueError("Dir object must have either id or path attribute.")
+        else:
+            raise ValueError("Must provide either id or path argument.")
+        dirs = []
+        for row in dir_rows:
+            dp = self.denormalize_path(row[2])
+            dirs.append(Dir(id=row[0], path=dp))
+        return dirs

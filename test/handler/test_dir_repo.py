@@ -4,6 +4,7 @@
 import os
 from pathlib import PurePath
 import pytest
+from mock import patch
 import sqlite3
 import tempfile
 
@@ -568,3 +569,14 @@ def test_getone_raise_outside(test_repo):
     """Ensure that getone raises ValueError for paths outside repo"""
     with pytest.raises(ValueError):
         test_repo.getone(path=test_repo.path.parent / "noexist")
+
+
+def test_get_ancestors_arg_priority(test_repo):
+    """Uses patching to test correct query method gets called based on arguments"""
+    # Test that get_ancestors gets called with correct arguments
+    with pytest.raises(ValueError):
+        test_repo.get_ancestors(id=1, path="a")
+    with pytest.raises(ValueError):
+        test_repo.get_ancestors(id=1, dir=Dir(path="a"))
+    with pytest.raises(ValueError):
+        test_repo.get_ancestors(path="a", dir=Dir(path="a"))
