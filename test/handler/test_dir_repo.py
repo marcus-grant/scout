@@ -4,7 +4,7 @@
 import os
 from pathlib import PurePath
 import pytest
-from mock import patch
+from unittest.mock import patch
 import sqlite3
 import tempfile
 
@@ -571,12 +571,26 @@ def test_getone_raise_outside(test_repo):
         test_repo.getone(path=test_repo.path.parent / "noexist")
 
 
-def test_get_ancestors_arg_priority(test_repo):
+# TODO: Errors when dirs get used, add testcases to normalize_path and fix
+@pytest.mark.parametrize(
+    "id,path,dir,method",
+    [
+        (8, "f/g", Dir(id=1, path="a"), "id,8"),
+        (None, "f/g", Dir(id=1, path="a"), "path,f/g"),
+        (None, None, Dir(id=1, path="a"), "id,1"),
+        (None, None, Dir(path="a"), "path,a"),
+    ],
+)
+def test_get_ancestors_arg_priority(test_repo, id, path, dir, method):
     """Uses patching to test correct query method gets called based on arguments"""
-    # Test that get_ancestors gets called with correct arguments
-    with pytest.raises(ValueError):
-        test_repo.get_ancestors(id=1, path="a")
-    with pytest.raises(ValueError):
-        test_repo.get_ancestors(id=1, dir=Dir(path="a"))
-    with pytest.raises(ValueError):
-        test_repo.get_ancestors(path="a", dir=Dir(path="a"))
+    with patch.object(test_repo, "ancestor_dirs_where_path") as mock_path, patch.object(
+        test_repo, "ancestor_dirs_where_id"
+    ) as mock_id:
+        test_repo.get_ancestors(id=id, path=path, dir=dir)
+        # depth = 2**31 - 1  # Max depth
+        if "id" in method:
+            mock_id.assert_called_once_with(id)
+            mock_path.assert_not_called()
+        elif "path" in method:
+            mock_path.assert_called_once_with(test_repo.normalize_path(path))
+            mock_id.assert_not_called()

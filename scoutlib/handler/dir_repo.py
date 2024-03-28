@@ -334,22 +334,26 @@ class DirRepo:
         id: Optional[int] = None,
         path: Optional[PurePath] = None,
         dir: Optional[Dir] = None,
-    ):
-        dir_rows = []
+        depth: int = 2**31 - 1,
+    ) -> list[Dir]:
+        given_np = None
+        given_id = None
         if id is not None:
-            dir_rows = self.ancestor_dirs_where_id(id)
+            given_id = id
         elif path is not None:
-            dir_rows = self.ancestor_dirs_where_path(self.normalize_path(path))
+            given_np = self.normalize_path(path)
         elif dir is not None:
-            if dir.id:
-                dir_rows = self.ancestor_dirs_where_id(dir.id)
-            elif dir.path:
-                np = self.normalize_path(dir.path)
-                dir_rows = self.ancestor_dirs_where_path(np)
-            else:
-                raise ValueError("Dir object must have either id or path attribute.")
+            given_id = dir.id
+            given_np = self.normalize_path(dir.path)
+
+        dir_rows = []
+        if given_id:
+            dir_rows = self.ancestor_dirs_where_id(given_id, depth)
+        elif given_np:
+            dir_rows = self.ancestor_dirs_where_path(given_np, depth)
         else:
             raise ValueError("Must provide either id or path argument.")
+
         dirs = []
         for row in dir_rows:
             dp = self.denormalize_path(row[2])
