@@ -338,13 +338,13 @@ class DirRepo:
     ) -> list[Dir]:
         given_np = None
         given_id = None
-        if id is not None:
-            given_id = id
-        elif path is not None:
-            given_np = self.normalize_path(path)
-        elif dir is not None:
+        if dir is not None:
             given_id = dir.id
             given_np = self.normalize_path(dir.path)
+        if path is not None:
+            given_np = self.normalize_path(path)
+        if id is not None:
+            given_id = id
 
         dir_rows = []
         if given_id:

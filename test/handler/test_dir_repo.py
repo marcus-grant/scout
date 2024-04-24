@@ -575,6 +575,7 @@ def test_getone_raise_outside(test_repo):
     "id,path,dir,expect_args",
     [
         (8, "f/g", Dir(id=1, path="a"), (8, 2**31 - 1)),
+        (None, "f/g", Dir(id=1, path="a"), (1, 2**31 - 1)),
     ],
 )
 def test_get_ancestors_uses_id_first(test_repo, id, path, dir, expect_args):
