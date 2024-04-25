@@ -574,7 +574,7 @@ def test_getone_raise_outside(test_repo):
 @pytest.mark.parametrize(
     "id,path,dir,exp",
     [
-        (8, "f", Dir(id=1, path="a"), (8, 2**31 - 1)),
+        (2, "f", Dir(id=1, path="a"), (2, 2**31 - 1)),
         (None, "f", Dir(id=1, path="a"), (1, 2**31 - 1)),
         (None, None, Dir(id=1, path="a"), (1, 2**31 - 1)),
         (None, None, Dir(id=7, path="not/there"), (7, 2**31 - 1)),
@@ -582,12 +582,81 @@ def test_getone_raise_outside(test_repo):
     ],
 )
 def test_get_ancestors_id_prio(test_repo, id, path, dir, exp):
-    """Ensure that get_ancestors uses id above all other args.
-    1st param 'id' gets priority over a passed dir's id.
     """
-    with patch.object(test_repo, "ancestor_dirs_where_id") as mock_where_id:
+    Ensure that get_ancestors uses id above all other args.
+    1st param 'id' gets priority over a passed dir's id.
+    The ancestor_dirs_where_path should never be called when an ID exists.
+    """
+    with patch.object(
+        test_repo, "ancestor_dirs_where_id"
+    ) as mock_where_id, patch.object(
+        test_repo, "ancestor_dirs_where_path"
+    ) as mock_where_path:
         test_repo.get_ancestors(id=id, path=path, dir=dir)
         mock_where_id.assert_called_once_with(*exp)
+        mock_where_path.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "id,path,dir,exp",
+    [
+        (None, "f", Dir(path="a"), ("f", 2**31 - 1)),
+        (None, None, Dir(path="a"), ("a", 2**31 - 1)),
+    ],
+)
+def test_get_ancestors_path_last(test_repo, id, path, dir, exp):
+    """
+    DirRepo.get_ancestors(id=,path=,dir=) will only use path if no id provided.
+    The path argument takes priority over dir.path argument.
+    The ancestor_dirs_where_id should never be called when no id exists.
+    """
+    with patch.object(
+        test_repo, "ancestor_dirs_where_path"
+    ) as mock_where_path, patch.object(
+        test_repo, "ancestor_dirs_where_id"
+    ) as mock_where_id:
+        test_repo.get_ancestors(id=id, path=path, dir=dir)
+        mock_where_path.assert_called_once_with(*exp)
+        mock_where_id.assert_not_called()
+
+
+def test_get_ancestors_normalizes(test_repo):
+    """
+    get_ancestors' helper methods call normalize_path on paths.
+    """
+    with patch.object(test_repo, "normalize_path") as mock_norm:
+        test_repo.get_ancestors(path="a/b/c")
+        mock_norm.assert_called_with("a/b/c")
+    with patch.object(test_repo, "normalize_path") as mock_norm:
+        test_repo.get_ancestors(dir=Dir("a/b/c"))
+        mock_norm.assert_called_with("a/b/c")
+
+
+def test_get_ancestors_raises(test_repo):
+    """
+    Ensure get_ancestors raises ValueError when no id, path, or dir is provided.
+    """
+    with pytest.raises(ValueError):
+        test_repo.get_ancestors()
+
+
+@pytest.mark.parametrize(
+    "id,path,dir,dpth,exp",
+    [
+        (None, "f/g", None, 9, [Dir("f", id=6)]),
+        (3, None, None, 9, [Dir("a/b", id=2), Dir("a", id=1)]),
+        (3, None, None, 1, [Dir("a/b", id=2)]),
+        (None, None, Dir("a"), 9, []),
+    ],
+)
+def test_get_ancestors_dirs(test_repo, id, path, dir, dpth, exp):
+    """
+    Returns correct contents, formatting and order of Dir ojbects
+    """
+    dirs = test_repo.get_ancestors(id=id, path=path, dir=dir, depth=dpth)
+    fn_dp = test_repo.denormalize_path
+    exp_dirs = [Dir(path=str(fn_dp(dir.path)), id=dir.id) for dir in exp]
+    assert dirs == exp_dirs
 
 
 # # TODO: Errors when dirs get used, add testcases to normalize_path and fix

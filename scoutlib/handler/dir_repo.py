@@ -332,30 +332,23 @@ class DirRepo:
     def get_ancestors(
         self,
         id: Optional[int] = None,
-        path: Optional[PurePath] = None,
+        path: Optional[Union[PurePath, str]] = None,
         dir: Optional[Dir] = None,
         depth: int = 2**31 - 1,
     ) -> list[Dir]:
-        given_np = None
-        given_id = None
-        if dir is not None:
-            given_id = dir.id
-            given_np = self.normalize_path(dir.path)
-        if path is not None:
-            given_np = self.normalize_path(path)
-        if id is not None:
-            given_id = id
+        given_id = dir.id if dir else None
+        given_id = id if id else given_id
+        given_path = str(dir.path) if dir else None
+        given_path = path if path else given_path
+        rows = []
 
-        dir_rows = []
         if given_id:
-            dir_rows = self.ancestor_dirs_where_id(given_id, depth)
-        elif given_np:
-            dir_rows = self.ancestor_dirs_where_path(given_np, depth)
+            rows = self.ancestor_dirs_where_id(given_id, depth)
+        elif given_path:
+            rows = self.ancestor_dirs_where_path(given_path, depth)
         else:
             raise ValueError("Must provide either id or path argument.")
 
-        dirs = []
-        for row in dir_rows:
-            dp = self.denormalize_path(row[2])
-            dirs.append(Dir(id=row[0], path=dp))
+        fn_dp = self.denormalize_path
+        dirs = [Dir(id=r[0], path=fn_dp(r[2])) for r in rows]
         return dirs
