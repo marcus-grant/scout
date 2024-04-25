@@ -572,17 +572,22 @@ def test_getone_raise_outside(test_repo):
 
 
 @pytest.mark.parametrize(
-    "id,path,dir,expect_args",
+    "id,path,dir,exp",
     [
-        (8, "f/g", Dir(id=1, path="a"), (8, 2**31 - 1)),
-        (None, "f/g", Dir(id=1, path="a"), (1, 2**31 - 1)),
+        (8, "f", Dir(id=1, path="a"), (8, 2**31 - 1)),
+        (None, "f", Dir(id=1, path="a"), (1, 2**31 - 1)),
+        (None, None, Dir(id=1, path="a"), (1, 2**31 - 1)),
+        (None, None, Dir(id=7, path="not/there"), (7, 2**31 - 1)),
+        (2, None, None, (2, 2**31 - 1)),
     ],
 )
-def test_get_ancestors_uses_id_first(test_repo, id, path, dir, expect_args):
-    """Ensure that get_ancestors uses id above all other args"""
+def test_get_ancestors_id_prio(test_repo, id, path, dir, exp):
+    """Ensure that get_ancestors uses id above all other args.
+    1st param 'id' gets priority over a passed dir's id.
+    """
     with patch.object(test_repo, "ancestor_dirs_where_id") as mock_where_id:
         test_repo.get_ancestors(id=id, path=path, dir=dir)
-        mock_where_id.assert_called_once_with(*expect_args)
+        mock_where_id.assert_called_once_with(*exp)
 
 
 # # TODO: Errors when dirs get used, add testcases to normalize_path and fix
