@@ -247,6 +247,7 @@ class DirRepo:
             res = conn.execute(query, (str(np), depth)).fetchall()
         return res
 
+    # TODO: Fix depth checks not working as expected in test_get_descendandants_dirs #2
     def descendant_dirs_where_id(
         self, id: int, depth: Optional[int] = 2**31 - 1
     ) -> list[tuple[int, str, str]]:
@@ -336,6 +337,10 @@ class DirRepo:
         dir: Optional[Dir] = None,
         depth: int = 2**31 - 1,
     ) -> list[Dir]:
+        """
+        Gets ancestor directories from repo of a given directory's id or path.
+        Also limits results to a given depth from the given directory.
+        """
         given_id = dir.id if dir else None
         given_id = id if id else given_id
         given_path = str(dir.path) if dir else None
@@ -352,3 +357,38 @@ class DirRepo:
         fn_dp = self.denormalize_path
         dirs = [Dir(id=r[0], path=fn_dp(r[2])) for r in rows]
         return dirs
+
+    def get_descendants(
+        self,
+        id: Optional[int] = None,
+        path: Optional[Union[PurePath, str]] = None,
+        dir: Optional[Dir] = None,
+        depth: int = 2**31 - 1,
+    ) -> list[Dir]:
+        """
+        Gets descendant directories from repo of a given directory's id or path.
+        Also limits results to a given depth from the given directory.
+        """
+        given_id = dir.id if dir else None
+        given_id = id if id else given_id
+        given_path = str(dir.path) if dir else None
+        given_path = path if path else given_path
+        rows = []
+
+        if given_id:
+            rows = self.descendant_dirs_where_id(given_id, depth)
+        elif given_path:
+            rows = self.descendant_dirs_where_path(given_path, depth)
+        else:
+            raise ValueError(
+                "Must provide either id or path argument individually or in a dir object."
+            )
+
+        fn_dp = self.denormalize_path
+        dirs = [Dir(id=r[0], path=fn_dp(r[2])) for r in rows]
+        return dirs
+
+        # fn_dp = self.denormalize_path
+        # dirs = [Dir(id=r[0], path=fn_dp(r[2])) for r in rows]
+        # return dirs
+        # )

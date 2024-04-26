@@ -640,6 +640,7 @@ def test_get_ancestors_raises(test_repo):
         test_repo.get_ancestors()
 
 
+# TODO: Add test function for denormalize checks on get_ancestors
 @pytest.mark.parametrize(
     "id,path,dir,dpth,exp",
     [
@@ -659,28 +660,115 @@ def test_get_ancestors_dirs(test_repo, id, path, dir, dpth, exp):
     assert dirs == exp_dirs
 
 
-# # TODO: Errors when dirs get used, add testcases to normalize_path and fix
-# @pytest.mark.parametrize(
-#     "id,path,dir,method",
-#     [
-#         (8, "f/g", Dir(id=1, path="a"), ""),
-#         # (None, "f/g", Dir(id=1, path="a"), "path,f/g"),
-#         # (None, None, Dir(id=1, path="a"), "id,1"),
-#         # (None, None, Dir(path="a"), "path,a"),
-#     ],
-# )
-# def test_get_ancestors_arg_priority(test_repo, id, path, dir, method):
-#     """Uses patching to test correct query method gets called based on arguments"""
-#     patch("scoutlib.handler.dir_repo.DirRepo.get_ancestors")
-#     dirs = test_repo.get_ancestors(id=id, path=path, dir=dir)
-#     # with patch.object(test_repo, "ancestor_dirs_where_path") as mock_path, patch.object(
-#     #     test_repo, "ancestor_dirs_where_id"
-#     # ) as mock_id:
-#     #     test_repo.get_ancestors(id=id, path=path, dir=dir)
-#     #     # depth = 2**31 - 1  # Max depth
-#     #     if "id" in method:
-#     #         mock_id.assert_called_once_with(id)
-#     #         mock_path.assert_not_called()
-#     #     elif "path" in method:
-#     #         mock_path.assert_called_once_with(test_repo.normalize_path(path))
-#     #         mock_id.assert_not_called()
+@pytest.mark.parametrize(
+    "id,path,dir,exp",
+    [
+        (3, None, None, (3, 2**31 - 1)),  # Works when id given
+        (None, "f", Dir("a", id=1), (1, 2**31 - 1)),  # Will use dir.id if no id
+        (3, None, Dir("a", id=1), (3, 2**31 - 1)),  # Will use id over dir.id
+        (3, "f", Dir("a", id=1), (3, 2**31 - 1)),  # Will use id over dir.id & path
+    ],
+)
+def test_get_descendants_id_prio(test_repo, id, path, dir, exp):
+    """
+    Prioritizes id over all other args.
+    This includes the Dir object's id.
+    The id argument gets priority over the dir's id.
+    """
+    with patch.object(
+        test_repo, "descendant_dirs_where_id"
+    ) as mock_where_id, patch.object(
+        test_repo, "descendant_dirs_where_path"
+    ) as mock_where_path:
+        test_repo.get_descendants(id=id, path=path, dir=dir)
+        mock_where_id.assert_called_once_with(*exp)
+        mock_where_path.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "id,path,dir,exp",
+    [
+        (None, "f", None, ("f", 2**31 - 1)),  # path when no others
+        (None, None, Dir("a"), ("a", 2**31 - 1)),  # dir.path over path
+        (None, "f", Dir("a"), ("f", 2**31 - 1)),  # path over dir.path
+    ],
+)
+def test_get_descendants_path_last(test_repo, id, path, dir, exp):
+    """
+    Prioritizes path over dir.path.
+    The path or dir.path arguments are used when no id or dir.id is provided.
+    """
+    with patch.object(
+        test_repo, "descendant_dirs_where_path"
+    ) as mock_where_path, patch.object(
+        test_repo, "descendant_dirs_where_id"
+    ) as mock_where_id:
+        test_repo.get_descendants(id=id, path=path, dir=dir)
+        mock_where_path.assert_called_once_with(*exp)
+        mock_where_id.assert_not_called()
+
+
+def test_get_descendants_normalizes(test_repo):
+    """
+    get_descendants' helper methods call normalize_path on paths.
+    """
+    with patch.object(test_repo, "normalize_path") as mock_norm:
+        test_repo.get_descendants(path="a/b/c")
+        mock_norm.assert_called_with("a/b/c")
+    with patch.object(test_repo, "normalize_path") as mock_norm:
+        test_repo.get_descendants(dir=Dir("a/b/c"))
+        mock_norm.assert_called_with("a/b/c")
+
+
+def test_get_descendants_denormalizes(test_repo):
+    base = test_repo.path
+    expect = [Dir(base / "a/b/c", id=3)]
+
+    # For path arg
+    dirs = test_repo.get_descendants(path="a/b")
+    assert dirs == expect
+
+    # For dir.path arg
+    dirs = test_repo.get_descendants(dir=Dir(base / "a/b"))
+    assert dirs == expect
+
+    # For id arg
+    dirs = test_repo.get_descendants(id=2)
+    assert dirs == expect
+
+    # For dir.id arg
+    dirs = test_repo.get_descendants(dir=Dir("a/b", id=2))
+    assert dirs == expect
+
+
+def test_get_descendants_raises(test_repo):
+    """
+    Ensure get_descendants raises ValueError when no id, path, or dir is provided.
+    """
+    with pytest.raises(ValueError):
+        test_repo.get_descendants()
+
+
+@pytest.mark.parametrize(
+    "id,path,dir,dpth,exp",
+    [
+        (
+            None,
+            "a",
+            None,
+            9,
+            [Dir("a/b", id=2), Dir("a/d", id=4), Dir("a/e", id=5), Dir("a/b/c", id=3)],
+        ),
+        (1, None, None, 1, [Dir("a/b", id=2)]),  # Same but restrict depth to 1
+        # (2, None, None, 1, [Dir("a/b", id=2)]),
+        # (None, None, Dir("a"), 9, []),
+    ],
+)
+def test_get_descendants_dirs(test_repo, id, path, dir, dpth, exp):
+    """
+    Returns correct contents, formatting and order of Dir ojbects
+    """
+    dirs = test_repo.get_descendants(id=id, path=path, dir=dir, depth=dpth)
+    fn_dp = test_repo.denormalize_path
+    exp_dirs = [Dir(path=str(fn_dp(dir.path)), id=dir.id) for dir in exp]
+    assert dirs == exp_dirs
