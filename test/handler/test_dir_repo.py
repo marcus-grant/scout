@@ -349,25 +349,14 @@ def test_repo(base_repo):
     yield base_repo
 
 
-def test_test_repo_tables(test_repo):
-    rows = [(1, "a", "a"), (2, "b", "a/b"), (3, "c", "a/b/c")]
-    rows += [(4, "d", "a/d"), (5, "e", "a/e")]
-    rows += [(6, "f", "f"), (7, "g", "f/g"), (8, "h", "f/h")]
-    real_rows = []
-    with test_repo.connection() as conn:
-        real_rows = conn.execute("SELECT * FROM dir").fetchall()
-    assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
-    rows = [(1, 1, 0)]
-    rows += [(2, 2, 0), (2, 1, 1)]
-    rows += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
-    rows += [(4, 4, 0), (4, 1, 1)]
-    rows += [(5, 5, 0), (5, 1, 1)]
-    rows += [(6, 6, 0)]
-    rows += [(7, 7, 0), (7, 6, 1)]
-    rows += [(8, 8, 0), (8, 6, 1)]
-    with test_repo.connection() as conn:
-        real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-    assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
+D_A = Dir("a", 1)
+D_B = Dir("a/b", 2)
+D_C = Dir("a/b/c", 3)
+D_D = Dir("a/d", 4)
+D_E = Dir("a/e", 5)
+D_F = Dir("f", 6)
+D_G = Dir("f/g", 7)
+D_H = Dir("f/h", 8)
 
 
 @pytest.mark.parametrize(
@@ -632,6 +621,23 @@ def test_get_ancestors_normalizes(test_repo):
         mock_norm.assert_called_with("a/b/c")
 
 
+def test_get_ancestors_denormalizes(test_repo):
+    base = test_repo.path
+    expect = [Dir(base / "a", id=1)]
+
+    dirs = test_repo.get_ancestors(path="a/b")  # path arg
+    assert dirs == expect
+
+    dirs = test_repo.get_ancestors(dir=Dir(base / "a/b"))  # dir.path arg
+    assert dirs == expect
+
+    dirs = test_repo.get_ancestors(id=2)  # id arg
+    assert dirs == expect
+
+    dirs = test_repo.get_ancestors(dir=Dir("a/b", id=2))  # dir.id arg
+    assert dirs == expect
+
+
 def test_get_ancestors_raises(test_repo):
     """
     Ensure get_ancestors raises ValueError when no id, path, or dir is provided.
@@ -724,20 +730,16 @@ def test_get_descendants_denormalizes(test_repo):
     base = test_repo.path
     expect = [Dir(base / "a/b/c", id=3)]
 
-    # For path arg
-    dirs = test_repo.get_descendants(path="a/b")
+    dirs = test_repo.get_descendants(path="a/b")  # path arg
     assert dirs == expect
 
-    # For dir.path arg
-    dirs = test_repo.get_descendants(dir=Dir(base / "a/b"))
+    dirs = test_repo.get_descendants(dir=Dir(base / "a/b"))  # dir.path arg
     assert dirs == expect
 
-    # For id arg
-    dirs = test_repo.get_descendants(id=2)
+    dirs = test_repo.get_descendants(id=2)  # id arg
     assert dirs == expect
 
-    # For dir.id arg
-    dirs = test_repo.get_descendants(dir=Dir("a/b", id=2))
+    dirs = test_repo.get_descendants(dir=Dir("a/b", id=2))  # dir.id arg
     assert dirs == expect
 
 
@@ -752,16 +754,10 @@ def test_get_descendants_raises(test_repo):
 @pytest.mark.parametrize(
     "id,path,dir,dpth,exp",
     [
-        (
-            None,
-            "a",
-            None,
-            9,
-            [Dir("a/b", id=2), Dir("a/d", id=4), Dir("a/e", id=5), Dir("a/b/c", id=3)],
-        ),
-        (1, None, None, 1, [Dir("a/b", id=2)]),  # Same but restrict depth to 1
-        # (2, None, None, 1, [Dir("a/b", id=2)]),
-        # (None, None, Dir("a"), 9, []),
+        (1, None, None, 9, [D_B, D_D, D_E, D_C]),
+        (1, None, None, 1, [D_B, D_D, D_E]),
+        (None, "f", None, 1, [D_G, D_H]),
+        (None, None, Dir("f/g"), 9, []),
     ],
 )
 def test_get_descendants_dirs(test_repo, id, path, dir, dpth, exp):
