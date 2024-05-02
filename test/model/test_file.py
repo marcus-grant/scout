@@ -128,3 +128,30 @@ class TestInitAttrs:
         assert file.md5 == md5
         assert file.mtime == mtime
         assert file.update == update
+
+
+@pytest.mark.parametrize(
+    "path_arg, path_expect",
+    [
+        ("a/b/c", PP("a/b/c")),  # Relative path str
+        ("/a/b/c", PP("/a/b/c")),  # Absolute path str
+        ("/a", PP("/a")),  # Root file
+    ],
+    ids=["Absolute", "Relative", "Root"],
+)
+class TestPathProperty:
+    """
+    Tests for the File.path property which join parent and name.
+    It is known from previous tests that File(path=) correctly assigns to
+    File.parent and File.name.
+    This test checks that File.path returns so no need to try different arg types.
+    """
+
+    def test_is_path_type(self, path_arg, path_expect):
+        """Test that File.path is a PurePath."""
+        msg = "File.path is not a PurePath type."
+        assert isinstance(File(path=path_arg).path, PP), msg
+
+    def test_path_join(self, path_arg, path_expect):
+        """Test that File.path joins parent and name correctly."""
+        assert File(path=path_arg).path == path_expect

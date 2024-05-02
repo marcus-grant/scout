@@ -51,3 +51,7 @@ class File:
     ) -> bool:
         """Validates the arguments passed to the constructor"""
         return (path is not None) or ((parent is not None) and (name is not None))
+
+    @property
+    def path(self) -> PP:
+        return self.parent / self.name
