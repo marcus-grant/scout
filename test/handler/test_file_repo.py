@@ -78,3 +78,23 @@ class TestBaseRepoFixture:
             # Assert updated column correct
             updated_col, exp_col = real_schema[5], expected_schema[5]
             assert updated_col == exp_col, f"Expected {exp_col}, got {updated_col}"
+
+    def test_table_insert(self, base_repo):
+        """Test transactions can run on base_repo & later that the row is gone."""
+        with sqlite3.connect(base_repo.path_db) as conn:
+            # Insert a row
+            query = "INSERT INTO file (parent_id, name) VALUES (1, 'test');"
+            conn.execute(query)
+            conn.commit()
+        with sqlite3.connect(base_repo.path_db) as conn:
+            # Query for the row
+            query = "SELECT * FROM file WHERE name='test';"
+            res = conn.execute(query).fetchall()
+            assert len(res) >= 1, "Row not found in db."
+
+    def test_cleanup(self, base_repo):
+        """Test that the base repo cleans up after itself."""
+        with sqlite3.connect(base_repo.path_db) as conn:
+            # Query that the table is there AND empty
+            query = "SELECT * FROM file;"
+            assert len(conn.execute(query).fetchall()) == 0, "Table not empty."
