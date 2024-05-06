@@ -17,20 +17,30 @@ class DBManager:
     Then it sets up the Repo classes for their associated tables.
     """
 
-    path_db: PP
-    path_fs: PP
+    path: PP  # path to the db (can be separate from repo root)
+    root: PP  # path to the repo root in filesystem
 
     def __init__(
         self, path_db: Union[str, PP], path_fs: Optional[Union[str, PP]] = None
     ):
+        # Ensure path_db is a PurePath object
         if isinstance(path_db, str):
-            path_db = PP(path_db)
-        self.path_db = path_db
+            path_db = PP(path_db)  # Convert string to PurePath
+
+        if not isinstance(path_db, PP):
+            raise ValueError(f"Invalid path_db: {path_db}")
+        self.path = path_db
+
+        # Handle path_fs and ensure it's a PurePath object
         if path_fs is None:
-            self.path_fs = path_db.parent
+            # Default repo root is the parent of the db path
+            self.root = self.path.parent
+        elif isinstance(path_fs, str):
+            self.root = PP(path_fs)  # Convert string to PurePath
+        elif isinstance(path_fs, PP):
+            self.root = path_fs
         else:
-            self.path_fs = PP(path_fs)
-        self._init_db()
+            raise ValueError(f"Invalid path_fs: {path_fs}")
 
     def _init_db(self):
         pass
