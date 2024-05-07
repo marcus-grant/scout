@@ -1,59 +1,31 @@
+from contextlib import contextmanager
+from unittest.mock import patch
 import os
 from pathlib import PurePath as PP
 import pytest
 import sqlite3
 import tempfile
-from typing import Optional, Union
+from typing import Optional, Union, Generator
 
 from scoutlib.handler.db_manager import DBManager
 
 
-def mktemp_safe(name: Optional[str] = ".scout.db") -> PP:
-    fd, path = tempfile.mkstemp(name)  # Setup a temp file
-    os.close(fd)  # Close the file descriptor (avoids leaks)
-    return PP(path)
-
-
-def clean_tempfile(path: Union[PP, str]):
-    os.unlink(path)  # Cleanup
-
-
 @pytest.fixture
 def base_repo():
-    """
-    Fixture for basic initialized database.
-    Handled in-memory-based sqlite temp file using tempfile.
-    """
-    fd, path = tempfile.mkstemp()  # Setup a temp file
-    os.close(fd)  # Close the file descriptor (avoids leaks)
-    yield DBManager(path)  # Give up context to the init'd DBManager
-    clean_tempfile(path)  # Cleanup
+    """Fixture for DirRepo class wrapped in temporary SQLite db file"""
+    # Setup a temp file for SQLite db
+    fd, path = tempfile.mkstemp(suffix=".db")
+    # Close tempfile descriptor to avoid resource leak
+    os.close(fd)  # DirRepo will open it as needed
+    # Init DirRepo with temporary db file
+    repo = DBManager(path)
+    yield repo  # Provide fixture return so it gets used
+    # Teardown, so we don't leave temp files around
+    os.unlink(path)
 
 
 class TestInit:
     """Test cases for init and associated methods of DBManager."""
-
-    # TODO: Needs some thought
-    #       must:
-    #           - Use a real absolute path based on tempfile path
-    #           - Should all result in same expected path to db and fs.
-    #           - Should test all None, str and PurePath permutations.
-    #           - Should test default case where path_db = path_fs / .scout.db
-    @pytest.mark.parametrize(
-        "args, expect",
-        [
-            ((PP("/a/b/c"), None), (PP("/a/b/c"), PP("/a/b"))),  # Default root
-            (("a/b/c", None), (PP("a/b/c"), PP("a/b"))),  # Same but str db_path
-            ((PP("/a/b/c"), PP("/f/g")), (PP("/a/b/c"), PP("/f/g"))),  # Outside root
-            (("a/b/c", "f/g"), (PP("a/b/c"), PP("f/g"))),  # Same but str root
-        ],
-        # ids=["#0", "#1", "#2", "#3"],
-    )
-    def test_member_paths(self, args, expect):
-        """Test that the paths are converted to PurePaths."""
-        db = DBManager(*args)
-        assert db.path == expect[0]
-        assert db.root == expect[1]
 
     @pytest.mark.parametrize(
         "path, root",
@@ -72,6 +44,77 @@ class TestInit:
         """
         with pytest.raises((ValueError, TypeError)):
             DBManager(path, root)
+
+    def test_default_root(self):
+        """When no root given, assumes parent dir of db file is root"""
+        # Create fake file
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        # Act
+        db = DBManager(path)
+        # Assert
+        assert db.root == PP(os.path.dirname(path))
+        # Cleanup
+        os.unlink(path)
+
+    def test_call_init_db_if_not_there(self):
+        """Calls DBManager._init_db if the db does not exist."""
+        # Setup a temp directory using tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Setup mock of _init_db
+            with patch("scoutlib.handler.db_manager.DBManager._init_db") as mock_init:
+                DBManager(f"{tmpdir}/scout.db")
+                mock_init.assert_called_once()
+
+    def test_dont_call_init_db_if_there(self, base_repo):
+        """Test that the db exists and does not call _init_db."""
+        with patch("scoutlib.handler.db_manager.DBManager._init_db") as mock_init:
+            DBManager(base_repo.path)
+            mock_init.assert_not_called()
+
+    def test_fs_meta_table_exists(self, base_repo):
+        """Test that the fs_meta table exists."""
+        # First check that the file exists
+        with sqlite3.connect(base_repo.path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            assert ("fs_meta",) in tables
+
+    def test_fs_meta_schema(self, base_repo):
+        # Expected schema is list for every column with tuple of:
+        # (num: int, name: str, dtype: str, nullable: bool, prime_key: bool)
+        # Bools are represented as 0|1, but python evaluates them as False|True
+        expected_schema = [
+            (0, "property", "TEXT", 0, None, 1),
+            (1, "value", "TEXT", 0, None, 0),
+        ]
+        with sqlite3.connect(base_repo.path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(fs_meta);")
+            schema = cursor.fetchall()
+            assert schema == expected_schema
+
+    # TODO: This needs to be parroted on all component repo modules
+    def test_init_db_not_alter_existing_table(self):
+        """Test that _init_db does not alter existing tables."""
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        with sqlite3.connect(path) as conn:
+            c = conn.cursor()
+            c.execute("CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);")
+            c.execute(
+                "INSERT INTO fs_meta (property, value) VALUES ('root', '/a/b/c');"
+            )
+            conn.commit()
+        # Call DBManager with existing db files
+        db = DBManager(path)
+        with sqlite3.connect(db.path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM fs_meta;")
+            assert cursor.fetchall() == [("root", "/a/b/c")]
+        # Cleanup
+        os.unlink(path)
 
     # TODO: Test that db already exists and checks mock call for _init_db called
     # TODO: Test for init raises for wrong args
