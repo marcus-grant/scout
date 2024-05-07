@@ -3,19 +3,31 @@ from pathlib import PurePath as PP
 import pytest
 import sqlite3
 import tempfile
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 
 from scoutlib.handler.db_manager import DBManager
 
 
-def mktemp_safe() -> PP:
-    fd, path = tempfile.mkstemp()  # Setup a temp file
+def mktemp_safe(name: Optional[str] = ".scout.db") -> PP:
+    fd, path = tempfile.mkstemp(name)  # Setup a temp file
     os.close(fd)  # Close the file descriptor (avoids leaks)
     return PP(path)
 
 
 def clean_tempfile(path: Union[PP, str]):
     os.unlink(path)  # Cleanup
+
+
+@pytest.fixture
+def base_repo():
+    """
+    Fixture for basic initialized database.
+    Handled in-memory-based sqlite temp file using tempfile.
+    """
+    fd, path = tempfile.mkstemp()  # Setup a temp file
+    os.close(fd)  # Close the file descriptor (avoids leaks)
+    yield DBManager(path)  # Give up context to the init'd DBManager
+    clean_tempfile(path)  # Cleanup
 
 
 class TestInit:
@@ -37,24 +49,30 @@ class TestInit:
         ],
         # ids=["#0", "#1", "#2", "#3"],
     )
-    def test_members_ok(self, args, expect):
+    def test_member_paths(self, args, expect):
         """Test that the paths are converted to PurePaths."""
         db = DBManager(*args)
         assert db.path == expect[0]
         assert db.root == expect[1]
 
+    @pytest.mark.parametrize(
+        "path, root",
+        [
+            (1, None),
+            (PP("/a/b/c"), 1),
+            (None, None),
+        ],
+    )
+    def test_args_raise(self, path, root):
+        """Test that these conditions raise a ValueError or TypeError.
+        - path_db is not a PurePath or str
+        - path_fs is not a PurePath or str
+        - parent of path_db is not a dir
+        - path_fs is not a dir
+        """
+        with pytest.raises((ValueError, TypeError)):
+            DBManager(path, root)
+
     # TODO: Test that db already exists and checks mock call for _init_db called
     # TODO: Test for init raises for wrong args
     # TODO: Check that _init_db creates config table
-
-
-@pytest.fixture
-def base_repo():
-    """
-    Fixture for basic initialized database.
-    Handled in-memory-based sqlite temp file using tempfile.
-    """
-    fd, path = tempfile.mkstemp()  # Setup a temp file
-    os.close(fd)  # Close the file descriptor (avoids leaks)
-    yield DBManager(path)  # Give up context to the init'd DBManager
-    clean_tempfile(path)  # Cleanup
