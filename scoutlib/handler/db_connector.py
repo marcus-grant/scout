@@ -30,7 +30,7 @@ class DBConnector:
             raise TypeError(f"path {path} must be a PurePath or str")
         if not os.path.isdir(self.path.parent):
             raise ValueError(f"{self.path} must be in a valid directory.")
-        if not DBConnector.is_scout_db_file(self.path):
+        if not DBConnector.is_db_file(self.path):
             raise ValueError(f"{self.path} must be a valid scout database file.")
 
         # Set root arg
@@ -48,17 +48,35 @@ class DBConnector:
             self.root = root
 
     @classmethod
-    def is_scout_db_file(cls, path) -> bool:
+    def is_db_file(cls, path) -> bool:
         """
         Checks whether a file is a sqlite file and has the fs_meta table,
         indicating that this is a scout database file.
         """
         with open(path, "rb") as f:
             header = f.read(16)
-            if header != b"SQLite format 3\x00":
-                return False
+            if header == b"SQLite format 3\x00":
+                return True
+        return False
+
+    @classmethod
+    def is_scout_db_file(cls, path) -> bool:
+        """
+        Checks whether a file is a scout database file.
+        """
+        if not cls.is_db_file(path):
+            return False
         with sql.connect(path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
             tables = cursor.fetchall()
-            return ("fs_meta",) in tables
+            for table in tables:
+                if "fs_meta" in table:
+                    return True
+            return False
+
+    def _init_db(self):
+        """Initializes db file as sqlite db with fs_meta table.
+        Should only be run when it's a db file and no fs_meta table exists.
+        """
+        pass

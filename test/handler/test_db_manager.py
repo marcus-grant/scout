@@ -116,6 +116,13 @@ class TestInit:
         # Cleanup
         os.unlink(path)
 
+    def test_member_repos(self, base_repo):
+        """Test that the DirRepo and FileRepo members are created."""
+        assert base_repo.dir_repo is not None
+        assert base_repo.dir_repo.path_db == base_repo.path
+        assert base_repo.dir_repo.root == base_repo.root
+        assert base_repo.file_repo is not None
+
     # TODO: Test that db already exists and checks mock call for _init_db called
     # TODO: Test for init raises for wrong args
     # TODO: Check that _init_db creates config table

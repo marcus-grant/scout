@@ -20,6 +20,8 @@ class DBManager:
 
     path: PP  # path to the db (can be separate from repo root)
     root: PP  # path to the repo root in filesystem
+    dir_repo: DirRepo  # Repo class for the Dir table
+    file_repo: FileRepo  # Repo class for the File table
 
     def __init__(
         self,
@@ -57,6 +59,12 @@ class DBManager:
                     c.execute("SELECT name FROM sqlite_master WHERE type='table';")
                     if ("fs_meta",) not in c.fetchall():
                         self._init_db()
+
+        # TODO: Pass reference to self to DirRepo and FileRepo to handle path (de)normalization
+
+        # Initialize Repo members
+        self.dir_repo = DirRepo(self.path, self.root)
+        self.file_repo = FileRepo(self.path, self.root)
 
     def _init_db(self):
         """Initialize the database with the filesystem table, only necessary one"""
