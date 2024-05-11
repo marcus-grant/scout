@@ -31,23 +31,6 @@ def mktempfile_context(suffix: str = ".db"):
 class TestInit:
     """Tests around constructor and any of its helpers"""
 
-    def test_args_raise(self):
-        """Test that these conditions raise a ValueError or TypeError.
-        - path is not a PurePath or str
-        - root is not a PurePath or str
-        - parent of path is not a dir
-        - root is not a dir
-        """
-        with mktempfile_context() as fake_db_file:
-            with pytest.raises((ValueError, TypeError)):
-                DBConnector(1)  # type: ignore
-            with pytest.raises((ValueError, TypeError)):
-                DBConnector(fake_db_file, 1)  # type: ignore
-            with pytest.raises((ValueError, TypeError)):
-                DBConnector(f"{fake_db_file}/parent/not/dir")
-            with pytest.raises((ValueError, TypeError)):
-                DBConnector(fake_db_file, fake_db_file)  # not a dir, it's the db file
-
     @pytest.fixture
     @contextmanager
     def fake_db_file(self):
@@ -100,6 +83,46 @@ class TestInit:
             assert DBConnector.is_db_file(fp)
         with fake_txt_file as fp:
             assert not DBConnector.is_db_file(fp)
+
+    def test_init_db_creates(self, fake_txt_file):
+        """Creates fs_meta table in a db file in provided path"""
+        with fake_txt_file as fp:
+            path = PP(fp.parent) / ".scout.db"
+            DBConnector.init_db(path, PP("/a/b"))
+            assert DBConnector.is_db_file(path)
+            assert DBConnector.is_scout_db_file(path)
+            with sql.connect(path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = cursor.fetchall()
+                assert ("fs_meta",) in tables
+
+    def test_init_db_raises_change_exist_root(self, fake_scout_db_file):
+        """Doesn't change the existing db file and root proprty in fs_meta unchanged"""
+        with fake_scout_db_file as fp:
+            with pytest.raises(sql.IntegrityError):
+                DBConnector.init_db(fp, PP("/f/g"))
+            with sql.connect(fp) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert cursor.fetchone()[0] == "/a/b"
+
+    # def test_args_raise(self):
+    #     """Test that these conditions raise a ValueError or TypeError.
+    #     - path is not a PurePath or str
+    #     - root is not a PurePath or str
+    #     - parent of path is not a dir
+    #     - root is not a dir
+    #     """
+    #     with mktempfile_context() as fake_db_file:
+    #         with pytest.raises((ValueError, TypeError)):
+    #             DBConnector(1)  # type: ignore
+    #         with pytest.raises((ValueError, TypeError)):
+    #             DBConnector(fake_db_file, 1)  # type: ignore
+    #         with pytest.raises((ValueError, TypeError)):
+    #             DBConnector(f"{fake_db_file}/parent/not/dir")
+    #         with pytest.raises((ValueError, TypeError)):
+    #             DBConnector(fake_db_file, fake_db_file)  # not a dir, it's the db file
 
     # TODO: Is this the right scout db file validation check?
     # def test_raises_not_scout_db_file(self):

@@ -17,36 +17,6 @@ class DBConnector:
     path: PP  # Path to the db file
     root: PP  # Path to the relative root of the db paths inside repos
 
-    def __init__(
-        self, path: Union[PP, str], root: Optional[Union[PP, str]] = None
-    ) -> None:
-        # Validate and set path arg
-        if isinstance(path, str):
-            self.path = PP(path)
-        else:
-            self.path = path
-        # Raise errors for invalid paths
-        if not isinstance(self.path, PP):
-            raise TypeError(f"path {path} must be a PurePath or str")
-        if not os.path.isdir(self.path.parent):
-            raise ValueError(f"{self.path} must be in a valid directory.")
-        if not DBConnector.is_db_file(self.path):
-            raise ValueError(f"{self.path} must be a valid scout database file.")
-
-        # Set root arg
-        if root is None:
-            self.root = self.path.parent
-        elif isinstance(root, str):
-            self.root = PP(root)
-        else:
-            self.root = root
-        if not isinstance(self.root, PP):
-            raise TypeError(f"root {root} must be a PurePath or str")
-        if not os.path.isdir(self.root):
-            raise ValueError(f"{self.root} must be a valid directory.")
-        if isinstance(root, PP):
-            self.root = root
-
     @classmethod
     def is_db_file(cls, path) -> bool:
         """
@@ -75,8 +45,39 @@ class DBConnector:
                     return True
             return False
 
-    def _init_db(self):
-        """Initializes db file as sqlite db with fs_meta table.
-        Should only be run when it's a db file and no fs_meta table exists.
-        """
-        pass
+    @classmethod
+    def init_db(cls, path: PP, root: PP) -> None:
+        """Initializes a sqlite file with the fs_meta table."""
+        with sql.connect(path) as conn:
+            q = """CREATE TABLE IF NOT EXISTS fs_meta (
+                    property TEXT PRIMARY KEY, value TEXT);"""
+            conn.execute(q)
+            q = f"INSERT INTO fs_meta (property, value) VALUES ('root', '{root}');"
+            conn.execute(q)
+            conn.commit()
+
+    def __init__(
+        self, path: Union[PP, str], root: Optional[Union[PP, str]] = None
+    ) -> None:
+        # Validate and set path arg
+        if isinstance(path, str):
+            self.path = PP(path)
+        else:
+            self.path = path
+        # Raise errors for invalid paths
+        if not isinstance(self.path, PP):
+            raise TypeError(f"path {path} must be a PurePath or str")
+        if not os.path.isdir(self.path.parent):
+            raise ValueError(f"{self.path} must be in a valid directory.")
+
+        # Check if path is empty but its parent is a valid dir
+        if not os.path.exists(self.path):
+            with sql.connect(self.path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
+                )
+                conn.commit()
+
+        # Now determine if a db file needs initialization or
+        # if we're using an existing one along with its listed root path
