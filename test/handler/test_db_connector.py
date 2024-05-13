@@ -10,22 +10,10 @@ from unittest.mock import patch
 from scoutlib.handler.db_connector import DBConnector
 
 
-def mktemp_cleanly(suffix: str = ".db") -> Tuple[PP, PP]:
-    file_desc, fake_file_path = tempfile.mkstemp(suffix=suffix)
-    os.close(file_desc)
-    return PP(fake_file_path)
-
-
-def clean_tempfile(file_path: Union[PP, str]) -> None:
-    os.unlink(file_path)
-
-
 @contextmanager
-def mktempfile_context(suffix: str = ".db"):
-    file_desc, fake_file_path = tempfile.mkstemp(suffix=suffix)
-    os.close(file_desc)
-    yield PP(fake_file_path)
-    os.unlink(fake_file_path)
+def temp_dir_context():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield PP(temp_dir)
 
 
 class TestInit:
@@ -33,79 +21,109 @@ class TestInit:
 
     @pytest.fixture
     @contextmanager
-    def fake_db_file(self):
-        with mktempfile_context() as fake_db_file:
-            with sql.connect(fake_db_file) as conn:
+    def fake_files_dir(self):
+        with temp_dir_context() as temp_dir:
+            with open(temp_dir / "test.txt", "w") as f:
+                f.write("Hello World!")
+            with sql.connect(temp_dir / "test.db") as conn:
                 conn.execute("CREATE TABLE foobar (id TEXT PRIMARY KEY, txt TEXT);")
                 conn.execute("INSERT INTO foobar (id, txt) VALUES ('foo', 'bar');")
                 conn.commit()
-            yield fake_db_file
-
-    @pytest.fixture
-    @contextmanager
-    def fake_scout_db_file(self):
-        with mktempfile_context() as fake_db_file:
-            with sql.connect(fake_db_file) as conn:
+            with sql.connect(temp_dir / "base.scout.db") as conn:
                 q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
                 conn.execute(q)
                 q = "INSERT INTO fs_meta (property, value) VALUES ('root', '/a/b');"
                 conn.execute(q)
                 conn.commit()
-            yield fake_db_file
+            yield temp_dir
 
-    @pytest.fixture
-    @contextmanager
-    def fake_txt_file(self):
-        with mktempfile_context() as fake_txt_file:
-            with open(fake_txt_file, "w") as f:
-                f.write("Hello World!")
-            yield fake_txt_file
+    def test_fake_files_dir_files(self, fake_files_dir):
+        with fake_files_dir as dp:
+            assert os.path.exists(dp / "test.txt")
+            assert os.path.exists(dp / "test.db")
+            assert os.path.exists(dp / "base.scout.db")
+            with open(dp / "test.txt") as f:
+                assert f.read() == "Hello World!"
+            with sql.connect(dp / "test.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM foobar;")
+                assert cursor.fetchone() == ("foo", "bar")
+            with sql.connect(dp / "base.scout.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM fs_meta;")
+                assert cursor.fetchone() == ("root", "/a/b")
 
-    def test_is_scout_db_file(self, fake_scout_db_file, fake_db_file, fake_txt_file):
+    def test_fake_files_dir_cleanup(self, fake_files_dir):
+        """fake_files_dir dir and contents should be cleaned after context."""
+        with fake_files_dir as dp:
+            assert os.path.exists(dp)
+        assert not os.path.exists(dp)
+
+    def test_is_scout_db_file(self, fake_files_dir):
         """Correctly returns bool for:
         True: Is both a db file and has fs_meta table
         False:
             - Not a db file (e.g. a txt file saying Hello World!)
             - A db file but doesn't have fs_meta table
         """
-        with fake_scout_db_file as fp:
-            assert DBConnector.is_scout_db_file(fp)
-        with fake_db_file as fp:
-            assert not DBConnector.is_scout_db_file(fp)
-        with fake_txt_file as fp:
-            assert not DBConnector.is_scout_db_file(fp)
+        with fake_files_dir as dp:  # dp = dir path to fake temp directory
+            assert DBConnector.is_scout_db_file(dp / "base.scout.db")
+            assert not DBConnector.is_scout_db_file(dp / "test.db")
+            assert not DBConnector.is_scout_db_file(dp / "test.txt")
 
-    def test_is_db_file(self, fake_db_file, fake_scout_db_file, fake_txt_file):
+    def test_is_db_file(self, fake_files_dir):
         """Returns true for sqlite3 file, false otherwise"""
-        with fake_db_file as fp:
-            assert DBConnector.is_db_file(fp)
-        with fake_scout_db_file as fp:
-            assert DBConnector.is_db_file(fp)
-        with fake_txt_file as fp:
-            assert not DBConnector.is_db_file(fp)
+        with fake_files_dir as dp:
+            assert DBConnector.is_db_file(dp / "test.db")
+            assert DBConnector.is_db_file(dp / "base.scout.db")
+            assert not DBConnector.is_db_file(dp / "test.txt")
 
-    def test_init_db_creates(self, fake_txt_file):
-        """Creates fs_meta table in a db file in provided path"""
-        with fake_txt_file as fp:
-            path = PP(fp.parent) / ".scout.db"
+    def test_init_db_creates(self, fake_files_dir):
+        """Creates fs_meta table in a db file:
+        - in provided path with
+            - correct schema
+            - root property"""
+        with fake_files_dir as dp:
+            path = dp / "init.db"
             DBConnector.init_db(path, PP("/a/b"))
             assert DBConnector.is_db_file(path)
             assert DBConnector.is_scout_db_file(path)
             with sql.connect(path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-                tables = cursor.fetchall()
+                c = conn.cursor()
+                c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = c.fetchall()
                 assert ("fs_meta",) in tables
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert c.fetchone()[0] == "/a/b"
 
-    def test_init_db_raises_change_exist_root(self, fake_scout_db_file):
-        """Doesn't change the existing db file and root proprty in fs_meta unchanged"""
-        with fake_scout_db_file as fp:
+    def test_init_db_raises_on_change(self, fake_files_dir):
+        """
+        DBConnector.init_db should:
+            - Raise an IntegrityError if the db file already has a root property
+            - Not change the db file's contents
+            - Not change the root property's value in the fs_meta table
+        """
+        with fake_files_dir as dp:
+            # First read the old contents of the scout db file @ base.scout.db
+            old_contents = b""
+            new_contents = b""
+            with open(dp / "base.scout.db", "rb") as f:
+                old_contents = f.read()
+            # Now that we know the old file contents,
+            # check that sqlite's integryity error is raised when
+            # trying to init the db file again.
             with pytest.raises(sql.IntegrityError):
-                DBConnector.init_db(fp, PP("/f/g"))
-            with sql.connect(fp) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT value FROM fs_meta WHERE property='root';")
-                assert cursor.fetchone()[0] == "/a/b"
+                DBConnector.init_db(dp / "base.scout.db", PP("/f/g"))
+            # With the init_db call, check binary contents of the file afterwards
+            with open(dp / "base.scout.db", "rb") as f:
+                new_contents = f.read()
+            # Assert the binary contents did not change
+            assert old_contents == new_contents
+            # Now finally check for the root property's value column for old value
+            with sql.connect(dp / "base.scout.db") as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert c.fetchone()[0] == "/a/b"
 
     # def test_args_raise(self):
     #     """Test that these conditions raise a ValueError or TypeError.
