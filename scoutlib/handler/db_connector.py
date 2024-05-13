@@ -56,6 +56,17 @@ class DBConnector:
             conn.execute(q)
             conn.commit()
 
+    @classmethod
+    def read_root(cls, path: PP) -> PP:
+        """Reads root property value from the fs_meta table."""
+        with sql.connect(path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT value FROM fs_meta WHERE property='root';")
+            res = c.fetchone()
+            if res is None:
+                raise sql.OperationalError("No root property in fs_meta table.")
+            return PP(res[0])
+
     def __init__(
         self, path: Union[PP, str], root: Optional[Union[PP, str]] = None
     ) -> None:

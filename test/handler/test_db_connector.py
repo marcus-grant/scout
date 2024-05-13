@@ -125,6 +125,37 @@ class TestInit:
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert c.fetchone()[0] == "/a/b"
 
+    @pytest.mark.parametrize(
+        "path, root",
+        [("b.db", "/a/b"), ("g.db", "/f/g"), ("c.db", "/a/b/c")],
+    )
+    def test_read_root(self, fake_files_dir, path, root):
+        """DBConnector.read_root returns:
+        - Correct root property value from fs_meta table
+        - Returns only PP values
+        """
+        with fake_files_dir as dp:
+            path = dp / path
+            DBConnector.init_db(path, root)
+            assert DBConnector.read_root(path) == PP(root)
+            assert isinstance(DBConnector.read_root(path), PP)
+
+    def test_read_root_raises_no_root(self, fake_files_dir):
+        """DBConnector.read_root raises an error when root property is not found.
+        True for both no fs_meta and no root property in fs_meta."""
+        with fake_files_dir as dp:
+            # Check raises when no fs_meta table
+            with pytest.raises(sql.OperationalError):
+                DBConnector.read_root(dp / "test.db")
+            # Check raises when no 'root' in property column
+            with sql.connect(dp / "test.db") as conn:
+                c = conn.cursor()
+                q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
+                c.execute(q)
+                conn.commit()
+            with pytest.raises(sql.OperationalError):
+                DBConnector.read_root(dp / "test.db")
+
     # def test_args_raise(self):
     #     """Test that these conditions raise a ValueError or TypeError.
     #     - path is not a PurePath or str
