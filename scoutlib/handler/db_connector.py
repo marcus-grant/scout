@@ -39,11 +39,55 @@ class DBConnector:
         with sql.connect(path) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            tables = cursor.fetchall()
-            for table in tables:
-                if "fs_meta" in table:
+            tables = [t[0] for t in cursor.fetchall()]
+            if "fs_meta" not in tables:
+                return False
+            cursor.execute("SELECT property FROM fs_meta;")
+            for row in cursor.fetchall():
+                if row[0] == "root":
                     return True
             return False
+
+    @classmethod
+    def validate_arg_path(cls, path: Union[PP, str]) -> PP:
+        """Validates the 'path' argument for the constructor."""
+        # Check type and convert to PurePath
+        if isinstance(path, str):
+            result = PP(path)
+        elif isinstance(path, PP):
+            result = path
+        else:  # Raise error for anything but PurePath or str
+            raise TypeError(f"path {path} must be a PurePath or str")
+
+        # Validate what is at the path path and raise errors if needed
+        if not os.path.isdir(result.parent):  # Check if parent dir is valid
+            raise FileNotFoundError(f"{result} must be in a valid directory.")
+        if os.path.exists(result) and not cls.is_scout_db_file(result):
+            # If file exists, but isn't scout db,
+            # trying to change irrelevant file could be dangerous.
+            raise ValueError(f"{result} must be a valid scout db file or empty path.")
+
+        return result
+
+    @classmethod
+    def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
+        # Validate root arg by type for return
+        if root is None:
+            result = path.parent
+        elif isinstance(root, str):
+            result = PP(root)
+        elif isinstance(root, PP):
+            result = root
+        else:
+            msg = "DBConnector(path, root) (root) "
+            msg += f"must be PurePath or str type, given {type(root)}"
+            raise TypeError(msg)
+
+        # Validate by filesystem to determine if raise needed
+        if not os.path.isdir(result):
+            msg = f"DBConnector(path, root) root must be a valid dir path, given {root}"
+            raise FileNotFoundError(msg)
+        return result
 
     @classmethod
     def init_db(cls, path: PP, root: PP) -> None:
@@ -81,14 +125,21 @@ class DBConnector:
         if not os.path.isdir(self.path.parent):
             raise ValueError(f"{self.path} must be in a valid directory.")
 
-        # Check if path is empty but its parent is a valid dir
-        if not os.path.exists(self.path):
-            with sql.connect(self.path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
-                )
-                conn.commit()
+        # If no root arg, is provided, default to the path's parent.
+        if root is None:
+            self.root = self.path.parent
+        elif isinstance(root, str):  # Convert to Path if str
+            self.root = PP(root)
+        elif isinstance(root, PP):
+            self.root = root
+        else:
+            raise TypeError(f"root {root} must be a PurePath or str")
 
-        # Now determine if a db file needs initialization or
-        # if we're using an existing one along with its listed root path
+        # If path is a scout db file, set root to its fs_meta.root property.
+        # NOTE: Overrides root arg if given.
+        if self.is_scout_db_file(self.path):
+            self.root = DBConnector.read_root(self.path)
+        elif not os.path.exists(self.path):
+            # If path is empty, init a new scout db file.
+            self.root = self.path.parent  # Root
+            self.init_db(self.path, self.root)
