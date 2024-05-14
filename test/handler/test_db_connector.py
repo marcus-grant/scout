@@ -182,10 +182,6 @@ class TestInitSql:
     """Tests helper class methods used by
     __init__ to initialize or connect to the scout db file."""
 
-
-class TestInit:
-    """Tests around constructor and any of its helpers"""
-
     def test_init_db_creates(self, fake_files_dir):
         """Creates fs_meta table in a db file:
         - in provided path with
@@ -263,6 +259,10 @@ class TestInit:
                 conn.commit()
             with pytest.raises(sql.OperationalError):
                 DBConnector.read_root(dp / "test.db")
+
+
+class TestInit:
+    """Tests around constructor and any of its helpers"""
 
     def test_calls_read_root(self, fake_files_dir):
         """DBConnector.__init__ is called when a valid scout db path provided."""
