@@ -178,6 +178,11 @@ class TestInitValid:
                 fn(dp / basename, dp / basename)
 
 
+class TestInitSql:
+    """Tests helper class methods used by
+    __init__ to initialize or connect to the scout db file."""
+
+
 class TestInit:
     """Tests around constructor and any of its helpers"""
 
