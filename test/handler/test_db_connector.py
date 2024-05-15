@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 from scoutlib.handler.db_connector import DBConnector
 
+MOD_BASE = "scoutlib.handler.db_connector.DBConnector"
+
 
 @contextmanager
 def temp_dir_context():
@@ -31,7 +33,7 @@ def fake_files_dir():
         with sql.connect(temp_dir / "base.scout.db") as conn:
             q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
             conn.execute(q)
-            q = "INSERT INTO fs_meta (property, value) VALUES ('root', '/a/b');"
+            q = f"INSERT INTO fs_meta (property, value) VALUES ('root', '{temp_dir}/dir');"
             conn.execute(q)
             conn.commit()
         with sql.connect(temp_dir / "noroot.db") as conn:
@@ -61,7 +63,7 @@ class TestFixtures:
             with sql.connect(dp / "base.scout.db") as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM fs_meta;")
-                assert cursor.fetchone() == ("root", "/a/b")
+                assert cursor.fetchone() == ("root", str(dp / "dir"))
             with sql.connect(dp / "noroot.db") as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM fs_meta;")
@@ -262,82 +264,165 @@ class TestInitSql:
 
 
 class TestInit:
-    """Tests around constructor and any of its helpers"""
+    """Tests init method only."""
 
-    def test_calls_read_root(self, fake_files_dir):
-        """DBConnector.__init__ is called when a valid scout db path provided."""
-        fn_str = "scoutlib.handler.db_connector.DBConnector.read_root"
+    def testValidateArgFuncsCalled(self):
+        """
+        Should call validate_arg_path and validate_arg_root.
+        We mock os.path.exists and init_db to eliminate side effects.
+        """
+        path, root = "path", "root"
+        with (
+            patch(f"{MOD_BASE}.validate_arg_path", return_value=path) as mock_path,
+            patch(f"{MOD_BASE}.validate_arg_root", return_value=root) as mock_root,
+            patch("os.path.exists", return_value=False),
+            patch(f"{MOD_BASE}.init_db"),
+            patch(f"{MOD_BASE}.is_scout_db_file", return_value=False),
+        ):
+            DBConnector(path, root)
+            mock_path.assert_called_once_with(path)
+            mock_root.assert_called_once_with(path, root)
+
+    def testValidateArgPathSets(self):
+        """Should set the path attribute with the return of validate_arg_path.
+        Note that to ensure no other side_effects,
+        we mock methods that raise errors.
+        Mocks take the execution path to
+        assume file doesnt exist and leads to init_db while checking path member.
+        """
+        path, root = "path", "root"
+        with (
+            patch(f"{MOD_BASE}.validate_arg_path", return_value=path),
+            patch(f"{MOD_BASE}.validate_arg_root", return_value=root),
+            patch("os.path.exists", return_value=False),
+            patch(f"{MOD_BASE}.init_db"),
+            patch(f"{MOD_BASE}.is_scout_db_file", return_value=False),
+        ):
+            db = DBConnector(path, root)
+            assert db.path == path
+
+    def testValidateArgRootSetsWhenNoFile(self):
+        """
+        Mocks validate_arg_{path,root}, is_scout_db_file & read_root to
+        check that root is set by validate_arg_root when
+        is_scout_db_file is FALSE, aka when you CANT read the root property from db.
+        """
+        path, root, override = "path", "root", "override"
+        with (
+            patch(f"{MOD_BASE}.validate_arg_path", return_value=path),
+            patch(f"{MOD_BASE}.validate_arg_root", return_value=root),
+            patch("os.path.exists", return_value=False),
+            patch(f"{MOD_BASE}.init_db"),
+            patch(f"{MOD_BASE}.is_scout_db_file", return_value=False),
+            patch(f"{MOD_BASE}.read_root", return_value=override),
+        ):
+            db = DBConnector(path, root)
+            assert db.root == root
+
+    def testInitDBCalled(self):
+        """
+        Mocks all methods used by __init__, including os.path.exists to
+        check whether init_db is called with members path & root when
+        path is empty.
+        Init_db raises when sqlite can't read or write to the file so
+        there's no need to validate that functionality.
+        And the TestInitSql class tests init_db functionality.
+        We only care that initdb gets called in the right conditions.
+        """
+        path, root, override = "path", "root", "override"
+        with (
+            patch(f"{MOD_BASE}.validate_arg_path", return_value=path),
+            patch(f"{MOD_BASE}.validate_arg_root", return_value=root),
+            patch("os.path.exists", return_value=False) as mock_exist,
+            patch(f"{MOD_BASE}.init_db") as mock_initdb,
+            patch(f"{MOD_BASE}.is_scout_db_file", return_value=False),
+            patch(f"{MOD_BASE}.read_root", return_value=override),
+        ):
+            DBConnector(path, root)
+            mock_exist.assert_called_once_with(path)
+            mock_initdb.assert_called_once_with(path, root)
+
+    def testReadRootOverridesWhenFile(self):
+        """
+        Mocks validate_arg_{path,root}, is_scout_db_file & read_root to
+        check that root is overriden by read_root when
+        is_scout_db_file is TRUE, aka when you CAN read the root property from db.
+        """
+        path, root, override = "path", "root", "override"
+        with (
+            patch(f"{MOD_BASE}.validate_arg_path", return_value=path),
+            patch(f"{MOD_BASE}.validate_arg_root", return_value=root),
+            patch("os.path.exists", return_value=True) as mock_exist,
+            patch(f"{MOD_BASE}.init_db") as mock_initdb,
+            patch(f"{MOD_BASE}.is_scout_db_file", return_value=True) as mock_scout,
+            patch(f"{MOD_BASE}.read_root", return_value=override) as mock_read,
+        ):
+            db = DBConnector(path, root)
+            mock_exist.assert_called_once_with(path)
+            mock_initdb.assert_not_called()
+            mock_scout.assert_called_once_with(path)
+            mock_read.assert_called_once_with(path)
+            assert db.root == override
+
+    def testRaisesTypeErrors(self, fake_files_dir):
+        """Raises type errors on:
+        1. path is not a PurePath or str: TypeError
+        2. root is not a PurePath or str: TypeError"""
         with fake_files_dir as dp:
-            with patch(fn_str) as mock_read_root:
-                DBConnector(dp / "base.scout.db")
-                mock_read_root.assert_called_once_with(dp / "base.scout.db")
-            with patch(fn_str) as mock_read_root:
-                DBConnector(dp / "test.db")
-                mock_read_root.assert_not_called()
-            with patch(fn_str) as mock_read_root:
-                DBConnector(dp / "noroot.db")
-                mock_read_root.assert_not_called()
+            with pytest.raises(TypeError):
+                DBConnector(1)  # type: ignore
+            with pytest.raises(TypeError):
+                DBConnector(dp / ".scout.db", 1)  # type: ignore
 
-    # TODO: Fix later
-    # def test_calls_init_db(self, fake_files_dir):
-    #     """Function init_db only called when path is unoccupied.
-    #     When path is occupied, it is called with either:
-    #         - The path argument's parent directory when no root given.
-    #         - The root argument given."""
-    #     fn_str = "scoutlib.handler.db_connector.DBConnector.init_db"
-    #     with fake_files_dir as dp:
-    #         with patch(fn_str) as mock_init_db:
-    #             DBConnector(dp / "base.scout.db", PP("/a/b"))
-    #             mock_init_db.assert_not_called()
-    #             DBConnector(dp / "test.db", PP("/f/g"))
-    #             mock_init_db.assert_not_called()
-    #         with patch(fn_str) as mock_init_db:
-    #             arg_path, arg_root = dp / "new.db1", PP("/new1")
-    #             DBConnector(arg_path, arg_root)
-    #             mock_init_db.assert_called_once_with(arg_path, arg_root)
+    @pytest.mark.parametrize(
+        "path, root, raises",
+        [
+            ("doesnt/exist", None, FileNotFoundError),
+            (".scout.db", "doesnt/exist", FileNotFoundError),
+            ("test.txt", "dir", ValueError),
+            ("test.db", "dir", ValueError),
+        ],
+        ids=["#1", "#2", "#3", "#4"],
+    )
+    def testRaises(self, fake_files_dir, path, root, raises):
+        """
+        These circumstances should raise an error.
+        1. parent of path is not a dir: FileNotFoundError
+        2. root is not a dir: FileNotFoundError
+        3. path exists and is not a sqlite file: ValueError
+        4. path exists and is not a scout db file, but is sqlite: ValueError
+        """
+        with fake_files_dir as dp:
+            with pytest.raises(raises):
+                root = dp / root if root else None
+                DBConnector(dp / path, root)
 
-    # NOTE: Not ready to use these tests yet
-    # def test_args_raise(self, fake_files_dir):
-    #     """Test that these conditions raise a ValueError or TypeError.
-    #     - path is not a PurePath or str
-    #     - root is not a PurePath or str
-    #     - parent of path is not a dir
-    #     - root is not a dir
-    #     """
-    #     with fake_files_dir as dp:
-    #         with pytest.raises(TypeError):
-    #             DBConnector(1)  # type: ignore
-    #         with pytest.raises(TypeError):
-    #             DBConnector(dp / ".scout.db", 1)  # type: ignore
-    #     #     with pytest.raises((ValueError, TypeError)):
-    #     #         DBConnector(fake_db_file, 1)  # type: ignore
-    #     #     with pytest.raises((ValueError, TypeError)):
-    #     #         DBConnector(f"{fake_db_file}/parent/not/dir")
-    #     #     with pytest.raises((ValueError, TypeError)):
-    #     #         DBConnector(fake_db_file, fake_db_file)  # not a dir, it's the db file
+    def testSuccessInitDB(self, fake_files_dir):
+        """
+        Should successfully initialize the DBConnector object with
+        a newly initialized scout db file.
+        """
+        with fake_files_dir as dp:
+            path, root = dp / "new.db", dp / "dir"
+            db = DBConnector(path, root)
+            assert db.path == path
+            assert db.root == root
+            with sql.connect(path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert c.fetchone()[0] == str(root)
 
-    # NOTE: These tests won't be used only keep till ready to pick out details
-    # TODO: Is this the right scout db file validation check?
-    # def test_raises_not_scout_db_file(self):
-    #     """Test that a ValueError is raised when the file is not a scout db file"""
-    #     with mktempfile_context() as fp:
-    #         with open(fp, "w") as f:
-    #             f.write("Hello World!")
-    #         with pytest.raises(ValueError):
-    #             DBConnector(fp)
-
-    # def test_is_scout_db_called(self):
-    #     """__init__ should call is_scout_db_file"""
-    #     fn_str = "scoutlib.handler.db_connector.DBConnector.is_scout_db_file"
-    #     with mktempfile_context() as fp:
-    #         with patch(fn_str) as mock:
-    #             DBConnector(fp)
-    #             mock.assert_called_once_with(fp)
-
-    # def test_init_db_called(self):
-    #     """__init__ should call init_db"""
-    #     fn_str = "scoutlib.handler.db_connector.DBConnector._init_db"
-    #     with mktempfile_context() as fp:
-    #         with patch(fn_str) as mock:
-    #             DBConnector(fp)
-    #             mock.assert_called_once()
+    def testSuccessReadRoot(self, fake_files_dir):
+        """
+        Should successfully initialize the DBConnector object with
+        an existing scout db file.
+        """
+        with fake_files_dir as dp:
+            path, root = dp / "base.scout.db", dp / "dir"
+            db = DBConnector(path, root)
+            assert db.path == path
+            assert db.root == root
+            with sql.connect(path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert c.fetchone()[0] == str(root)

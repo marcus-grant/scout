@@ -71,7 +71,7 @@ class DBConnector:
 
     @classmethod
     def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
-        # Validate root arg by type for return
+        """Validates the 'root' argument for the constructor.
         if root is None:
             result = path.parent
         elif isinstance(root, str):
@@ -90,6 +90,15 @@ class DBConnector:
         return result
 
     @classmethod
+    def read_root(cls, path: PP) -> PP:
+        with sql.connect(path) as conn:
+            c = conn.cursor()
+            c.execute("SELECT value FROM fs_meta WHERE property='root';")
+            res = c.fetchone()
+            if res is None:
+                raise sql.OperationalError("No root property in fs_meta table.")
+            return PP(res[0])
+    @classmethod
     def init_db(cls, path: PP, root: PP) -> None:
         """Initializes a sqlite file with the fs_meta table."""
         with sql.connect(path) as conn:
@@ -100,46 +109,16 @@ class DBConnector:
             conn.execute(q)
             conn.commit()
 
-    @classmethod
-    def read_root(cls, path: PP) -> PP:
-        """Reads root property value from the fs_meta table."""
-        with sql.connect(path) as conn:
-            c = conn.cursor()
-            c.execute("SELECT value FROM fs_meta WHERE property='root';")
-            res = c.fetchone()
-            if res is None:
-                raise sql.OperationalError("No root property in fs_meta table.")
-            return PP(res[0])
-
     def __init__(
         self, path: Union[PP, str], root: Optional[Union[PP, str]] = None
     ) -> None:
-        # Validate and set path arg
-        if isinstance(path, str):
-            self.path = PP(path)
-        else:
-            self.path = path
-        # Raise errors for invalid paths
-        if not isinstance(self.path, PP):
-            raise TypeError(f"path {path} must be a PurePath or str")
-        if not os.path.isdir(self.path.parent):
-            raise ValueError(f"{self.path} must be in a valid directory.")
+        self.path = self.validate_arg_path(path)
+        self.root = self.validate_arg_root(self.path, root)
 
-        # If no root arg, is provided, default to the path's parent.
-        if root is None:
-            self.root = self.path.parent
-        elif isinstance(root, str):  # Convert to Path if str
-            self.root = PP(root)
-        elif isinstance(root, PP):
-            self.root = root
-        else:
-            raise TypeError(f"root {root} must be a PurePath or str")
-
-        # If path is a scout db file, set root to its fs_meta.root property.
-        # NOTE: Overrides root arg if given.
-        if self.is_scout_db_file(self.path):
-            self.root = DBConnector.read_root(self.path)
-        elif not os.path.exists(self.path):
+        if not os.path.exists(self.path):
             # If path is empty, init a new scout db file.
-            self.root = self.path.parent  # Root
             self.init_db(self.path, self.root)
+        elif self.is_scout_db_file(self.path):
+            self.root = DBConnector.read_root(self.path)
+        else:  # The case where file exists but isn't scout db file
+            raise ValueError(f"{self.path} must be empty or scout db file.")
