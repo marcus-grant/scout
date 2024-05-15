@@ -19,10 +19,8 @@ class DBConnector:
 
     @classmethod
     def is_db_file(cls, path) -> bool:
-        """
-        Checks whether a file is a sqlite file and has the fs_meta table,
-        indicating that this is a scout database file.
-        """
+        """Checks magic bytes of file at path,
+        determining if it is a sqlite db file."""
         with open(path, "rb") as f:
             header = f.read(16)
             if header == b"SQLite format 3\x00":
@@ -72,6 +70,8 @@ class DBConnector:
     @classmethod
     def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
         """Validates the 'root' argument for the constructor.
+        Including raising errors if types are wrong,
+        or if the path is not a valid directory."""
         if root is None:
             result = path.parent
         elif isinstance(root, str):
@@ -98,6 +98,7 @@ class DBConnector:
             if res is None:
                 raise sql.OperationalError("No root property in fs_meta table.")
             return PP(res[0])
+
     @classmethod
     def init_db(cls, path: PP, root: PP) -> None:
         """Initializes a sqlite file with the fs_meta table."""

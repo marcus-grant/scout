@@ -185,10 +185,11 @@ class TestInitSql:
     __init__ to initialize or connect to the scout db file."""
 
     def test_init_db_creates(self, fake_files_dir):
-        """Creates fs_meta table in a db file:
-        - in provided path with
-            - correct schema
-            - root property"""
+        """The init_db class method should create:
+        - A new sqlite file with the fs_meta table
+        - First column is property TEXT PRIMARY KEY
+        - Second column is value TEXT
+        - Only row has values ('root', '/a/b')"""
         with fake_files_dir as dp:
             path = dp / "init.db"
             DBConnector.init_db(path, PP("/a/b"))
@@ -196,9 +197,16 @@ class TestInitSql:
             assert DBConnector.is_scout_db_file(path)
             with sql.connect(path) as conn:
                 c = conn.cursor()
+                # Query & assert fs_meta table exists
                 c.execute("SELECT name FROM sqlite_master WHERE type='table';")
                 tables = c.fetchall()
                 assert ("fs_meta",) in tables
+                # Query & assert fs_meta table has correct columns
+                c.execute("PRAGMA table_info(fs_meta);")
+                columns = c.fetchall()
+                assert columns[0][1] == "property"
+                assert columns[1][1] == "value"
+                assert columns[0][2] == columns[1][2] == "TEXT"
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert c.fetchone()[0] == "/a/b"
 
@@ -229,7 +237,7 @@ class TestInitSql:
             with sql.connect(dp / "base.scout.db") as conn:
                 c = conn.cursor()
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
-                assert c.fetchone()[0] == "/a/b"
+                assert c.fetchone()[0] == str(dp / "dir")
 
     @pytest.mark.parametrize(
         "path, root",
