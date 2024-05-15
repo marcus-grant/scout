@@ -22,6 +22,14 @@ def temp_dir_context():
 @pytest.fixture
 @contextmanager
 def fake_files_dir():
+    """Creates below filetree fixture
+    temp_dir/
+    ├── dir/ # Empty directory for root property to point to
+    ├── test.txt # Non-db file
+    ├── test.db # Sqlite db file, but not a scout db file
+    ├── base.scout.db # A bare scout db file with root pointing to temp_dir/dir
+    └── noroot.db # A scout db file with no root property
+    """
     with temp_dir_context() as temp_dir:
         os.mkdir(temp_dir / "dir")
         with open(temp_dir / "test.txt", "w") as f:
@@ -48,7 +56,7 @@ def fake_files_dir():
 class TestFixtures:
     """Tests fixtures used in DBConnector tests."""
 
-    def test_fake_files_dir_fs(self, fake_files_dir):
+    def testFakeFilesDirFs(self, fake_files_dir):
         with fake_files_dir as dp:
             assert os.path.isdir(dp / "dir")
             assert os.path.exists(dp / "test.txt")
@@ -69,7 +77,7 @@ class TestFixtures:
                 cursor.execute("SELECT * FROM fs_meta;")
                 assert cursor.fetchone() == ("noroot", "/a/b")
 
-    def test_fake_files_dir_clean(self, fake_files_dir):
+    def testFakeFilesDirClean(self, fake_files_dir):
         """fake_files_dir dir and contents should be cleaned after context."""
         with fake_files_dir as dp:
             assert os.path.exists(dp)
@@ -80,7 +88,7 @@ class TestInitValid:
     """Tests the validation of the __init__ arguments only through
     the class methods that get used during argument validation."""
 
-    def test_is_db_file(self, fake_files_dir):
+    def testIsDBFile(self, fake_files_dir):
         """Returns true for sqlite3 file, false otherwise"""
         with fake_files_dir as dp:
             assert DBConnector.is_db_file(dp / "test.db")
@@ -88,7 +96,7 @@ class TestInitValid:
             assert DBConnector.is_db_file(dp / "noroot.db")
             assert not DBConnector.is_db_file(dp / "test.txt")
 
-    def test_is_scout_db_file(self, fake_files_dir):
+    def testIsScoutDBFile(self, fake_files_dir):
         """Correctly returns bool for:
         True: Is both a db file and has fs_meta table
         False:
@@ -109,7 +117,7 @@ class TestInitValid:
         ],
         ids=["#1", "#2"],
     )
-    def test_valid_arg_path_ret(self, fake_files_dir, path, expect):
+    def testValidArgPathReturn(self, fake_files_dir, path, expect):
         """
         DBConnector.validate_arg_root should:
         1. Return a PP object when a scout db file path given as str
@@ -131,7 +139,7 @@ class TestInitValid:
         ],
         ids=["#1", "#2", "#3", "#4", "#5", "#6"],
     )
-    def test_valid_arg_path_raise(self, fake_files_dir, path, raises):
+    def testValidArgPathRaise(self, fake_files_dir, path, raises):
         """
         DBConnector.validate_arg_path should:
         1. Raise a TypeError when neither a str nor PP is given
@@ -145,7 +153,7 @@ class TestInitValid:
             with pytest.raises(raises):
                 DBConnector.validate_arg_path(dp / path)
 
-    def test_valid_arg_root_ret(self, fake_files_dir):
+    def testValidArgRootReturn(self, fake_files_dir):
         """
         DBConnector.validate_arg_root returns these when:
         - A valid path to the parent of the path arg when no/None root arg given
@@ -159,7 +167,7 @@ class TestInitValid:
             assert fn(dp / basename, dp / "dir") == dp / "dir"
             assert fn(dp / basename, str(dp / "dir")) == dp / "dir"
 
-    def test_valid_arg_root_raises(self, fake_files_dir):
+    def testValidArgRootRaises(self, fake_files_dir):
         """
         DBConnector.validate_arg_root raises when:
         - TypeError when root arg given not of type PurePath, str, or None
@@ -184,7 +192,7 @@ class TestInitSql:
     """Tests helper class methods used by
     __init__ to initialize or connect to the scout db file."""
 
-    def test_init_db_creates(self, fake_files_dir):
+    def testInitDbCreates(self, fake_files_dir):
         """The init_db class method should create:
         - A new sqlite file with the fs_meta table
         - First column is property TEXT PRIMARY KEY
@@ -210,7 +218,7 @@ class TestInitSql:
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert c.fetchone()[0] == "/a/b"
 
-    def test_init_db_raises_on_change(self, fake_files_dir):
+    def testInitDbRaisesOnChange(self, fake_files_dir):
         """
         DBConnector.init_db should:
             - Raise an IntegrityError if the db file already has a root property
@@ -243,7 +251,7 @@ class TestInitSql:
         "path, root",
         [("b.db", "/a/b"), ("g.db", "/f/g"), ("c.db", "/a/b/c")],
     )
-    def test_read_root(self, fake_files_dir, path, root):
+    def testReadRoot(self, fake_files_dir, path, root):
         """DBConnector.read_root returns:
         - Correct root property value from fs_meta table
         - Returns only PP values
@@ -254,7 +262,7 @@ class TestInitSql:
             assert DBConnector.read_root(path) == PP(root)
             assert isinstance(DBConnector.read_root(path), PP)
 
-    def test_read_root_raises_no_root(self, fake_files_dir):
+    def testReadRootRaisesNoRoot(self, fake_files_dir):
         """DBConnector.read_root raises an error when root property is not found.
         True for both no fs_meta and no root property in fs_meta."""
         with fake_files_dir as dp:
@@ -309,7 +317,7 @@ class TestInit:
             db = DBConnector(path, root)
             assert db.path == path
 
-    def testValidateArgRootSetsWhenNoFile(self):
+    def testValidateArgRootSetsByNoFile(self):
         """
         Mocks validate_arg_{path,root}, is_scout_db_file & read_root to
         check that root is set by validate_arg_root when
@@ -434,3 +442,6 @@ class TestInit:
                 c = conn.cursor()
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert c.fetchone()[0] == str(root)
+
+
+# class TestNormalizePath:
