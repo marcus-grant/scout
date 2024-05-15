@@ -174,3 +174,28 @@ class DBConnector:
             self.root = DBConnector.read_root(self.path)
         else:
             raise ValueError(f"{self.path} must be empty or scout db file.")
+
+    def normalize_path(self, denormalized_path: Union[PP, str]) -> PP:
+        """
+        Normalize a path relative to the root directory this database tracks.
+        Args:
+            denormalized_path (Union[PurePath, str]): The path to normalize.
+        Returns:
+            PP: The normalized PurePath relative to the root directory.
+        Raises:
+            ValueError: If the path is not relative to the root directory.
+        """
+        pass  # TODO: Implement this method with DirRepo's version & its tests
+
+    def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:
+        """
+        Denormalize a path relative to the root directory this database tracks.
+        Basically appending the normalized path to the root directory.
+        Args:
+            normalized_path (Union[PurePath, str]): The path to denormalize.
+        Returns:
+            PP: The denormalized PurePath relative to the root directory.
+        Raises:
+            ValueError: If the path is not relative to the root directory.
+        """
+        pass  # TODO: Implement this method with DirRepo's version & its tests
