@@ -178,6 +178,8 @@ class DBConnector:
     def normalize_path(self, denormalized_path: Union[PP, str]) -> PP:
         """
         Normalize a path relative to the root directory this database tracks.
+        Relative paths are kept relative on
+        assumption it's relative to root already & thus already normalized.
         Args:
             denormalized_path (Union[PurePath, str]): The path to normalize.
         Returns:
@@ -185,7 +187,14 @@ class DBConnector:
         Raises:
             ValueError: If the path is not relative to the root directory.
         """
-        pass  # TODO: Implement this method with DirRepo's version & its tests
+        if ".." in str(denormalized_path):
+            msg = f"Relative ancestor paths (..) of {denormalized_path} not supported."
+            raise ValueError(msg)
+        path = PP(denormalized_path)
+        if not path.is_absolute():
+            path = self.root / path
+        path = path.relative_to(self.root)
+        return path
 
     def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:
         """
@@ -198,4 +207,15 @@ class DBConnector:
         Raises:
             ValueError: If the path is not relative to the root directory.
         """
-        pass  # TODO: Implement this method with DirRepo's version & its tests
+        if ".." in str(normalized_path):
+            msg = f"Relative ancestor paths (..) of {normalized_path} not supported."
+            raise ValueError(msg)
+        path = PP(normalized_path)
+        if path.is_absolute():
+            # Raise if path outside root
+            try:
+                path = path.relative_to(self.root)
+            except:  # noqa
+                raise ValueError(f"{path} is outside of {self.root}")
+        path = self.root / path
+        return path

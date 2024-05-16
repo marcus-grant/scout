@@ -4,8 +4,7 @@ from pathlib import PurePath as PP
 import pytest
 import sqlite3 as sql
 import tempfile
-from typing import Union, Tuple, Generator
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from scoutlib.handler.db_connector import DBConnector
 
@@ -444,4 +443,101 @@ class TestInit:
                 assert c.fetchone()[0] == str(root)
 
 
-# class TestNormalizePath:
+@pytest.fixture
+def mock_db_conn():
+    with patch.object(DBConnector, "__init__", return_value=None) as mock:
+        mock = DBConnector()  # type: ignore
+        mock.path = PP("/test/.scout.db")
+        mock.root = PP("/test/root")
+        yield mock
+
+
+class TestPathHelpers:
+    @pytest.mark.parametrize(
+        "path, expect",
+        [
+            ("a/b", PP("a/b")),  # 1
+            (PP("a/b/c"), PP("a/b/c")),  # 2
+            ("/test/root/a/b/c", PP("a/b/c")),  # 3
+            (PP("/test/root/f/g"), PP("f/g")),  # 4
+            ("", PP("")),  # 5
+            (PP(""), PP("")),  # 6
+            ("/test/root", PP("")),  # 7
+            (PP("/test/root"), PP("")),  # 8
+            ("/test/root/a", PP("a")),  # 9
+            (PP("/test/root/f"), PP("f")),  # 10
+        ],
+        ids=["#1", "#2", "#3", "#4", "#5", "#6", "#7", "#8", "#9", "#10"],
+    )
+    def testNormReturn(self, mock_db_conn, path, expect):
+        """
+        Test that normalize_path correctly normalizes paths to root stored in db.
+        Cases:
+        1. Relative paths (str) are returned as is in (PP)
+        2. Relative paths (PP) are returned as is in (PP)
+        3. Absolute paths w/i root (str) returned relative to root (PP)
+        4. Absolute paths w/i root (PP) returned relative to root (PP)
+        5. Empty path (str) returns empty path (PP)
+        6. Empty path (PP) returns empty path (PP)
+        7. Absolute path (str) to root returns empty path (PP)
+        8. Absolute path (PP) to root returns empty path (PP)
+        9. Absolute path (str) to toplevel dir in root is correct relative path (PP)
+        10. Absolute path (PP) to toplevel dir in root is correct relative path (PP)
+        """
+        assert mock_db_conn.normalize_path(path) == expect
+
+    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
+    def testNormRaise(self, mock_db_conn, path):
+        """
+        Test that normalize_path raises an error when path is not within root.
+        While checking for inputs of...
+            1. Ancestor paths to root
+            2. Parallel to root
+            3. Relative ancestor
+        """
+        with pytest.raises(ValueError):
+            mock_db_conn.normalize_path(path)
+
+    @pytest.mark.parametrize(
+        "path, expect",
+        [
+            ("a/b/c", PP("/test/root/a/b/c")),  # 1
+            (PP("f/g"), PP("/test/root/f/g")),  # 2
+            ("/test/root/a/b", PP("/test/root/a/b")),  # 3
+            (PP("/test/root/a/d"), PP("/test/root/a/d")),  # 4
+            ("", PP("/test/root")),  # 5
+            (PP(""), PP("/test/root")),  # 6
+            ("/test/root", PP("/test/root")),  # 7
+            (PP("/test/root"), PP("/test/root")),  # 8
+            ("/test/root/a", PP("/test/root/a")),  # 9
+            (PP("/test/root/f"), PP("/test/root/f")),  # 10
+        ],
+        ids=["#1", "#2", "#3", "#4", "#5", "#6", "#7", "#8", "#9", "#10"],
+    )
+    def testDenormReturn(self, mock_db_conn, path, expect):
+        """
+        Test that normalize_path correctly normalizes paths to root stored in db.
+        Cases:
+        1. Relative paths (str) are returned as concated to root abs. paths (PP)
+        2. Relative paths (PP) are returned as concated to root abs. paths (PP)
+        3. Absolute paths w/i root (str) returned as is (PP)
+        4. Absolute paths w/i root (PP) returned as is (PP)
+        5. Root path (str) returns empty path (PP)
+        6. Root path (PP) returns empty path (PP)
+        7. Absolute path (str) to root returns same abs. path (PP)
+        8. Absolute path (PP) to root returns same abs. path (PP)
+        9. Absolute path (str) to toplevel dir in root is correct absolute path (PP)
+        10. Absolute path (PP) to toplevel dir in root is correct absolute path (PP)
+        """
+        assert mock_db_conn.denormalize_path(path) == expect
+
+    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
+    def testDenormRaise(self, mock_db_conn, path):
+        """
+        Test that denormalize_path raises an error when path is not within root.
+        1. Ancestor paths to root
+        2. Parallel to root
+        3. Relative ancestor
+        """
+        with pytest.raises(ValueError):
+            mock_db_conn.denormalize_path(path)
