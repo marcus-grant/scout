@@ -17,6 +17,17 @@ def temp_dir_context():
         yield PP(temp_dir)
 
 
+@pytest.fixture
+@contextmanager
+def bare_db():
+    with temp_dir_context() as dp:
+        path_root = dp / "root"
+        path_db = dp / "test.db"
+        os.mkdir(path_root)
+        db = DBConnector(path_db, path_root)
+        yield db
+
+
 # TODO: Give comment including filetree contents
 @pytest.fixture
 @contextmanager
@@ -81,6 +92,16 @@ class TestFixtures:
         with fake_files_dir as dp:
             assert os.path.exists(dp)
         assert not os.path.exists(dp)
+
+    def testBareDb(self, bare_db):
+        with bare_db as db:
+            root = PP()
+            with sql.connect(db.path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                root = PP(c.fetchone()[0])
+            assert db.root == root
+            assert db.path == db.root.parent / "test.db"
 
 
 class TestInitValid:
@@ -544,26 +565,6 @@ class TestPathHelpers:
 
 
 class TestConnect:
-    @pytest.fixture
-    @contextmanager
-    def bare_db(self):
-        with temp_dir_context() as dp:
-            path_root = dp / "root"
-            path_db = dp / "test.db"
-            os.mkdir(path_root)
-            db = DBConnector(path_db, path_root)
-            yield db
-
-    def testMemberFixture(self, bare_db):
-        with bare_db as db:
-            root = PP()
-            with sql.connect(db.path) as conn:
-                c = conn.cursor()
-                c.execute("SELECT value FROM fs_meta WHERE property='root';")
-                root = PP(c.fetchone()[0])
-            assert db.root == root
-            assert db.path == db.root.parent / "test.db"
-
     def testConnect(self, bare_db):
         with bare_db as db:
             with db.connect() as conn:
@@ -586,3 +587,15 @@ class TestConnect:
                 assert c.fetchall() == [(1, "Hello World!"), (2, "foobar")]
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert PP(c.fetchone()[0]) == db.root
+
+
+class TestTableExists:
+    def testTableExists(self, bare_db):
+        with bare_db as db:
+            with db.connect() as conn:
+                assert not db.table_exists("test")
+                conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, txt TEXT);")
+                conn.commit()
+            assert db.table_exists("test")
+            assert db.table_exists("fs_meta")
+            assert not db.table_exists("foobar")

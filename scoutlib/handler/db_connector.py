@@ -228,3 +228,17 @@ class DBConnector:
         """"""
         with sql.connect(self.path) as conn:
             yield conn
+
+    def table_exists(self, table_name: str) -> bool:
+        """
+        Check if a table exists in the database.
+        Args:
+            table (str): The name of the table to check.
+        Returns:
+            bool: True if the table exists, False otherwise.
+        """
+        with self.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            return (table_name,) in tables
