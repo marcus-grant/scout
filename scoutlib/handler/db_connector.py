@@ -2,7 +2,7 @@ from contextlib import contextmanager
 import os
 from pathlib import PurePath as PP
 import sqlite3 as sql
-from typing import Optional, Union, Generator
+from typing import Optional, Union, Generator, List
 
 
 class DBConnector:
@@ -176,6 +176,7 @@ class DBConnector:
         else:
             raise ValueError(f"{self.path} must be empty or scout db file.")
 
+    ### Path Utility Methods
     def normalize_path(self, denormalized_path: Union[PP, str]) -> PP:
         """
         Normalize a path relative to the root directory this database tracks.
@@ -221,7 +222,22 @@ class DBConnector:
         path = self.root / path
         return path
 
-    # Connect methods
+    def ancestor_paths(self, path: Union[PP, str]) -> List[PP]:
+        """
+        Generate all ancestor paths of a given path.
+        Args:
+            path (Union[PurePath, str]): The path to generate ancestors of.
+        Yields:
+            PP: The ancestor paths of the given path ordered from root to path.
+        """
+        current = self.normalize_path(path)
+        ancestors = []
+        while current != PP():
+            ancestors.append(current)
+            current = current.parent
+        return ancestors[::-1]
+
+    ### Connect methods
     # TODO: Come up with way to close cleanly if leaks are a concern
     @contextmanager
     def connect(self) -> Generator[sql.Connection, None, None]:

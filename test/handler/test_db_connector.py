@@ -563,6 +563,26 @@ class TestPathHelpers:
         with pytest.raises(ValueError):
             mock_db_conn.denormalize_path(path)
 
+    @pytest.mark.parametrize(
+        "path,exp",
+        [
+            ("a/b/c", ["a", "a/b", "a/b/c"]),
+            ("f/h", ["f", "f/h"]),
+            ("f", ["f"]),
+            ("", []),
+        ],
+    )
+    def testAncPathsRel(self, mock_db_conn, path, exp):
+        """Method ancestor_paths should return a list of all ancestor paths to
+        a given path in order of root to given path."""
+        ppath, expect = PP(path), [PP(path) for path in exp]
+        assert mock_db_conn.ancestor_paths(path) == expect
+        assert mock_db_conn.ancestor_paths(ppath) == expect
+        root = mock_db_conn.root
+        path, ppath = str(root / path), root / ppath
+        assert mock_db_conn.ancestor_paths(path) == expect
+        assert mock_db_conn.ancestor_paths(ppath) == expect
+
 
 class TestConnect:
     def testConnect(self, bare_db):
