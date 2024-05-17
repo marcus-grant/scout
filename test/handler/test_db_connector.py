@@ -541,3 +541,48 @@ class TestPathHelpers:
         """
         with pytest.raises(ValueError):
             mock_db_conn.denormalize_path(path)
+
+
+class TestConnect:
+    @pytest.fixture
+    @contextmanager
+    def bare_db(self):
+        with temp_dir_context() as dp:
+            path_root = dp / "root"
+            path_db = dp / "test.db"
+            os.mkdir(path_root)
+            db = DBConnector(path_db, path_root)
+            yield db
+
+    def testMemberFixture(self, bare_db):
+        with bare_db as db:
+            root = PP()
+            with sql.connect(db.path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                root = PP(c.fetchone()[0])
+            assert db.root == root
+            assert db.path == db.root.parent / "test.db"
+
+    def testConnect(self, bare_db):
+        with bare_db as db:
+            with db.connect() as conn:
+                c = conn.cursor()
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                root = PP(c.fetchone()[0])
+                assert db.root == root
+                assert db.path == root.parent / "test.db"
+
+    def testConnectSQLExec(self, bare_db):
+        with bare_db as db:
+            with db.connect() as conn:
+                conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, txt TEXT);")
+                conn.execute("INSERT INTO test (txt) VALUES ('Hello World!');")
+                conn.execute("INSERT INTO test (txt) VALUES ('foobar');")
+                conn.commit()
+            with sql.connect(db.path) as conn:
+                c = conn.cursor()
+                c.execute("SELECT * FROM test;")
+                assert c.fetchall() == [(1, "Hello World!"), (2, "foobar")]
+                c.execute("SELECT value FROM fs_meta WHERE property='root';")
+                assert PP(c.fetchone()[0]) == db.root

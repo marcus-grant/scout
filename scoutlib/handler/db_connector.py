@@ -1,7 +1,8 @@
+from contextlib import contextmanager
 import os
 from pathlib import PurePath as PP
 import sqlite3 as sql
-from typing import Optional, Union
+from typing import Optional, Union, Generator
 
 
 class DBConnector:
@@ -219,3 +220,11 @@ class DBConnector:
                 raise ValueError(f"{path} is outside of {self.root}")
         path = self.root / path
         return path
+
+    # Connect methods
+    # TODO: Come up with way to close cleanly if leaks are a concern
+    @contextmanager
+    def connect(self) -> Generator[sql.Connection, None, None]:
+        """"""
+        with sql.connect(self.path) as conn:
+            yield conn
