@@ -65,108 +65,32 @@ class DirRepo:
         if not self.db.table_exists(DIR_ANCESTOR_TABLE):
             self.create_dir_ancestor_table(self.db)
 
+    #  ### SQL Query Helper Methods ###
 
-#  def db_path(self):
-#      return self.path / "dir.db"
+    # TODO: Benchmark this, less round trip latency than server conn, but could be slow
+    def insert_dir(self, path: Union[PP, str]) -> Optional[int]:
+        """
+        Inserts a new record into the dir table with the given name and path.
+        Returns the id of the new record if added, or None if not inserted due to
+        an existing record with the same path.
+        Disk I/O latencies are the primary concern, not round trip considerations.
+        :param path: Path to insert into the dir table.
+        :return: ID of the new record if added, otherwise None.
+        """
+        np = self.db.normalize_path(path)
+        id = None
+        query_id = "SELECT id FROM dir WHERE path = ?"
+        query_insert = "INSERT INTO dir (path) VALUES (?)"
+        with self.db.connect() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query_id, (str(np),))
+            id = cursor.fetchone()
+            if id:  # If it exists it's a duplicate just return the id
+                return id[0]
+            else:
+                cursor.execute(query_insert, (str(np),))
+                return cursor.lastrowid
 
-#  # TODO: path should be column 1, not 2
-#  def _init_db(self):
-#      """Initialize db & create directory table if not there."""
-#      with sqlite3.connect(self.path_db) as conn:
-#          query = """ CREATE TABLE IF NOT EXISTS dir (
-#                          id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-#                          name TEXT NOT NULL,
-#                          path TEXT NOT NULL,
-#                          CONSTRAINT path_unique UNIQUE (path)
-#                      );"""
-#          conn.cursor().execute(query)
-#          query = """CREATE TABLE IF NOT EXISTS dir_ancestor (
-#                          dir_id INTEGER NOT NULL,
-#                          ancestor_id INTEGER NOT NULL,
-#                          depth INTEGER NOT NULL,
-#                          PRIMARY KEY (dir_id, ancestor_id),
-#                          FOREIGN KEY (dir_id) REFERENCES directory(id),
-#                          FOREIGN KEY (ancestor_id) REFERENCES directory(id)
-#                      );"""
-#          conn.cursor().execute(query)
-#          conn.commit()
-#          return conn
-
-#  # TODO: I don't know if this is the best way to do this
-#  def connection(self) -> sqlite3.Connection:
-#      """Yields a connection context manager for the SQLite db."""
-#      return sqlite3.connect(self.path_db)
-
-#  ### Path Helper Methods ###
-#  def normalize_path(self, pathlike: Union[str, PurePath, Dir]) -> PurePath:
-#      """
-#      Normalize a path string into a list of path components.
-#      Order determines depth, so the first element is the repo root.
-#      Returns None if the path is not within the repo.
-#      Returns an empty list if the path is the repo root.
-#      """
-#      # If pathlike is directory assign path to pathlike.path
-#      # If it's a string, convert to PurePath
-#      # If it's already a purepath, assign to path
-#      if isinstance(pathlike, Dir):
-#          path = pathlike.path
-#      elif isinstance(pathlike, str):
-#          path = PurePath(pathlike)
-#      else:
-#          path = pathlike
-#      if not path.is_absolute():
-#          # Assume relative path to repo root
-#          path = self.path / path
-#      try:
-#          return path.relative_to(self.path)
-#      except ValueError:
-#          raise ValueError(f"Path, {path}, not within DirRepo!")
-
-#  def denormalize_path(self, path: Union[str, PurePath]) -> PurePath:
-#      """
-#      Denormalize a path string into a PurePath object.
-#      """
-#      path = PurePath(path) if isinstance(path, str) else path
-#      if path.is_absolute():
-#          try:
-#              path = path.relative_to(self.path)  # Ensure it's relative to repo
-#          except ValueError:
-#              raise ValueError(f"Path, {path}, not within DirRepo {self.path}!")
-#      return self.path / path
-
-#  # TODO: Feels like wrong place for this
-#  def ancestor_paths(self, path: Union[PurePath, str]) -> list[PurePath]:
-#      current = self.normalize_path(path)
-#      ancestors = []
-#      while current != PurePath():  # while current path isn't relative root
-#          ancestors.append(current)  # add current path to ancestors
-#          current = current.parent  # then update current path to its parent
-#      return ancestors[::-1]  # Now desired list is reverse of ancestors
-
-#  ### SQL Query Helper Methods ###
-#  def insert_into_dir(self, name: str, path: Union[PurePath, str]) -> Optional[int]:
-#      """
-#      Inserts a new record into the dir table.
-#      Takes its anema nd path as arguments.
-#      Returns the id of the new record if it was added,
-#      as there could already be a record with the same unique path.
-#      Otherwise returns None if it wasn't inserted.
-#      Remember, round trip considerations aren't important here,
-#      we're dealing with round trip latencies limited by disk I/O.
-#      """
-#      np = self.normalize_path(path)
-#      id = None
-#      query_id = "SELECT id FROM dir WHERE path = ?"
-#      query_insert = "INSERT INTO dir (name, path) VALUES (?, ?)"
-#      with self.connection() as conn:
-#          cursor = conn.cursor()
-#          cursor.execute(query_id, (str(np),))
-#          id = cursor.fetchone()
-#          if id:  # If it exists it's a duplicate just return the id
-#              return id[0]
-#          else:
-#              cursor.execute(query_insert, (name, str(np)))
-#              return cursor.lastrowid
 
 #  def insert_into_dir_ancestor(
 #      self,

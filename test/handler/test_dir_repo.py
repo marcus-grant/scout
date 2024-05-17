@@ -31,11 +31,25 @@ def base_dbconn():
 
 
 # @pytest.fixture
-# @contextmanager
 # def base_repo():
-#     with temp_dir_context() as tempdir:
-#         repo = DirRepo(tempdir)
-#         yield repo
+#     """Fixture for DirRepo class wrapped in temporary SQLite db file"""
+#     # Setup a temp file for SQLite db
+#     fd, path = tempfile.mkstemp(suffix=".db")
+#     # Close tempfile descriptor to avoid resource leak
+#     os.close(fd)  # DirRepo will open it as needed
+#     # Init DirRepo with temporary db file
+#     repo = DirRepo(path)
+#     yield repo  # Provide fixture return so it gets used
+#     # Teardown, so we don't leave temp files around
+#     os.unlink(path)
+
+
+@pytest.fixture
+@contextmanager
+def base_repo(base_dbconn):
+    with base_dbconn as db:
+        repo = DirRepo(db)
+        yield repo
 
 
 class TestFixtures:
@@ -64,6 +78,19 @@ class TestFixtures:
             assert os.path.isdir(db.root)
             assert DBConnector.read_root(db.path) == db.root
             assert DBConnector.is_scout_db_file(db.path)
+
+    def testBaseRepo(self, base_repo):
+        with base_repo as repo:
+            assert repo.db.root == repo.db.path.parent
+            assert repo.db.path == repo.db.root / ".scout.db"
+            assert os.path.isfile(repo.db.path)
+            assert os.path.isdir(repo.db.root)
+            with repo.db.connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                tables = cursor.fetchall()
+                assert ("dir",) in tables
+                assert ("dir_ancestor",) in tables
 
 
 class TestInitHelpers:
@@ -209,209 +236,37 @@ class TestInit:
                 assert mock_anc.called == (not anc)
 
 
-# @pytest.fixture
-# def base_repo():
-#     """Fixture for DirRepo class wrapped in temporary SQLite db file"""
-#     # Setup a temp file for SQLite db
-#     fd, path = tempfile.mkstemp(suffix=".db")
-#     # Close tempfile descriptor to avoid resource leak
-#     os.close(fd)  # DirRepo will open it as needed
-#     # Init DirRepo with temporary db file
-#     repo = DirRepo(path)
-#     yield repo  # Provide fixture return so it gets used
-#     # Teardown, so we don't leave temp files around
-#     os.unlink(path)
+class TestSQLUtils:
+    def testInsertDir(self, base_repo):
+        """DirRepo.insert_into_dir() inserts correct records & returns correct id."""
+        ids = []
+        with base_repo as repo:
+            root = repo.db.root
+            ids.append(repo.insert_dir(f"{root}/a"))
+            ids.append(repo.insert_dir("a/b"))
+            ids.append(repo.insert_dir("a/b"))
+            ids.append(repo.insert_dir("a/b/c"))
+            ids.append(repo.insert_dir("f/g"))
+            ids.append(repo.insert_dir(f"{root}/f"))
+            ids.append(repo.insert_dir(f"{root}/f"))
+            with repo.db.connect() as conn:
+                rows = conn.execute("SELECT * FROM dir").fetchall()
+        assert len(rows) == 5
+        assert rows[0] == (1, "a")
+        assert rows[1] == (2, "a/b")
+        assert rows[2] == (3, "a/b/c")
+        assert rows[3] == (4, "f/g")
+        assert rows[4] == (5, "f")
+        assert ids == [1, 2, 2, 3, 4, 5, 5]
+
+    # TODO: Improve test coverage
+    def testInsertDirRaise(self, base_repo):
+        """DirRepo.insert_into_dir() raises ValueError for invalid paths."""
+        with base_repo as repo:
+            with pytest.raises(ValueError):
+                repo.insert_dir(repo.db.root.parent)
 
 
-#
-# def test_table_dir(base_repo):
-#     """
-#     Test that the 'directory' table exists with the expected schema,
-#     including checks for primary keys, foreign keys, and nullability.
-#     """
-#     with sqlite3.connect(base_repo.path_db) as conn:
-#         # First ensure the table exists
-#         table_query = """SELECT name FROM sqlite_master
-#                     WHERE type='table' AND name='dir'"""
-#         assert (
-#             "dir" in conn.execute(table_query).fetchone()
-#         ), "Table 'dir' does not exist."
-#
-#
-# def test_table_dir_ancestor(base_repo):
-#     """
-#     Test that the 'dir_ancestor' table exists with the expected schema,
-#     including checks for primary keys, foreign keys, and nullability.
-#     """
-#     with sqlite3.connect(base_repo.path_db) as conn:
-#         # First ensure the table exists
-#         table_query = """SELECT name FROM sqlite_master
-#                     WHERE type='table' AND name='dir_ancestor'"""
-#         assert (
-#             "dir_ancestor" in conn.execute(table_query).fetchone()
-#         ), "Table 'dir_ancestor' does not exist."
-#
-#         # Now query the schema and assert it's valid
-#         schema_query = "PRAGMA table_info(dir_ancestor)"
-#         real_schema = conn.execute(schema_query).fetchall()
-#
-#         # Pragma schema queries come in form of:
-#         # list of (cid, name, type, notnull, dflt_value, key) per column
-#         expected_schema = [
-#             (0, "dir_id", "INTEGER", True, None, 1),
-#             (1, "ancestor_id", "INTEGER", 1, None, 2),
-#             (2, "depth", "INTEGER", True, None, False),
-#         ]
-#
-#         # Check number of columns
-#         msg = "Expected 3 columns in 'dir_ancestor', got {len(real_schema)}"
-#         assert len(real_schema) == len(expected_schema), msg
-#
-#         # Check dir_id column
-#         msg = "Bad dir_ancestor schema in dir_id column."
-#         assert real_schema[0] == expected_schema[0], msg
-#
-#         # Check ancestor_id column
-#         msg = "Bad dir_ancestor schema in ancestor_id column."
-#         assert real_schema[1] == expected_schema[1], msg
-#
-#         # Check depth column
-#         msg = "Bad dir_ancestor schema in depth column."
-#         assert real_schema[2] == expected_schema[2], msg
-#
-#
-# def test_connect(base_repo):
-#     """DirRepo.connection() returns a valid sqlite3.Connection object."""
-#     with base_repo.connection() as conn:
-#         # Assert that we have a valid connection object
-#         assert conn is not None
-#         assert isinstance(conn, sqlite3.Connection)
-#         # Perform a simple operation to ensure the connection is open
-#         cursor = conn.cursor().execute("SELECT 1")
-#         result = cursor.fetchone()
-#         assert result is not None  # This should succeed if the connection is open
-#
-#
-# def test_normalize_path(base_repo):
-#     """
-#     Test that normalize_path correctly normalizes paths to
-#     the root of the directory repo.
-#     Checking for inputs of
-#     parent to repo, outside repo, empty strings, relative paths and
-#     finally absolute paths within repo returned as relative to its root.
-#     """
-#     # Parent, should raise error as it's not within repo
-#     parentpath = base_repo.path.parent
-#     with pytest.raises(ValueError) as excinfo:
-#         base_repo.normalize_path(parentpath)
-#     assert str(excinfo.value) == f"Path, {parentpath}, not within DirRepo!"
-#
-#     # Outside repo path, should raise error
-#     outpath = parentpath / "outside"
-#     with pytest.raises(ValueError) as excinfo:
-#         base_repo.normalize_path(outpath)
-#     assert str(excinfo.value) == f"Path, {outpath}, not within DirRepo!"
-#
-#     # Empty string, should be root of repo
-#     msg = "Root path, should return '.', aka root of repo."
-#     assert base_repo.normalize_path("") == PP("."), msg
-#
-#     # Relative path, should be relative to repo root
-#     relpath = "foo/bar"
-#     msg = "Expected relative path to repo; "
-#     msg += f"{relpath}, got {base_repo.normalize_path(relpath)}"
-#     assert str(base_repo.normalize_path(relpath)) == relpath, msg
-#
-#     # Absolute path within repo, should be relative to repo root
-#     abspath = base_repo.path / "foo" / "bar"
-#     msg = "Expected relative path to repo; "
-#     msg += f"{abspath}, got {base_repo.normalize_path(abspath)}"
-#     assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
-#
-#     # Redo foobar absolute path with Dir object
-#     abspath = Dir(path=abspath)
-#     msg = "Expected relative path to repo; "
-#     msg += f"{abspath.path}, got {base_repo.normalize_path(abspath)}"
-#     assert str(base_repo.normalize_path(abspath)) == "foo/bar", msg
-#
-#
-# def test_denormalize_path(base_repo):
-#     """
-#     DirRepo.denormalize_path() takes path presumed within repo...
-#     - Relative path returned as absolute path appended to repo root
-#     - Absolute path returned as itself IFF within the repo otherwise ValueError
-#     - Empty path returned as repo root's path
-#     """
-#     base = base_repo.path
-#     path = PP("a/b/c")  # Test case 1: relative path
-#     real_path = base_repo.denormalize_path(path)
-#     assert real_path == base / PP("a/b/c"), f"Expected '{base}/a/b/c', got {real_path}"
-#
-#     path = "a"  # Top level relpath ensuring lack of sep and str input OK
-#     real_path = base_repo.denormalize_path(path)
-#     assert real_path == base / PP("a"), f"Expected '{base}/a', got {real_path}"
-#
-#     path = ""  # Empty strings should be OK & represent root of repo
-#     real_path = base_repo.denormalize_path(path)
-#     assert real_path == base, f"Expected repo root {base}, got {real_path}"
-#
-#     path = base / PP("a")  # Absolute path within repo
-#     real_path = base_repo.denormalize_path(path)
-#     assert real_path == path, f"Expected '{base}/a', got {real_path}"
-#
-#     path = base.parent / "outside"  # Absolute path outside repo is error
-#     # Assert ValueError gets raised
-#     with pytest.raises(ValueError) as excinfo:
-#         base_repo.denormalize_path(path)
-#     assert str(excinfo.value) == f"Path, {path}, not within DirRepo {base}!"
-#
-#
-# @pytest.mark.parametrize(
-#     "path,ancestors",  # Input path & expected ancestors
-#     [  # Test case 1: deep path
-#         (PP("a/b/c"), [PP("a"), PP("a/b"), PP("a/b/c")]),
-#         ("a", [PP("a")]),  # Test case 2: shallow path
-#         ("", []),  # Test case 3: empty path
-#     ],
-# )
-# def test_ancestor_paths(base_repo, path, ancestors):
-#     """
-#     DirRepo.ancestor_paths() returns correct ancestors of a path.
-#     In this test, the ancestors of 'a/b/c' are 'a', 'a/b', and 'a/b/c'.
-#     """
-#     if isinstance(path, str) and path:
-#         path = f"{base_repo.path}/{path}"
-#     real_ancestors = base_repo.ancestor_paths(path)
-#     assert real_ancestors == ancestors, f"Expected {ancestors}, got {real_ancestors}"
-#
-#
-# @pytest.mark.parametrize(
-#     "name, path, id",
-#     [("a", "a", 1), ("b", "a/b", 1), ("c", "a/b/c", 1)],
-# )
-# def test_insert_into_dir(base_repo, name, path, id):
-#     """DirRepo.insert_into_dir() inserts correct records & returns correct id."""
-#     real_id = base_repo.insert_into_dir(name, path)
-#     assert real_id == id, f"Expected id = {id}, got {real_id}"
-#     with base_repo.connection() as conn:
-#         row = conn.execute("SELECT * FROM dir WHERE path = ?", (path,)).fetchone()
-#         assert row[0] == id, f"Expected id = {id}, got {row[0]}"
-#         assert row[1] == name, f"Expected name = {name}, got {row[1]}"
-#         assert row[2] == path, f"Expected path = {path}, got {row[2]}"
-#
-#
-# def test_insert_into_dir_duplicate(base_repo):
-#     """DirRepo.insert_into_dir() handles duplicate records gracefully."""
-#     # Insert a record
-#     base_repo.insert_into_dir("a", "a")
-#     # Try to insert a duplicate record
-#     real_id = base_repo.insert_into_dir("a", "a")
-#     msg = f"Expected ID of 1 of duplicate dir row, got {real_id}"
-#     assert real_id == 1, msg
-#     with base_repo.connection() as conn:
-#         real_rows = conn.execute("SELECT * FROM dir WHERE path = 'a'").fetchall()
-#         assert len(real_rows) == 1, f"Expected 1 row, got {len(real_rows)}"
-#
 #
 # def test_insert_into_dir_raise(base_repo):
 #     """DirRepo.insert_into_dir() raises ValueError for invalid paths."""
