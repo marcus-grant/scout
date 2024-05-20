@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, MagicMock
 
 from scoutlib.handler.db_connector import DBConnector
+from scoutlib.model.dir import Dir
 
 MOD_BASE = "scoutlib.handler.db_connector.DBConnector"
 
@@ -474,6 +475,15 @@ class TestInit:
 
 
 class TestPathHelpers:
+    def testNormDiffTypeInSameOut(self, mock_db_conn):
+        """normalize_path should return same output for different input types."""
+        fn = mock_db_conn.normalize_path
+        assert fn("a/b") == fn(PP("a/b"))
+        assert fn("/test/root/a/b") == fn(PP("/test/root/a/b"))
+        assert fn(Dir("a/b")) == fn(PP("a/b"))
+        assert fn(Dir("/test/root/a/b")) == fn(PP("/test/root/a/b"))
+
+    # TODO: Stick to one input type and use test case to ensure diff types return same output
     @pytest.mark.parametrize(
         "path, expect",
         [

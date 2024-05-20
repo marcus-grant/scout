@@ -4,6 +4,8 @@ from pathlib import PurePath as PP
 import sqlite3 as sql
 from typing import Optional, Union, Generator, List
 
+from scoutlib.model.dir import Dir
+
 
 class DBConnector:
     """
@@ -177,7 +179,7 @@ class DBConnector:
             raise ValueError(f"{self.path} must be empty or scout db file.")
 
     ### Path Utility Methods
-    def normalize_path(self, denormalized_path: Union[PP, str]) -> PP:
+    def normalize_path(self, denormalized_path: Union[Dir, PP, str]) -> PP:
         """
         Normalize a path relative to the root directory this database tracks.
         Relative paths are kept relative on
@@ -189,13 +191,25 @@ class DBConnector:
         Raises:
             ValueError: If the path is not relative to the root directory.
         """
+        # Check for unresolvable path syntax
         if ".." in str(denormalized_path):
             msg = f"Relative ancestor paths (..) of {denormalized_path} not supported."
             raise ValueError(msg)
-        path = PP(denormalized_path)
+        # Coerce to PP type
+        path = None
+        if isinstance(denormalized_path, Dir):
+            path = denormalized_path.path
+        elif isinstance(denormalized_path, str):
+            path = PP(denormalized_path)
+        elif isinstance(denormalized_path, PP):
+            path = denormalized_path
+        else:
+            raise TypeError(f"path {denormalized_path} must be a Dir, PurePath or str")
+
+        # If relative prepend the root so we can use pathlib's relative_to
         if not path.is_absolute():
             path = self.root / path
-        path = path.relative_to(self.root)
+        path = path.relative_to(self.root)  # Finally normalize
         return path
 
     def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:
