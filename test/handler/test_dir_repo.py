@@ -238,7 +238,9 @@ class TestInit:
 
 class TestSQLUtils:
     def testInsertDir(self, base_repo):
-        """DirRepo.insert_into_dir() inserts correct records & returns correct id."""
+        """DirRepo.insert_into_dir() inserts correct records & returns correct id.
+        Includes absolute and relative to root paths to check they get normalized.
+        Also includes duplicate paths to ensure they don't get added twice."""
         ids = []
         with base_repo as repo:
             root = repo.db.root
@@ -266,26 +268,26 @@ class TestSQLUtils:
             with pytest.raises(ValueError):
                 repo.insert_dir(repo.db.root.parent)
 
+    def testInsertDirAncestorValues(self, base_repo):
+        """DirRepo.insert_dir_ancestor() inserts correct records."""
+        with base_repo as repo:
+            expect = [(1, 0, 1), (2, 1, 2), (3, 0, 1)]
+            repo.insert_dir_ancestor(expect)
+            with repo.db.connect() as conn:
+                rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+            assert rows == expect
 
-#
-# def test_insert_into_dir_raise(base_repo):
-#     """DirRepo.insert_into_dir() raises ValueError for invalid paths."""
-#     with pytest.raises(ValueError) as excinfo:
-#         base_repo.insert_into_dir("a", base_repo.path.parent)
-#     assert str(excinfo.value) == f"Path, {base_repo.path.parent}, not within DirRepo!"
-#     with pytest.raises(TypeError) as excinfo:
-#         base_repo.insert_into_dir("a")
-#
-#
-# def test_insert_into_dir_ancestor(base_repo):
-#     """DirRepo.insert_into_dir_ancestor() inserts correct records."""
-#     rows = [(1, 0, 1), (2, 1, 2), (3, 0, 1)]
-#     base_repo.insert_into_dir_ancestor(rows)
-#     with base_repo.connection() as conn:
-#         real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-#     assert real_rows == rows, f"Expected rows: {rows}, got {real_rows}"
-#
-#
+    def testInsertDirAncestorDupes(self, base_repo):
+        """DirRepo.insert_dir_ancestor() doesn't add duplicate rows to dir_ancestor"""
+        dupe_row = (1, 1, 1)
+        with base_repo as repo:
+            repo.insert_dir_ancestor([dupe_row, dupe_row, dupe_row])
+            with repo.db.connect() as conn:
+                rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+            assert len(rows) == 1
+            assert rows[0] == dupe_row
+
+
 # def test_insert_into_dir_ancestor_duplicate(base_repo):
 #     """
 #     DirRepo.insert_into_dir_ancestor() handles duplicate records gracefully.

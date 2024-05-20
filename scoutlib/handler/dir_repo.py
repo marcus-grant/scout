@@ -67,7 +67,7 @@ class DirRepo:
 
     #  ### SQL Query Helper Methods ###
 
-    # TODO: Benchmark this, less round trip latency than server conn, but could be slow
+    # TODO: Benchmark this, no server so latency not a concern, but could be slow
     def insert_dir(self, path: Union[PP, str]) -> Optional[int]:
         """
         Inserts a new record into the dir table with the given name and path.
@@ -87,29 +87,26 @@ class DirRepo:
             id = cursor.fetchone()
             if id:  # If it exists it's a duplicate just return the id
                 return id[0]
-            else:
-                cursor.execute(query_insert, (str(np),))
-                return cursor.lastrowid
+            cursor.execute(query_insert, (str(np),))
+            return cursor.lastrowid
 
+    def insert_dir_ancestor(self, dir_ancestor_rows: list[tuple[int, int, int]]):
+        """
+        Inserts multiple records into the dir_ancestor table.
+        Args:
+            dir_ancestor_rows (list[tuple[int, int, int]]):
+                List of tuples containing dir_id, ancestor_id, and depth.
+        """
+        with self.db.connect() as conn:
+            c = conn.cursor()
+            for row in dir_ancestor_rows:
+                c.execute(
+                    """INSERT INTO dir_ancestor (dir_id, ancestor_id, depth)
+                    VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
+                    row,
+                )
+            conn.commit()
 
-#  def insert_into_dir_ancestor(
-#      self,
-#      dir_ancestor_rows: list[tuple[int, int, int]],  # dir_id, ancestor_id, depth
-#  ):
-#      """
-#      Inserts a dir_ancestor records into the dir_ancestor table.
-#      """
-#      ""
-#      with self.connection() as conn:
-#          cursor = conn.cursor()
-#          for row in dir_ancestor_rows:
-#              cursor.execute(
-#                  """
-#                  INSERT INTO dir_ancestor (dir_id, ancestor_id, depth)
-#                  VALUES (?, ?, ?) ON CONFLICT DO NOTHING""",
-#                  row,
-#              )
-#          conn.commit()
 
 #  def select_dir_where_path(
 #      self, path: Union[Dir, PurePath, str]
