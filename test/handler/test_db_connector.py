@@ -28,6 +28,15 @@ def bare_db():
         yield db
 
 
+@pytest.fixture
+def mock_db_conn():
+    with patch.object(DBConnector, "__init__", return_value=None) as mock:
+        mock = DBConnector()  # type: ignore
+        mock.path = PP("/test/.scout.db")
+        mock.root = PP("/test/root")
+        yield mock
+
+
 # TODO: Give comment including filetree contents
 @pytest.fixture
 @contextmanager
@@ -462,15 +471,6 @@ class TestInit:
                 c = conn.cursor()
                 c.execute("SELECT value FROM fs_meta WHERE property='root';")
                 assert c.fetchone()[0] == str(root)
-
-
-@pytest.fixture
-def mock_db_conn():
-    with patch.object(DBConnector, "__init__", return_value=None) as mock:
-        mock = DBConnector()  # type: ignore
-        mock.path = PP("/test/.scout.db")
-        mock.root = PP("/test/root")
-        yield mock
 
 
 class TestPathHelpers:
