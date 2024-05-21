@@ -39,7 +39,7 @@ def base_repo(base_dbconn):
         yield repo
 
 
-def same_row(real: List[Tuple], expected: List[Tuple], pk_index: int = 0) -> bool:
+def same_rows(real: List[Tuple], expected: List[Tuple], pk_index: int = 0) -> bool:
     """
     Determine if two lists of tuples represent the same records by comparing the primary key.
 
@@ -153,25 +153,25 @@ class TestFixtures:
     def testSameRowEqual(self):
         real = [(1, "a", b"dead"), (2, "b", b"beef"), (3, "c", b"cafe")]
         expect = real
-        assert same_row(real, expect)
+        assert same_rows(real, expect)
 
     def testSameRowDiffLen(self):
         rows = [(1,), (2,)]
-        assert not same_row(rows, rows + [(3,)])
+        assert not same_rows(rows, rows + [(3,)])
 
     def testSameRowDiffPK(self):
-        assert not same_row(
+        assert not same_rows(
             [(1, "a"), (2, "b"), (3, "c")], [(1, "a"), (2, "b"), (4, "c")]
         )
 
     def testSameRowNonZeroPKIdx(self):
-        assert same_row(
+        assert same_rows(
             [(1, "a"), (2, "b"), (3, "c")], [(1, "a"), (2, "b"), (3, "c")], pk_index=1
         )
 
     def testSameRowEmpty(self):
-        assert same_row([], [])
-        assert not same_row([(1,)], [])
+        assert same_rows([], [])
+        assert not same_rows([(1,)], [])
 
 
 class TestInitHelpers:
@@ -474,34 +474,6 @@ class TestSelectUtils:
             assert repo.select_dir_where_id(4) is None
 
 
-# def test_same_row():
-#     """
-#     Test helper function same_row:
-#     - True for rows with matching primary keys but diff num fields
-#     - True for rows with matching keys but different key index
-#     - False for rows with different primary keys
-#     - Same but nonzero pk_index
-#     - False on row count mismatch
-#     """
-#     real = [(1, "a", 10), (2, "b", 20), (3, "c", 30)]
-#     expected = [(1, "a"), (2, "b"), (3, "x")]
-#     assert same_row(real, expected)
-#
-#     real = [(False, 1), (True, 2), (False, 3)]
-#     expected = [("a", 1, False), ("b", 2, True), ("c", 3, False)]
-#     assert same_row(real, expected, pk_index=1)
-#
-#     real = [(4,), (9,)]
-#     expected = [(1,), (2,)]
-#     assert not same_row(real, expected)
-#
-#     real = [(1, "a"), (2, "b"), (3, "c")]
-#     expected = [("a", 1), ("b", 2), ("c", 3)]
-#     assert not same_row(real, expected, pk_index=1)
-#
-#     real = [(1, "a"), (2, "b"), (3, "c")]
-#     expected = [(1, "a"), (2, "b")]
-#     assert not same_row(real, expected)
 #
 #
 # def test_ancestor_dirs_where_path(test_repo):
