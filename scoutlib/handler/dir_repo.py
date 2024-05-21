@@ -107,23 +107,22 @@ class DirRepo:
                 )
             conn.commit()
 
-    #  def select_dir_where_path(
-    #      self, path: Union[Dir, PurePath, str]
-    #  ) -> Optional[tuple[int, str, str]]:
-    #      np = self.normalize_path(path)
-    #      res = None  # Result
-    #      with self.connection() as conn:
-    #          query = "SELECT * FROM dir WHERE path = ?"
-    #          res = conn.execute(query, (str(np),)).fetchone()
-    #      return res
+    def select_dir_where_path(self, path: str) -> Optional[tuple[int, str]]:
+        """Basic query execution helper that
+        selects a 'dir' table row WHERE path = passed path"""
+        res = None  # Result
+        with self.db.connect() as conn:
+            q = f"SELECT * FROM dir WHERE path = '{path}'"
+            res = conn.execute(q).fetchone()
+        return res
 
-    #  def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
-    #      """Returns the dir row tuple with matching id, or None if no match."""
-    #      res = None  # Result
-    #      with self.connection() as conn:
-    #          query = "SELECT * FROM dir WHERE id = ?"
-    #          res = conn.execute(query, (id,)).fetchone()
-    #      return res
+    def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
+        """Returns the dir row tuple with matching id, or None if no match."""
+        res = None  # Result
+        with self.db.connect() as conn:
+            q = f"SELECT * FROM dir WHERE id = {id}"
+            res = conn.execute(q).fetchone()
+        return res
 
     #  def ancestor_dirs_where_path(
     #      self,

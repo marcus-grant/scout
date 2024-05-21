@@ -384,8 +384,6 @@ class TestAdd:
             assert real_da_rows == da_rows
 
 
-#
-#
 # D_A = Dir("a", 1)
 # D_B = Dir("a/b", 2)
 # D_C = Dir("a/b/c", 3)
@@ -394,36 +392,40 @@ class TestAdd:
 # D_F = Dir("f", 6)
 # D_G = Dir("f/g", 7)
 # D_H = Dir("f/h", 8)
-#
-#
-# @pytest.mark.parametrize(
-#     "path,id",
-#     [("no/exist", None), ("a", 1), ("a/b/c", 3), ("a/d", 4), ("f/g", 7)],
-# )
-# def test_select_dir_where_path(test_repo, path, id):
-#     """Test that select_dir_where_path returns expected id for given path."""
-#     if not id:
-#         assert test_repo.select_dir_where_path(path) is None
-#         return
-#     real_id = test_repo.select_dir_where_path(path)[0]
-#     assert real_id == id, f"Expected dir.id = {id}, got {real_id}"
-#
-#
-# @pytest.mark.parametrize(
-#     "id,path",
-#     [(None, "no/exist"), (3, "a/b/c"), (5, "a/e"), (6, "f"), (8, "f/h")],
-# )
-# def test_select_dir_where_id(test_repo, id, path):
-#     """DirRepo.select_dir_where_id() returns correct Dir object."""
-#     row = test_repo.select_dir_where_id(id)
-#     if not id:  # If id is None, we should get None
-#         assert row is None, "Dir with path 'no/exist' should return an table row"
-#         return
-#     msg = f"Expected Dir.id = {id} when select by id, got {row[0]}"
-#     assert row[0] == id, msg
-#     msg = f"Expected Dir.path = {path} when select id={id}, got {row[1]}"
-#     assert str(row[2]) == path, msg
-#
+
+
+class TestSelectUtils:
+    """Test SELECT query utility methods"""
+
+    @pytest.mark.parametrize("path,expect", [("f", 6), ("a/b/c", 3), ("f/g", 7)])
+    def testDirWherePath(self, test_repo, path, expect):
+        """Test that select_dir_where_path returns expected id for given path."""
+        with test_repo as repo:
+            assert repo.select_dir_where_path(path)[0] == expect
+
+    def testDirWherePathNoExist(self, base_repo):
+        """Test that select_dir_where_path returns None for paths that dont exist in dir."""
+        # Base repo has no dir records so anything we select shouldnt exist
+        with base_repo as repo:
+            assert repo.select_dir_where_path("foobar") is None
+            repo.add(Dir(path="foobaz"))
+            assert repo.select_dir_where_path("foobar") is None
+
+    @pytest.mark.parametrize("id,expect", [(6, "f"), (3, "a/b/c"), (7, "f/g")])
+    def testDirWhereId(self, test_repo, id, expect):
+        """DirRepo.select_dir_where_id() returns correct row from dir"""
+        with test_repo as repo:
+            assert repo.select_dir_where_id(id)[0] == id
+            assert repo.select_dir_where_id(id)[1] == expect
+
+    def testDirWhereIdNoExist(self, base_repo):
+        """DirRepo.select_dir_where_id returns None on non-existing ids in dir."""
+        with base_repo as repo:
+            assert repo.select_dir_where_id(42) is None
+            repo.add(Dir(path="foobar/blah/foobaz"))
+            assert repo.select_dir_where_id(4) is None
+
+
 #
 # def same_row(real: list[tuple], expected: list[tuple], pk_index: int = 0):
 #     """
