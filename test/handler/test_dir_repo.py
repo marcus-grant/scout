@@ -236,7 +236,7 @@ class TestInit:
                 assert mock_anc.called == (not anc)
 
 
-class TestSQLUtils:
+class TestInsertUtils:
     def testInsertDir(self, base_repo):
         """DirRepo.insert_into_dir() inserts correct records & returns correct id.
         Includes absolute and relative to root paths to check they get normalized.
@@ -288,6 +288,69 @@ class TestSQLUtils:
             assert rows[0] == dupe_row
 
 
+class TestAdd:
+    def testNoAncestorDirs(self, base_repo):
+        """DirRepo.add() adds a directory without ancestors correctly."""
+        with base_repo as repo:
+            # Dir a @ root level
+            dir = Dir(path=repo.db.root / "a")
+            repo.add(dir)
+            assert dir.id == 1
+            with repo.db.connect() as conn:
+                rows = conn.execute("SELECT * FROM dir").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, "a")
+                rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, 1, 0)
+            # Dir b @ root level
+            dir = Dir(path="b")
+            repo.add(dir)
+            assert dir.id == 2
+            with repo.db.connect() as conn:
+                rows = conn.execute("SELECT * FROM dir").fetchall()
+                assert len(rows) == 2
+                assert rows[1] == (2, "b")
+                rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+                assert len(rows) == 2
+                assert rows[1] == (2, 2, 0)
+
+    def testDeepNesting(self, base_repo):
+        """
+        DirRepo.add() adds a directory with ancestors correctly.
+            - dir table has a, a/b, a/b/c, a/b/c/d as individual records
+            - they all have 1...4 as their id respectively
+            - all other dependant columns are as expected
+            - dir_ancestor table has all the expected foreign keys
+            - dir_ancestor records are in right order
+        """
+        with base_repo as repo:
+            root = repo.db.root
+            # First arrange expected returned Dir list
+            dira = Dir(path=root / "a", id=1)
+            dirb = Dir(path=root / "a/b", id=2)
+            dirc = Dir(path=root / "a/b/c", id=3)
+            dird = Dir(path=root / "a/b/c/d", id=4)
+            dirs = [dira, dirb, dirc, dird]
+
+            # Act on the repo with add
+            real_dirs = repo.add(Dir(path=(root / "a/b/c/d")))
+
+            # Assert that the returned list is as expected
+            assert real_dirs == dirs, f"Expected Dir list: {dirs}, got {real_dirs}"
+            # Assert the dir & dir_ancestor tables are as expected
+            d_rows = [(1, "a"), (2, "a/b"), (3, "a/b/c"), (4, "a/b/c/d")]
+            da_rows = [(1, 1, 0)]
+            da_rows += [(2, 2, 0), (2, 1, 1)]
+            da_rows += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
+            da_rows += [(4, 4, 0), (4, 3, 1), (4, 2, 2), (4, 1, 3)]
+            with repo.db.connect() as conn:
+                real_drows = conn.execute("SELECT * FROM dir").fetchall()
+                real_da_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
+            assert real_drows == d_rows
+            assert real_da_rows == da_rows
+
+
 # def test_insert_into_dir_ancestor_duplicate(base_repo):
 #     """
 #     DirRepo.insert_into_dir_ancestor() handles duplicate records gracefully.
@@ -301,52 +364,6 @@ class TestSQLUtils:
 #     assert len(real_rows) == 2, "Expected no duplicate ancestor_dir rows"
 #
 #
-# def test_add_without_ancestors(base_repo):
-#     """DirRepo.add() adds a directory without ancestors correctly."""
-#     base = base_repo.path
-#     dir = Dir(path=base / "a")
-#     base_repo.add(dir)
-#     assert dir.id == 1, f"Expected id = 1, got {dir.id}"
-#     assert str(dir.path) == f"{base}/a", f"Expected path = {base}/a, got {dir.path}"
-#     dir_b = Dir(path=base / "b")
-#     base_repo.add(dir_b)
-#     assert dir_b.id == 2, f"Expected id = 2, got {dir_b.id}"
-#     assert str(dir_b.path) == f"{base}/b", f"Expected path = {base}/b, got {dir_b.path}"
-#
-#
-# def test_add_with_ancestors(base_repo):
-#     """
-#     DirRepo.add() adds a directory with ancestors correctly.
-#         - dir table has a, a/b, a/b/c, a/b/c/d as individual records
-#         - they all have 1...4 as their id respectively
-#         - all other dependant columns are as expected
-#         - dir_ancestor table has all the expected foreign keys
-#         - dir_ancestor records are in right order
-#     """
-#     # First arrange expected returned Dir list
-#     dira = Dir(path=base_repo.path / "a", id=1)
-#     dirb = Dir(path=base_repo.path / "a/b", id=2)
-#     dirc = Dir(path=base_repo.path / "a/b/c", id=3)
-#     dird = Dir(path=base_repo.path / "a/b/c/d", id=4)
-#     dirs = [dira, dirb, dirc, dird]
-#
-#     # Act on the repo with add
-#     base = base_repo.path
-#     real_dirs = base_repo.add(Dir(path=(base / "a/b/c/d")))
-#
-#     # Assert that the returned list is as expected
-#     assert real_dirs == dirs, f"Expected Dir list: {dirs}, got {real_dirs}"
-#     # Assert the dir & dir_ancestor tables are as expected
-#     d_rows = [(1, "a", "a"), (2, "b", "a/b"), (3, "c", "a/b/c"), (4, "d", "a/b/c/d")]
-#     da_rows = [(1, 1, 0)]
-#     da_rows += [(2, 2, 0), (2, 1, 1)]
-#     da_rows += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
-#     da_rows += [(4, 4, 0), (4, 3, 1), (4, 2, 2), (4, 1, 3)]
-#     with base_repo.connection() as conn:
-#         real_drows = conn.execute("SELECT * FROM dir").fetchall()
-#         real_da_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-#     assert real_drows == d_rows, f"Expected rows: {d_rows}, got {real_drows}"
-#     assert real_da_rows == da_rows, f"Expected rows: {da_rows}, got {real_da_rows}"
 #
 #
 # # TODO: Should teardown be added?

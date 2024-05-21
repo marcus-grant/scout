@@ -107,152 +107,152 @@ class DirRepo:
                 )
             conn.commit()
 
+    #  def select_dir_where_path(
+    #      self, path: Union[Dir, PurePath, str]
+    #  ) -> Optional[tuple[int, str, str]]:
+    #      np = self.normalize_path(path)
+    #      res = None  # Result
+    #      with self.connection() as conn:
+    #          query = "SELECT * FROM dir WHERE path = ?"
+    #          res = conn.execute(query, (str(np),)).fetchone()
+    #      return res
 
-#  def select_dir_where_path(
-#      self, path: Union[Dir, PurePath, str]
-#  ) -> Optional[tuple[int, str, str]]:
-#      np = self.normalize_path(path)
-#      res = None  # Result
-#      with self.connection() as conn:
-#          query = "SELECT * FROM dir WHERE path = ?"
-#          res = conn.execute(query, (str(np),)).fetchone()
-#      return res
+    #  def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
+    #      """Returns the dir row tuple with matching id, or None if no match."""
+    #      res = None  # Result
+    #      with self.connection() as conn:
+    #          query = "SELECT * FROM dir WHERE id = ?"
+    #          res = conn.execute(query, (id,)).fetchone()
+    #      return res
 
-#  def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
-#      """Returns the dir row tuple with matching id, or None if no match."""
-#      res = None  # Result
-#      with self.connection() as conn:
-#          query = "SELECT * FROM dir WHERE id = ?"
-#          res = conn.execute(query, (id,)).fetchone()
-#      return res
+    #  def ancestor_dirs_where_path(
+    #      self,
+    #      path: Union[PurePath, str],
+    #      depth: Optional[int] = 2**31 - 1,
+    #  ) -> list[tuple[int, str, str]]:
+    #      np = self.normalize_path(path)
+    #      if depth is None:
+    #          depth = 2**31 - 1
+    #      with self.connection() as conn:
+    #          query = """
+    #              SELECT ancestor_dirs.*
+    #              FROM ( -- query for dir.id with given path
+    #                  SELECT d.id AS target_dir_id
+    #                  FROM dir d
+    #                  WHERE d.path = ?
+    #              ) AS target_dir -- target_dir.id now holds dir.id of target path
+    #              JOIN dir_ancestor da ON target_dir.target_dir_id = da.dir_id
+    #              JOIN dir ancestor_dirs ON da.ancestor_id = ancestor_dirs.id
+    #              WHERE da.depth <= ? and da.depth > 0
+    #              ORDER BY da.depth
+    #          """
+    #          res = conn.execute(query, (str(np), depth)).fetchall()
+    #          return res
 
-#  def ancestor_dirs_where_path(
-#      self,
-#      path: Union[PurePath, str],
-#      depth: Optional[int] = 2**31 - 1,
-#  ) -> list[tuple[int, str, str]]:
-#      np = self.normalize_path(path)
-#      if depth is None:
-#          depth = 2**31 - 1
-#      with self.connection() as conn:
-#          query = """
-#              SELECT ancestor_dirs.*
-#              FROM ( -- query for dir.id with given path
-#                  SELECT d.id AS target_dir_id
-#                  FROM dir d
-#                  WHERE d.path = ?
-#              ) AS target_dir -- target_dir.id now holds dir.id of target path
-#              JOIN dir_ancestor da ON target_dir.target_dir_id = da.dir_id
-#              JOIN dir ancestor_dirs ON da.ancestor_id = ancestor_dirs.id
-#              WHERE da.depth <= ? and da.depth > 0
-#              ORDER BY da.depth
-#          """
-#          res = conn.execute(query, (str(np), depth)).fetchall()
-#          return res
+    #  def ancestor_dirs_where_id(
+    #      self, id: int, depth: Optional[int] = 2**31 - 1
+    #  ) -> list[tuple[int, str, str]]:
+    #      if depth is None:
+    #          depth = 2**31 - 1
+    #      with self.connection() as conn:
+    #          query = """
+    #          SELECT ancestor_dirs.*
+    #          FROM ( -- query for dir.id with given id
+    #              SELECT d.id AS target_dir_id
+    #              FROM dir d
+    #              WHERE d.id = ?
+    #          ) AS target_dir -- target_dir.id now holds dir.id of target path
+    #          JOIN dir_ancestor da ON target_dir.target_dir_id = da.dir_id
+    #          JOIN dir ancestor_dirs ON da.ancestor_id = ancestor_dirs.id
+    #          WHERE da.depth <= ? and da.depth > 0
+    #          ORDER BY da.depth
+    #          """
+    #          res = conn.execute(query, (id, depth)).fetchall()
+    #          return res
 
-#  def ancestor_dirs_where_id(
-#      self, id: int, depth: Optional[int] = 2**31 - 1
-#  ) -> list[tuple[int, str, str]]:
-#      if depth is None:
-#          depth = 2**31 - 1
-#      with self.connection() as conn:
-#          query = """
-#          SELECT ancestor_dirs.*
-#          FROM ( -- query for dir.id with given id
-#              SELECT d.id AS target_dir_id
-#              FROM dir d
-#              WHERE d.id = ?
-#          ) AS target_dir -- target_dir.id now holds dir.id of target path
-#          JOIN dir_ancestor da ON target_dir.target_dir_id = da.dir_id
-#          JOIN dir ancestor_dirs ON da.ancestor_id = ancestor_dirs.id
-#          WHERE da.depth <= ? and da.depth > 0
-#          ORDER BY da.depth
-#          """
-#          res = conn.execute(query, (id, depth)).fetchall()
-#          return res
+    #  def descendant_dirs_where_path(
+    #      self,
+    #      path: Union[PurePath, str],
+    #      depth: Optional[int] = 2**31 - 1,
+    #  ) -> list[tuple[int, str, str]]:
+    #      if depth is None:
+    #          depth = 2**31 - 1
+    #      np = self.normalize_path(path)
+    #      res = []
+    #      with self.connection() as conn:
+    #          query = """
+    #              SELECT descendant_dirs.*
+    #              FROM ( -- query for dir.id with given path
+    #                  SELECT d.id AS target_dir_id
+    #                  FROM dir d
+    #                  WHERE d.path = ?
+    #              ) AS target_dir -- target_dir.id now holds dir.id of target path
+    #              JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
+    #              JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
+    #              WHERE da.depth <= ? and da.depth > 0
+    #              ORDER BY da.depth
+    #          """
+    #          res = conn.execute(query, (str(np), depth)).fetchall()
+    #      return res
 
-#  def descendant_dirs_where_path(
-#      self,
-#      path: Union[PurePath, str],
-#      depth: Optional[int] = 2**31 - 1,
-#  ) -> list[tuple[int, str, str]]:
-#      if depth is None:
-#          depth = 2**31 - 1
-#      np = self.normalize_path(path)
-#      res = []
-#      with self.connection() as conn:
-#          query = """
-#              SELECT descendant_dirs.*
-#              FROM ( -- query for dir.id with given path
-#                  SELECT d.id AS target_dir_id
-#                  FROM dir d
-#                  WHERE d.path = ?
-#              ) AS target_dir -- target_dir.id now holds dir.id of target path
-#              JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
-#              JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
-#              WHERE da.depth <= ? and da.depth > 0
-#              ORDER BY da.depth
-#          """
-#          res = conn.execute(query, (str(np), depth)).fetchall()
-#      return res
+    #  # TODO: Fix depth checks not working as expected in test_get_descendandants_dirs #2
+    #  def descendant_dirs_where_id(
+    #      self, id: int, depth: Optional[int] = 2**31 - 1
+    #  ) -> list[tuple[int, str, str]]:
+    #      if depth is None:
+    #          depth = 2**31 - 1
+    #      res = []
+    #      with self.connection() as conn:
+    #          query = """
+    #          SELECT descendant_dirs.*
+    #          FROM ( -- query for dir.id with given id
+    #              SELECT d.id AS target_dir_id
+    #              FROM dir d
+    #              WHERE d.id = ?
+    #          ) AS target_dir -- target_dir.id now holds dir.id of target path
+    #          JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
+    #          JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
+    #          WHERE da.depth <= ? and da.depth > 0
+    #          ORDER BY da.depth
+    #          """
+    #          res = conn.execute(query, (id, depth)).fetchall()
+    #      return res
 
-#  # TODO: Fix depth checks not working as expected in test_get_descendandants_dirs #2
-#  def descendant_dirs_where_id(
-#      self, id: int, depth: Optional[int] = 2**31 - 1
-#  ) -> list[tuple[int, str, str]]:
-#      if depth is None:
-#          depth = 2**31 - 1
-#      res = []
-#      with self.connection() as conn:
-#          query = """
-#          SELECT descendant_dirs.*
-#          FROM ( -- query for dir.id with given id
-#              SELECT d.id AS target_dir_id
-#              FROM dir d
-#              WHERE d.id = ?
-#          ) AS target_dir -- target_dir.id now holds dir.id of target path
-#          JOIN dir_ancestor da ON target_dir.target_dir_id = da.ancestor_id
-#          JOIN dir descendant_dirs ON da.dir_id = descendant_dirs.id
-#          WHERE da.depth <= ? and da.depth > 0
-#          ORDER BY da.depth
-#          """
-#          res = conn.execute(query, (id, depth)).fetchall()
-#      return res
+    #  ### Repo Actions ###
+    def add(self, dir: Dir) -> list[Dir]:
+        # TODO: Come back to this method later when we know more how to use it.
+        # NOTE: There's a problem of how we handle ids here,
+        # it might be better to allow raising errors on adding dirs without parent.
+        """
+        Adds a Dir object's data to the database.
+        This includes:
+            - Splitting ancestors in path into separate records
+            - Adding the directory itself
+            - Adding to dir_ancestor table for each ancestor
+            - In-place updating the passed directory object with its id
+        """
+        # Normalize Leaf Dir Path (lp) to repo
+        lp = self.db.normalize_path(dir.path)
+        aps = self.db.ancestor_paths(lp)  # Get ancestor paths (aps)
+        # Add all ancestors to dir table noting that duplicates will be ignored
+        ids = []
+        for ap in aps:
+            id = self.insert_dir(ap)
+            ids.append(id)
+        dir.id = ids[-1]  # Ensure last id on leaf dir id
 
-#  ### Repo Actions ###
-#  def add(self, dir: Dir) -> list[Dir]:
-#      # TODO: Come back to this method later when we know more how to use it.
-#      # NOTE: There's a problem of how we handle ids here,
-#      # it might be better to allow raising errors on adding dirs without parent.
-#      """
-#      Adds a Dir object's data to the database.
-#      This includes:
-#          - Splitting ancestors in path into separate records
-#          - Adding the directory itself
-#          - Adding to dir_ancestor table for each ancestor
-#          - In-place updating the passed directory object with its id
-#      """
-#      # Normalize Leaf Dir Path (lp) to repo
-#      lp = self.normalize_path(dir.path)
-#      aps = self.ancestor_paths(lp)  # Get ancestor paths (aps)
-#      # Add all ancestors to dir table noting that duplicates will be ignored
-#      ids = []
-#      for ap in aps:
-#          id = self.insert_into_dir(ap.name, ap)
-#          ids.append(id)
-#      dir.id = ids[-1]  # Ensure last id on leaf dir id
+        #       # Now we need to arrange the dir_ancestor rows (da_rows)
+        da_rows = []
+        for i, ap in enumerate(aps):
+            for j in range(i, -1, -1):  # Reverse order from i to 0 of ids
+                da_rows.append((ids[i], ids[j], i - j))
+        self.insert_dir_ancestor(da_rows)  # Insert rows to dir_ancestor
 
-#      # Now we need to arrange the dir_ancestor rows (da_rows)
-#      da_rows = []
-#      for i, ap in enumerate(aps):
-#          for j in range(i, -1, -1):  # Reverse order from i to 0 of ids
-#              da_rows.append((ids[i], ids[j], i - j))
-#      self.insert_into_dir_ancestor(da_rows)  # Insert rows to dir_ancestor
+        # Now create directories with assigned ids and other attrs given
+        daps = [self.db.denormalize_path(ap) for ap in aps]
+        dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
+        return dirs
 
-#      # Now create directories with assigned ids and other attrs given
-#      daps = [self.denormalize_path(ap) for ap in aps]
-#      dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
-#      return dirs
 
 #  def getone(
 #      self,
