@@ -52,6 +52,30 @@ def base_repo(base_dbconn):
         yield repo
 
 
+# TODO: Should teardown be added?
+@pytest.fixture
+@contextmanager
+def test_repo(base_repo):
+    """
+    Create a DirRepo with a preset directory tree for testing like so:
+    Dir Tree: (id)
+    a(1)/ ─┬─ b(2)/─── c(3)/
+           ├─ d(4)/
+           └─ e(5)/
+    f(6)/ ─┬─ g(7)/
+           └─ h(8)/
+    NOTE: Uses DirRepo.add() to create the tree in the database.
+            Should be used AFTER asserting DirRepo.add() works.
+    """
+    with base_repo as repo:
+        repo.add(Dir(path=repo.db.root / "a/b/c"))
+        repo.add(Dir(path=repo.db.root / "a/d"))
+        repo.add(Dir(path=repo.db.root / "a/e"))
+        repo.add(Dir(path=repo.db.root / "f/g"))
+        repo.add(Dir(path=repo.db.root / "f/h"))
+        yield repo
+
+
 class TestFixtures:
     """Test fixtures for use in later tests"""
 
@@ -91,6 +115,29 @@ class TestFixtures:
                 tables = cursor.fetchall()
                 assert ("dir",) in tables
                 assert ("dir_ancestor",) in tables
+
+    def testTestRepo(self, test_repo):
+        d_rows = []
+        da_rows = []
+        with test_repo as repo:
+            with repo.db.connect() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM dir")
+                d_rows = cursor.fetchall()
+                cursor.execute("SELECT * FROM dir_ancestor")
+                da_rows = cursor.fetchall()
+        d_expect = [(1, "a"), (2, "a/b"), (3, "a/b/c")]
+        d_expect += [(4, "a/d"), (5, "a/e"), (6, "f"), (7, "f/g"), (8, "f/h")]
+        assert d_rows == d_expect
+        da_expect = [(1, 1, 0)]
+        da_expect += [(2, 2, 0), (2, 1, 1)]
+        da_expect += [(3, 3, 0), (3, 2, 1), (3, 1, 2)]
+        da_expect += [(4, 4, 0), (4, 1, 1)]
+        da_expect += [(5, 5, 0), (5, 1, 1)]
+        da_expect += [(6, 6, 0)]
+        da_expect += [(7, 7, 0), (7, 6, 1)]
+        da_expect += [(8, 8, 0), (8, 6, 1)]
+        assert da_rows == da_expect
 
 
 class TestInitHelpers:
@@ -351,42 +398,6 @@ class TestAdd:
             assert real_da_rows == da_rows
 
 
-# def test_insert_into_dir_ancestor_duplicate(base_repo):
-#     """
-#     DirRepo.insert_into_dir_ancestor() handles duplicate records gracefully.
-#     Note that 2 rows are expected, not 3 or 1.
-#     This is becaues we should gracefully handle the duplicate row,
-#     but still add all the unique rows in the input.
-#     """
-#     base_repo.insert_into_dir_ancestor([(1, 0, 1), (1, 0, 1), (2, 0, 1)])
-#     with base_repo.connection() as conn:
-#         real_rows = conn.execute("SELECT * FROM dir_ancestor").fetchall()
-#     assert len(real_rows) == 2, "Expected no duplicate ancestor_dir rows"
-#
-#
-#
-#
-# # TODO: Should teardown be added?
-# @pytest.fixture
-# def test_repo(base_repo):
-#     """
-#     Create a DirRepo with a preset directory tree for testing like so:
-#     Dir Tree: (id)
-#     a(1)/ ─┬─ b(2)/─── c(3)/
-#            ├─ d(4)/
-#            └─ e(5)/
-#     f(6)/ ─┬─ g(7)/
-#            └─ h(8)/
-#     """
-#
-#     # Use tested add method to create dirtree in dir & dir_ancestor tables
-#     base_repo.add(Dir(path=base_repo.path / "a/b/c"))
-#     base_repo.add(Dir(path=base_repo.path / "a/d"))
-#     base_repo.add(Dir(path=base_repo.path / "a/e"))
-#     base_repo.add(Dir(path=base_repo.path / "f/g"))
-#     base_repo.add(Dir(path=base_repo.path / "f/h"))
-#
-#     yield base_repo
 #
 #
 # D_A = Dir("a", 1)
