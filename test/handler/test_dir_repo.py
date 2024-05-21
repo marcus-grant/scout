@@ -30,20 +30,6 @@ def base_dbconn():
         yield db
 
 
-# @pytest.fixture
-# def base_repo():
-#     """Fixture for DirRepo class wrapped in temporary SQLite db file"""
-#     # Setup a temp file for SQLite db
-#     fd, path = tempfile.mkstemp(suffix=".db")
-#     # Close tempfile descriptor to avoid resource leak
-#     os.close(fd)  # DirRepo will open it as needed
-#     # Init DirRepo with temporary db file
-#     repo = DirRepo(path)
-#     yield repo  # Provide fixture return so it gets used
-#     # Teardown, so we don't leave temp files around
-#     os.unlink(path)
-
-
 @pytest.fixture
 @contextmanager
 def base_repo(base_dbconn):
