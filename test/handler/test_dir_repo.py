@@ -474,39 +474,49 @@ class TestSelectUtils:
             assert repo.select_dir_where_id(4) is None
 
 
-#
-#
-# def test_ancestor_dirs_where_path(test_repo):
-#     """DirRepo.select_dirs_where_ancestor() returns:
-#     - Ancestor rows of ids [2, 1] and no depth limit for (a/b/c)
-#     - Same result when depth is a high number
-#     - Same but depth=1, limits it to row of id 2
-#     - Ancestor row of id 6 for (f/g) with None in depth
-#     - Empty list for repo top level directory (f)
-#     - Absolute & relative repo paths make no difference"""
-#     fn = test_repo.ancestor_dirs_where_path
-#
-#     assert same_row(fn("a/b/c"), fn(test_repo.path / "a/b/c"))
-#     assert same_row(fn("a/b/c"), [(2,), (1,)])
-#     assert same_row(fn("a/b/c", depth=99), [(2,), (1,)])
-#     assert same_row(fn("a/b/c", depth=1), [(2,)])
-#     assert same_row(fn("f/g"), [(6,)])
-#     assert same_row(fn("f"), [])
-#
-#
-# def test_ancestor_dirs_where_id(test_repo):
-#     """DirRepo.select_dirs_where_ancestor() has same spec as
-#     test_ancestor_dirs_where_path but with id instead of path as arg"""
-#     assert same_row(
-#         test_repo.ancestor_dirs_where_id(3),
-#         test_repo.ancestor_dirs_where_id(3),
-#     )
-#     assert same_row(test_repo.ancestor_dirs_where_id(3), [(2,), (1,)])
-#     assert same_row(test_repo.ancestor_dirs_where_id(3, depth=99), [(2,), (1,)])
-#     assert same_row(test_repo.ancestor_dirs_where_id(3, depth=1), [(2,)])
-#     assert same_row(test_repo.ancestor_dirs_where_id(7), [(6,)])
-#     assert same_row(test_repo.ancestor_dirs_where_id(6), [])
-#
+class TestSelectAncestor:
+    """DirRepo.select_ancestors_where_{path,id} method tests"""
+
+    def testWherePath(self, test_repo):
+        """
+        Test DirRepo.select_dirs_where_ancestor() with different paths and depths.
+
+        Verifies:
+        - Ancestor rows for 'a/b/c' with no depth limit.
+        - Ancestor rows for 'a/b/c' with a high depth limit.
+        - Ancestor rows for 'a/b/c' with depth=1.
+        - Ancestor row for 'f/g'.
+        - Empty result for top-level directory 'f'.
+        - Consistency between absolute and relative paths.
+        """
+        with test_repo as repo:
+            fn = repo.select_ancestors_where_path
+            assert same_rows(fn("a/b/c"), [(2,), (1,)])
+            assert same_rows(fn("a/b/c", depth=99), [(2,), (1,)])
+            assert same_rows(fn("a/b/c", depth=1), [(2,)])
+            assert same_rows(fn("f/g"), [(6,)])
+            assert same_rows(fn("f"), [])
+
+    def testWhereId(self, test_repo):
+        """
+        Test DirRepo.select_dirs_where_ancestor() with different IDs and depths.
+
+        Verifies:
+        - Ancestor rows for ID 3 with no depth limit.
+        - Ancestor rows for ID 3 with a high depth limit.
+        - Ancestor rows for ID 3 with depth=1.
+        - Ancestor row for ID 7.
+        - Empty result for top-level directory with ID 6.
+        """
+        with test_repo as repo:
+            fn = repo.select_ancestors_where_id
+            assert same_rows(fn(3), [(2,), (1,)])
+            assert same_rows(fn(3, depth=99), [(2,), (1,)])
+            assert same_rows(fn(3, depth=1), [(2,)])
+            assert same_rows(fn(7), [(6,)])
+            assert same_rows(fn(6), [])
+
+
 #
 # def test_descendant_dirs_where_path(test_repo):
 #     """DirRepo.select_dirs_where_descendant() returns:
