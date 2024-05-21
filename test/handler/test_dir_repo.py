@@ -5,6 +5,7 @@ from pathlib import PurePath
 import pytest
 from unittest.mock import patch
 import tempfile
+from typing import List, Tuple
 
 from scoutlib.handler.dir_repo import DirRepo
 from scoutlib.model.dir import Dir
@@ -36,6 +37,30 @@ def base_repo(base_dbconn):
     with base_dbconn as db:
         repo = DirRepo(db)
         yield repo
+
+
+def same_row(real: List[Tuple], expected: List[Tuple], pk_index: int = 0) -> bool:
+    """
+    Determine if two lists of tuples represent the same records by comparing the primary key.
+
+    This function compares two lists of tuples typically returned by SQLite fetch operations.
+    It checks if the primary keys (as specified by pk_index) of the tuples in both lists are the same.
+
+    Args:
+        real (List[Tuple]): The first list of tuples to compare.
+        expected (List[Tuple]): The second list of tuples to compare.
+        pk_index (int, optional): The index of the primary key in the tuple. Default is 0.
+
+    Returns:
+        bool: True if both lists have the same primary keys in the same order, False otherwise.
+    """
+    if len(real) != len(expected):
+        return False
+
+    real_keys = {row[pk_index] for row in real}
+    expected_keys = {row[pk_index] for row in expected}
+
+    return real_keys == expected_keys
 
 
 # TODO: Should teardown be added?
@@ -124,6 +149,29 @@ class TestFixtures:
         da_expect += [(7, 7, 0), (7, 6, 1)]
         da_expect += [(8, 8, 0), (8, 6, 1)]
         assert da_rows == da_expect
+
+    def testSameRowEqual(self):
+        real = [(1, "a", b"dead"), (2, "b", b"beef"), (3, "c", b"cafe")]
+        expect = real
+        assert same_row(real, expect)
+
+    def testSameRowDiffLen(self):
+        rows = [(1,), (2,)]
+        assert not same_row(rows, rows + [(3,)])
+
+    def testSameRowDiffPK(self):
+        assert not same_row(
+            [(1, "a"), (2, "b"), (3, "c")], [(1, "a"), (2, "b"), (4, "c")]
+        )
+
+    def testSameRowNonZeroPKIdx(self):
+        assert same_row(
+            [(1, "a"), (2, "b"), (3, "c")], [(1, "a"), (2, "b"), (3, "c")], pk_index=1
+        )
+
+    def testSameRowEmpty(self):
+        assert same_row([], [])
+        assert not same_row([(1,)], [])
 
 
 class TestInitHelpers:
@@ -426,22 +474,6 @@ class TestSelectUtils:
             assert repo.select_dir_where_id(4) is None
 
 
-#
-# def same_row(real: list[tuple], expected: list[tuple], pk_index: int = 0):
-#     """
-#     Assert that two lists of tuples are the same record by primary key.
-#     Lists of tuples get returned by sqlite fetches, except fetchone.
-#     Simply provide two lists of tuples and
-#     (optionally) the index of the primary key in the tuple, default is 0.
-#     """
-#     if len(real) != len(expected):
-#         return False
-#     for r, e in zip(real, expected):
-#         if r[pk_index] != e[pk_index]:
-#             return False
-#     return True
-#
-#
 # def test_same_row():
 #     """
 #     Test helper function same_row:
