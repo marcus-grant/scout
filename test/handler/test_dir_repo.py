@@ -564,68 +564,53 @@ class TestSelectDescendants:
             assert same_rows(fn(4), [])
 
 
-# @pytest.mark.parametrize(
-#     "id,path,dir,exp",
-#     [
-#         (8, "f/g", Dir(id=1, path="a"), Dir(id=8, path="f/h")),
-#         (None, "f/g", Dir(id=1, path="a"), Dir(id=7, path="f/g")),
-#         (None, None, Dir(id=1, path="a"), Dir(id=1, path="a")),
-#         (3, PP("a/e"), Dir(id=1, path="f"), Dir(id=3, path="a/b/c")),
-#         (None, PP("a/e"), Dir(id=1, path="f"), Dir(id=5, path="a/e")),
-#         (None, None, Dir(id=6, path="f"), Dir(id=6, path="f")),
-#         (None, None, None, ValueError),
-#     ],
-# )
-# def test_getone(test_repo, id, path, dir, exp):
-#     """
-#     DirRepo.getone() returns:
-#     - These test the order of precedence for id, path, and dir in that order
-#       - Dir for id=8 (f/h), despite dir & path having different values
-#       - Dir for path f/g and id=None, despite dir being different
-#       - Dir for in dir id=1, path=a, when no other arg present
-#     - Other set of pats, ids, dirs to ensure correct return despite changes
-#       - Dir for id=3 (a/b/c), despite dir and id being different
-#       - Dir for path a/e and id=None, despite dir being different
-#       - Dir for in dir id=6, path=f, when no other arg present
-#     - Some None returns for non-existent dir records
-#       - Path
-#     - Raise ValueError for non-existent id, path, or dir
-#
-#     """
-#     if exp == ValueError:
-#         with pytest.raises(ValueError):
-#             test_repo.getone(id=id, path=path, dir=dir)
-#         return
-#     # Returned directories need to be denormalized and checked as normal
-#     # They're parametrized as normalized to be shorter
-#     exp.path = test_repo.path / exp.path
-#     assert test_repo.getone(id=id, path=path, dir=dir) == exp
-#
-#
-# def test_getone_abspath_same(test_repo):
-#     """Ensure absolute paths including the repo root and
-#     are recorded are same as relative paths within.
-#     This also ensures paths get normalized before query then
-#     denormalized when the results are returned.
-#     """
-#     fn = test_repo.getone
-#     assert fn(path=test_repo.path / "a/b/c") == fn(path="a/b/c")
-#     assert fn(path=str(test_repo.path) + "/f") == fn(path="f")
-#     assert fn(path=test_repo.path / "f/g") == fn(path="f/g")
-#
-#
-# def test_getone_not_exist(test_repo):
-#     """Ensure that getone returns None for non-existent paths within repo"""
-#     assert test_repo.getone(path="no/exist") is None
-#     assert test_repo.getone(path="a/b/noexist") is None
-#
-#
-# def test_getone_raise_outside(test_repo):
-#     """Ensure that getone raises ValueError for paths outside repo"""
-#     with pytest.raises(ValueError):
-#         test_repo.getone(path=test_repo.path.parent / "noexist")
-#
-#
+class TestGetOne:
+    def testPrefersId(self, test_repo):
+        """Prioritizes id over all other args."""
+        with test_repo as repo:
+            dir = repo.getone(id=1, path="a/b/c", dir=Dir(id=6, path="f/h"))
+            assert dir == Dir(id=1, path=repo.db.root / "a")
+
+    def testPrefersPath(self, test_repo):
+        """Prioritizes path arg over all others when id is None."""
+        with test_repo as repo:
+            dir = repo.getone(path="a/b/c", dir=Dir(id=6, path="f/h"))
+            assert dir == Dir(id=3, path=repo.db.root / "a/b/c")
+
+    def testPrefersDirId(self, test_repo):
+        """Prioritizes dir arg's id over its path member when id & path are None."""
+        with test_repo as repo:
+            dir = repo.getone(dir=Dir(id=6, path="f/h"))
+            assert dir == Dir(id=6, path=repo.db.root / "f")
+
+    def testPrefersDirPath(self, test_repo):
+        """Prioritizes dir arg's path only when all other args are None."""
+        with test_repo as repo:
+            dir = repo.getone(dir=Dir(path="f/h"))
+            assert dir == Dir(id=8, path=repo.db.root / "f/h")
+
+    def testRaises(self, base_repo):
+        """Raises ValueError when no args and path outside repo are given."""
+        with base_repo as repo:
+            with pytest.raises(ValueError):
+                repo.getone()
+            with pytest.raises(ValueError):
+                repo.getone(path="/not/in/repo")
+
+    def testDirNotFound(self, test_repo):
+        """Returns None when no dir is found."""
+        with test_repo as repo:
+            assert repo.getone(path="noexist") is None
+            assert repo.getone(id=42) is None
+
+    def testRelAndAbsPathSame(self, test_repo):
+        """Returns same result for relative and absolute paths."""
+        with test_repo as repo:
+            root = repo.db.root
+            assert repo.getone(path=root / "a/b/c") == repo.getone(path="a/b/c")
+            assert repo.getone(path=root / "f/g") == repo.getone(path="f/g")
+
+
 # @pytest.mark.parametrize(
 #     "id,path,dir,exp",
 #     [

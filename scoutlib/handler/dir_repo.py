@@ -292,30 +292,32 @@ class DirRepo:
         return dirs
 
 
-#  def getone(
-#      self,
-#      id: Optional[int] = None,
-#      path: Optional[Union[PurePath, str]] = None,
-#      dir: Optional[Dir] = None,
-#  ) -> Optional[Dir]:
-#      id_used = None
-#      path_used = None
-#      if id is not None:
-#          id_used = id
-#      elif path is not None:
-#          path_used = path
-#      elif dir is not None:
-#          id_used = dir.id
-#      else:
-#          raise ValueError("Must provide either id, path, or dir argument.")
-#      res = None
-#      if id_used:
-#          res = self.select_dir_where_id(id_used)
-#      elif path_used:
-#          res = self.select_dir_where_path(self.normalize_path(path_used))
-#      if res:
-#          return Dir(id=res[0], path=self.denormalize_path(res[2]))
-#      return None
+    def getone(
+        self,
+        id: Optional[int] = None,
+        path: Optional[Union[PP, str]] = None,
+        dir: Optional[Dir] = None,
+    ) -> Optional[Dir]:
+        id_used = None
+        path_used = None
+        if id is not None:
+            id_used = id
+        elif path is not None:
+            path_used = path
+        elif dir is not None:
+            id_used = dir.id
+            path_used = dir.path
+        else:
+            raise ValueError("Must provide either id, path, or dir argument.")
+        res = None
+        if id_used:
+            res = self.select_dir_where_id(id_used)
+        elif path_used:
+            path_used = str(self.db.normalize_path(path_used))
+            res = self.select_dir_where_path(path_used)
+        if res is None:
+            return None
+        return Dir(id=res[0], path=self.db.denormalize_path(res[1]))
 
 #  def get_ancestors(
 #      self,
