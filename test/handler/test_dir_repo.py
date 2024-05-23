@@ -538,7 +538,7 @@ class TestSelectDescendants:
         - Empty result for another leaf directory 'a/d'.
         """
         with test_repo as repo:
-            fn = repo.select_descendant_where_path
+            fn = repo.select_descendants_where_path
             assert same_rows(fn("a/b"), [(3,)])
             assert same_rows(fn("a"), [(2,), (4,), (5,), (3,)])
             assert same_rows(fn("a", depth=99), [(2,), (4,), (5,), (3,)])
@@ -647,9 +647,9 @@ class TestGetAncestors:
         """Raises ValueError when no args and path outside repo are given."""
         with base_repo as repo:
             with pytest.raises(ValueError):
-                repo.getone()
+                repo.get_ancestors()
             with pytest.raises(ValueError):
-                repo.getone(path="/not/in/repo")
+                repo.get_ancestors(path="/not/in/repo")
 
     def testAbsAndRelPathsEqual(self, test_repo):
         """Returns same result for relative and absolute paths."""
@@ -660,106 +660,67 @@ class TestGetAncestors:
             ancestors = repo.get_ancestors(path="f/g")
             assert ancestors == [expect.f]
 
+    def testDepthWorks(self, test_repo):
+        """Returns correct descendants with depth limit."""
+        with test_repo as repo:
+            expect = Dirs(repo.db.root)
+            dir = repo.get_ancestors(path="a/b/c", depth=1)
+            assert dir == [expect.b]
+            dir = repo.get_descendants(path="f", depth=0)
+            assert dir == []
 
-# @pytest.mark.parametrize(
-#     "id,path,dir,exp",
-#     [
-#         (3, None, None, (3, 2**31 - 1)),  # Works when id given
-#         (None, "f", Dir("a", id=1), (1, 2**31 - 1)),  # Will use dir.id if no id
-#         (3, None, Dir("a", id=1), (3, 2**31 - 1)),  # Will use id over dir.id
-#         (3, "f", Dir("a", id=1), (3, 2**31 - 1)),  # Will use id over dir.id & path
-#     ],
-# )
-# def test_get_descendants_id_prio(test_repo, id, path, dir, exp):
-#     """
-#     Prioritizes id over all other args.
-#     This includes the Dir object's id.
-#     The id argument gets priority over the dir's id.
-#     """
-#     with patch.object(
-#         test_repo, "descendant_dirs_where_id"
-#     ) as mock_where_id, patch.object(
-#         test_repo, "descendant_dirs_where_path"
-#     ) as mock_where_path:
-#         test_repo.get_descendants(id=id, path=path, dir=dir)
-#         mock_where_id.assert_called_once_with(*exp)
-#         mock_where_path.assert_not_called()
-#
-#
-# @pytest.mark.parametrize(
-#     "id,path,dir,exp",
-#     [
-#         (None, "f", None, ("f", 2**31 - 1)),  # path when no others
-#         (None, None, Dir("a"), ("a", 2**31 - 1)),  # dir.path over path
-#         (None, "f", Dir("a"), ("f", 2**31 - 1)),  # path over dir.path
-#     ],
-# )
-# def test_get_descendants_path_last(test_repo, id, path, dir, exp):
-#     """
-#     Prioritizes path over dir.path.
-#     The path or dir.path arguments are used when no id or dir.id is provided.
-#     """
-#     with patch.object(
-#         test_repo, "descendant_dirs_where_path"
-#     ) as mock_where_path, patch.object(
-#         test_repo, "descendant_dirs_where_id"
-#     ) as mock_where_id:
-#         test_repo.get_descendants(id=id, path=path, dir=dir)
-#         mock_where_path.assert_called_once_with(*exp)
-#         mock_where_id.assert_not_called()
-#
-#
-# def test_get_descendants_normalizes(test_repo):
-#     """
-#     get_descendants' helper methods call normalize_path on paths.
-#     """
-#     with patch.object(test_repo, "normalize_path") as mock_norm:
-#         test_repo.get_descendants(path="a/b/c")
-#         mock_norm.assert_called_with("a/b/c")
-#     with patch.object(test_repo, "normalize_path") as mock_norm:
-#         test_repo.get_descendants(dir=Dir("a/b/c"))
-#         mock_norm.assert_called_with("a/b/c")
-#
-#
-# def test_get_descendants_denormalizes(test_repo):
-#     base = test_repo.path
-#     expect = [Dir(base / "a/b/c", id=3)]
-#
-#     dirs = test_repo.get_descendants(path="a/b")  # path arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_descendants(dir=Dir(base / "a/b"))  # dir.path arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_descendants(id=2)  # id arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_descendants(dir=Dir("a/b", id=2))  # dir.id arg
-#     assert dirs == expect
-#
-#
-# def test_get_descendants_raises(test_repo):
-#     """
-#     Ensure get_descendants raises ValueError when no id, path, or dir is provided.
-#     """
-#     with pytest.raises(ValueError):
-#         test_repo.get_descendants()
-#
-#
-# @pytest.mark.parametrize(
-#     "id,path,dir,dpth,exp",
-#     [
-#         (1, None, None, 9, [D_B, D_D, D_E, D_C]),
-#         (1, None, None, 1, [D_B, D_D, D_E]),
-#         (None, "f", None, 1, [D_G, D_H]),
-#         (None, None, Dir("f/g"), 9, []),
-#     ],
-# )
-# def test_get_descendants_dirs(test_repo, id, path, dir, dpth, exp):
-#     """
-#     Returns correct contents, formatting and order of Dir ojbects
-#     """
-#     dirs = test_repo.get_descendants(id=id, path=path, dir=dir, depth=dpth)
-#     fn_dp = test_repo.denormalize_path
-#     exp_dirs = [Dir(path=str(fn_dp(dir.path)), id=dir.id) for dir in exp]
-#     assert dirs == exp_dirs
+
+class TestGetDescendants:
+    """DirRepo.get_descendants() method tests"""
+
+    def testPrefersId(self, test_repo):
+        """Prioritizes id over all other args and returns test_repo dirs in order."""
+        with test_repo as repo:
+            dir = repo.get_descendants(id=1, path="a/b/c", dir=Dir(id=6, path="f/h"))
+            expect = Dirs(repo.db.root)
+            assert dir == [expect.b, expect.d, expect.e, expect.c]
+
+    def testPrefersPath(self, test_repo):
+        """Prioritizes path arg over all others when id is None and returns expected empty list."""
+        with test_repo as repo:
+            dir = repo.get_descendants(path="a/b/c", dir=Dir(id=6, path="f/h"))
+            assert dir == []
+
+    def testPrefersDirId(self, test_repo):
+        """Prioritizes dir arg's id over its path member when id & path are None."""
+        with test_repo as repo:
+            dir = repo.get_descendants(dir=Dir(id=6, path="f/h"))
+            expect = Dirs(repo.db.root)
+            assert dir == [expect.g, expect.h]
+
+    def testPrefersDirPath(self, test_repo):
+        """Prioritizes dir arg's path only when all other args are None."""
+        with test_repo as repo:
+            dir = repo.get_descendants(dir=Dir(path="f/h"))
+            assert dir == []
+
+    def testRaises(self, base_repo):
+        """Raises ValueError when no args and path outside repo are given."""
+        with base_repo as repo:
+            with pytest.raises(ValueError):
+                repo.get_descendants()
+            with pytest.raises(ValueError):
+                repo.get_descendants(path="/not/in/repo")
+
+    def testAbsAndRelPathsEqual(self, test_repo):
+        """Returns same result for relative and absolute paths."""
+        with test_repo as repo:
+            expect = Dirs(repo.db.root)
+            ancestors = repo.get_descendants(path="a")
+            assert ancestors == [expect.b, expect.d, expect.e, expect.c]
+            ancestors = repo.get_descendants(path="f")
+            assert ancestors == [expect.g, expect.h]
+
+    def testDepthWorks(self, test_repo):
+        """Returns correct descendants with depth limit."""
+        with test_repo as repo:
+            expect = Dirs(repo.db.root)
+            dir = repo.get_descendants(path="a", depth=1)
+            assert dir == [expect.b, expect.d, expect.e]
+            dir = repo.get_descendants(path="f", depth=0)
+            assert dir == []
