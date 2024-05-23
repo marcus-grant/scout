@@ -13,7 +13,8 @@ from scoutlib.handler.db_connector import DBConnector
 
 PP = PurePath
 
-MOD_BASE = "scoutlib.handler.dir_repo.DirRepo"
+MOD_REPO = "scoutlib.handler.dir_repo.DirRepo"
+MOD_DBC = "scoutlib.handler.db_connector.DBConnector"
 
 
 ### Module fixtures
@@ -309,8 +310,8 @@ class TestInit:
                     conn.execute("INSERT INTO dir_ancestor (path) VALUES ('anc')")
                 conn.commit()
             with (
-                patch(f"{MOD_BASE}.create_dir_table") as mock_dir,
-                patch(f"{MOD_BASE}.create_dir_ancestor_table") as mock_anc,
+                patch(f"{MOD_REPO}.create_dir_table") as mock_dir,
+                patch(f"{MOD_REPO}.create_dir_ancestor_table") as mock_anc,
             ):
                 DirRepo(db)
                 assert mock_dir.called == (not dir)
