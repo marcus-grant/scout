@@ -19,10 +19,12 @@ class FileRepo:
         query_schema = """
             CREATE TABLE IF NOT EXISTS file (
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                dir_id iINTEGER NOT NULL,
                 name TEXT NOT NULL,
                 md5 TEXT,
                 mtime INTEGER,
-                updated INTEGER
+                updated INTEGER,
+                FOREIGN KEY (dir_id) REFERENCES dir(id)
         );
         """
         with db.connect() as conn:

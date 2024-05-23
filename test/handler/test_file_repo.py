@@ -71,13 +71,14 @@ class TestInitUtils:
         query_schema = "PRAGMA table_info(file)"
         expect = [
             # Expected schema is list for every column with tuple of:
-            # (num: int, name: str, dtype: str, nullable: bool, prime_key: bool)
-            # Bools are represented as 0|1, but python evaluates them as False|True
+            # (num: int, name: str, dtype: str, notnull: bool, prime_key: bool)
+            # Bools are represented as 0|1
             (0, "id", "INTEGER", 1, None, 1),
-            (1, "name", "TEXT", 1, None, 0),
-            (2, "md5", "TEXT", 0, None, 0),
-            (3, "mtime", "INTEGER", 0, None, 0),
-            (4, "updated", "INTEGER", 0, None, 0),
+            (1, "dir_id", "iINTEGER", 1, None, 0),
+            (2, "name", "TEXT", 1, None, 0),
+            (3, "md5", "TEXT", 0, None, 0),
+            (4, "mtime", "INTEGER", 0, None, 0),
+            (5, "updated", "INTEGER", 0, None, 0),
         ]
 
         with base_dbconn as db:
@@ -89,12 +90,13 @@ class TestInitUtils:
 
                 # Assert schema
                 schema = c.execute(query_schema).fetchall()
-                assert len(schema) == 5
+                assert len(schema) == len(expect)
                 assert schema[0] == expect[0]  # Assert column 0
                 assert schema[1] == expect[1]  # Assert column 1
                 assert schema[2] == expect[2]  # Assert column 2
                 assert schema[3] == expect[3]  # Assert column 3
                 assert schema[4] == expect[4]  # Assert column 4
+                assert schema[5] == expect[5]  # Assert column 5
 
 
 class TestInit:
