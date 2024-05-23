@@ -78,6 +78,7 @@ class TestFixtures:
             assert fr.db.root is not None
             assert fr.db.path == fr.db.root / ".scout.db"
 
+# TestInitUtils
 class TestInitUtils:
     """Tests FileRepo.__init__ helper methods. Does NOT test __init__ itself."""
 
@@ -91,7 +92,7 @@ class TestInitUtils:
             # (num: int, name: str, dtype: str, notnull: bool, prime_key: bool)
             # Bools are represented as 0|1
             (0, "id", "INTEGER", 1, None, 1),
-            (1, "dir_id", "iINTEGER", 1, None, 0),
+            (1, "dir_id", "iINTEGER", 0, None, 0),
             (2, "name", "TEXT", 1, None, 0),
             (3, "md5", "TEXT", 0, None, 0),
             (4, "mtime", "INTEGER", 0, None, 0),
@@ -116,6 +117,7 @@ class TestInitUtils:
                 assert schema[5] == expect[5]  # Assert column 5
 
 
+# TestInit
 class TestInit:
     """Tests FileRepo.__init__ method."""
 
@@ -139,3 +141,32 @@ class TestInit:
                 with patch(f"{MOD_FR}.create_file_table") as mock:
                     FileRepo(db)
                     mock.assert_called_once_with(db)
+# TestSelectDirQuery
+class TestSelectDirWhere:
+    """Tests FileRepo.select_dir_query method."""
+
+    def testIdReturns(self, base_repo):
+        """Tests that when an id is supplied, the query returns the correct dir."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("bar"))
+            assert fr.select_dir_where(id=2) == (2, "bar")
+
+    def testPathReturns(self, base_repo):
+        """Tests that when a path is supplied, the query returns the correct dir."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("bar"))
+            assert fr.select_dir_where(path="foo") == (1, "foo")
+
+    def testDirNotExists(self, base_repo):
+        """Tests that when the dir does not exist, None is returned."""
+        with base_repo as (fr, _):
+            assert fr.select_dir_where(id=1) is None
+
+    def testRaisesNoArgs(self, base_repo):
+        """Tests that when no arguments are supplied, raises TypeError."""
+        with base_repo as (fr, _):
+            with pytest.raises(TypeError):
+                fr.select_dir_where()
+

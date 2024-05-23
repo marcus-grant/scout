@@ -1,7 +1,7 @@
 # TODO: SQL location and file handling should go to a separate module
 #       That module should then call this and DirRepo to init tables.
 from pathlib import PurePath as PP
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 from scoutlib.handler.db_connector import DBConnector as DBC
 
@@ -19,7 +19,7 @@ class FileRepo:
         query_schema = """
             CREATE TABLE IF NOT EXISTS file (
                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                dir_id iINTEGER NOT NULL,
+                dir_id iINTEGER,
                 name TEXT NOT NULL,
                 md5 TEXT,
                 mtime INTEGER,
@@ -43,3 +43,20 @@ class FileRepo:
             self.create_file_table(self.db)
 
     ### SQL Query Methods ###
+    # TODO: Could be a query method that other method combines with insert query like below:
+    # INSERT INTO file (dir_id, name, md5, mtime, updated) SELECT id, ?, ?, ?, ? FROM dir WHERE path = ?
+    def select_dir_where(
+        self, id: Optional[int] = None, path: Optional[str] = None
+    ) -> Optional[Tuple[int, str]]:
+        query = "SELECT id, path FROM dir WHERE "
+        if id is not None:
+            query += f"id = {id};"
+        elif path is not None:
+            query += f"path = '{path}';"
+        else:
+            raise TypeError("Must provide either 'id' or 'path' argument.")
+        with self.db.connect() as conn:
+            c = conn.cursor()
+            result = c.execute(query).fetchone()
+            return result
+
