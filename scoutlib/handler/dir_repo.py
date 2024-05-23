@@ -71,12 +71,13 @@ class DirRepo:
     # TODO: Benchmark this, no server so latency not a concern, but could be slow
     def insert_dir(self, path: Union[PP, str]) -> Optional[int]:
         """
-        Inserts a new record into the dir table with the given name and path.
-        Returns the id of the new record if added, or None if not inserted due to
-        an existing record with the same path.
-        Disk I/O latencies are the primary concern, not round trip considerations.
-        :param path: Path to insert into the dir table.
-        :return: ID of the new record if added, otherwise None.
+        Inserts a new record into the 'dir' table with the given path.
+
+        Args:
+            path (Union[PP, str]): The directory path to insert.
+
+        Returns:
+            Optional[int]: The ID of the new record if added, otherwise None.
         """
         np = self.db.normalize_path(path)
         id = None
@@ -93,10 +94,10 @@ class DirRepo:
 
     def insert_dir_ancestor(self, dir_ancestor_rows: list[tuple[int, int, int]]):
         """
-        Inserts multiple records into the dir_ancestor table.
+        Inserts multiple records into the 'dir_ancestor' table.
+
         Args:
-            dir_ancestor_rows (list[tuple[int, int, int]]):
-                List of tuples containing dir_id, ancestor_id, and depth.
+            dir_ancestor_rows (List[Tuple[int, int, int]]): List of tuples containing dir_id, ancestor_id, and depth.
         """
         with self.db.connect() as conn:
             c = conn.cursor()
@@ -118,7 +119,15 @@ class DirRepo:
         return res
 
     def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
-        """Returns the dir row tuple with matching id, or None if no match."""
+        """
+        Selects a 'dir' table row where id matches the given id.
+
+        Args:
+            id (int): The directory ID to search for.
+
+        Returns:
+            Optional[Tuple[int, str]]: The matching row or None if no match found.
+        """
         res = None  # Result
         with self.db.connect() as conn:
             q = f"SELECT * FROM dir WHERE id = {id}"
@@ -169,7 +178,7 @@ class DirRepo:
             depth (Optional[int]): The maximum depth of the ancestor search. Defaults to the maximum possible depth.
 
         Returns:
-            List[Tuple[int, str, str]]: A list of tuples representing the ancestor directories.
+            List[Tuple[int, str]]: A list of tuples representing the ancestor directories.
         """
         if depth is None:
             depth = DEFAULT_DEPTH
@@ -202,7 +211,7 @@ class DirRepo:
             depth (Optional[int]): The maximum depth of the descendant search. Defaults to the maximum possible depth.
 
         Returns:
-            List[Tuple[int, str, str]]: A list of tuples representing the descendant directories.
+            List[Tuple[int, str]]: A list of tuples representing the descendant directories.
         """
         if depth is None:
             depth = DEFAULT_DEPTH
@@ -234,7 +243,7 @@ class DirRepo:
             depth (Optional[int]): The maximum depth of the descendant search. Defaults to the maximum possible depth.
 
         Returns:
-            List[Tuple[int, str, str]]: A list of tuples representing the descendant directories.
+            List[Tuple[int, str]]: A list of tuples representing the descendant directories.
         """
         if depth is None:
             depth = DEFAULT_DEPTH
@@ -261,11 +270,12 @@ class DirRepo:
         # it might be better to allow raising errors on adding dirs without parent.
         """
         Adds a Dir object's data to the database.
-        This includes:
-            - Splitting ancestors in path into separate records
-            - Adding the directory itself
-            - Adding to dir_ancestor table for each ancestor
-            - In-place updating the passed directory object with its id
+
+        Args:
+            dir (Dir): The directory object to add.
+
+        Returns:
+            List[Dir]: A list of Dir objects representing the added directories.
         """
         # Normalize Leaf Dir Path (lp) to repo
         lp = self.db.normalize_path(dir.path)
@@ -295,6 +305,17 @@ class DirRepo:
         path: Optional[Union[PP, str]] = None,
         dir: Optional[Dir] = None,
     ) -> Optional[Dir]:
+        """
+        Retrieves a single directory based on id, path, or Dir object.
+
+        Args:
+            id (Optional[int]): The directory ID.
+            path (Optional[Union[PP, str]]): The directory path.
+            dir (Optional[Dir]): The directory object.
+
+        Returns:
+            Optional[Dir]: The matching Dir object or None if not found.
+        """
         id_used = None
         path_used = None
         if id is not None:
@@ -324,8 +345,16 @@ class DirRepo:
         depth: int = DEFAULT_DEPTH,
     ) -> list[Dir]:
         """
-        Gets ancestor directories from repo of a given directory's id or path.
-        Also limits results to a given depth from the given directory.
+        Retrieves ancestor directories up to a specified depth.
+
+        Args:
+            id (Optional[int]): The directory ID.
+            path (Optional[Union[PP, str]]): The directory path.
+            dir (Optional[Dir]): The directory object.
+            depth (int): The maximum depth of the ancestor search. Defaults to the maximum possible depth.
+
+        Returns:
+            List[Dir]: A list of Dir objects representing the ancestor directories.
         """
         id_used = None
         path_used = None
@@ -359,8 +388,16 @@ class DirRepo:
         depth: int = DEFAULT_DEPTH,
     ) -> list[Dir]:
         """
-        Gets descendant directories from repo of a given directory's id or path.
-        Also limits results to a given depth from the given directory.
+        Retrieves descendant directories up to a specified depth.
+
+        Args:
+            id (Optional[int]): The directory ID.
+            path (Optional[Union[PP, str]]): The directory path.
+            dir (Optional[Dir]): The directory object.
+            depth (int): The maximum depth of the descendant search. Defaults to the maximum possible depth.
+
+        Returns:
+            List[Dir]: A list of Dir objects representing the descendant directories.
         """
         id_used = None
         path_used = None
