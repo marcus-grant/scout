@@ -2,6 +2,7 @@ from contextlib import contextmanager
 import os
 from pathlib import PurePath as PP
 import pytest
+import sqlite3 as sql
 import tempfile
 from unittest.mock import patch
 
@@ -31,6 +32,14 @@ def base_dbconn():
         yield db
 
 
+@pytest.fixture
+@contextmanager
+def base_repo(base_dbconn):
+    with base_dbconn as db:
+        yield FileRepo(db), DirRepo(db)
+
+
+# TestFixtures
 class TestFixtures:
     """Tests this module's fixtures."""
 
@@ -60,6 +69,14 @@ class TestFixtures:
             assert DBC.read_root(db.path) == db.root
             assert DBC.is_scout_db_file(db.path)
 
+    def testBaseRepo(self, base_repo):
+        """Tests the base_repo fixture."""
+        with base_repo as (fr, dr):
+            assert fr.db == dr.db
+            assert fr.db is not None
+            assert fr.db.path is not None
+            assert fr.db.root is not None
+            assert fr.db.path == fr.db.root / ".scout.db"
 
 class TestInitUtils:
     """Tests FileRepo.__init__ helper methods. Does NOT test __init__ itself."""
