@@ -1,100 +1,122 @@
+from contextlib import contextmanager
 import os
-from pathlib import PurePath
+from pathlib import PurePath as PP
 import pytest
-from unittest.mock import patch
-import sqlite3
 import tempfile
+from unittest.mock import patch
 
+from scoutlib.handler.db_connector import DBConnector as DBC
 from scoutlib.handler.file_repo import FileRepo
+from scoutlib.handler.dir_repo import DirRepo
 from scoutlib.model.file import File
+from scoutlib.model.dir import Dir
 
-PP = PurePath
+MOD_DBC = "scoutlib.handler.db_connector.DBConnector"
+MOD_FR = "scoutlib.handler.file_repo.FileRepo"
+
+
+### Fixtures ###
+# TODO: Move common fixtures to conftest.py
+@contextmanager
+def temp_dir_context():
+    with tempfile.TemporaryDirectory() as tempdir:
+        yield PP(tempdir)
 
 
 @pytest.fixture
-def base_repo():
-    """
-    Fixture for a basic FileRepo when testing init or a fresh slate.
-    Handled in a memory-based sqlite temp file.
-    """
-    fd, path = tempfile.mkstemp()  # Setup a temp file
-    os.close(fd)  # Close the file descriptor (avoids leaks)
-    repo = FileRepo(path)  # Init FileRepo
-    yield repo  # Give up context to the base repo fixture
-    os.unlink(path)  # Cleanup
+@contextmanager
+def base_dbconn():
+    with temp_dir_context() as tempdir:
+        db = DBC(tempdir / ".scout.db")
+        yield db
 
 
-class TestBaseRepoFixture:
-    def test_table_file(self, base_repo):
-        """
-        Test that the table file is created in the db and
-        that the schema is correct.
-        """
-        with sqlite3.connect(base_repo.path_db) as conn:
-            # Ensure table 'file' present
-            query = "SELECT name FROM sqlite_master WHERE type='table' AND name='file';"
-            res = conn.execute(query).fetchone()
-            assert res is not None, "Table 'file' not found in db."
+class TestFixtures:
+    """Tests this module's fixtures."""
 
-            # Query for schema and assert its validity
-            # Pragma schema queries come in the form of:
-            # [(cid, name, type, notnull, dflt_value, key)] per column
-            schema_query = "PRAGMA table_info(file);"
-            real_schema = conn.execute(schema_query).fetchall()
+    def testTempDirContext(self):
+        """Tests the temp_dir_context fixture for read write operations with os module."""
+        with temp_dir_context() as tempdir:
+            assert os.path.isdir(tempdir)
+            with open(tempdir / "foobar.txt", "w") as f:
+                f.write("foobar")
+            with open(tempdir / "foobar.txt", "r") as f:
+                assert f.read() == "foobar"
 
-            # Expected schema:
-            expected_schema = [
-                (0, "id", "INTEGER", 0, None, 1),
-                (1, "parent_id", "INTEGER", 1, None, 0),
-                (2, "name", "TEXT", 1, None, 0),
-                (3, "md5", "TEXT", 0, None, 0),
-                (4, "mtime", "INTEGER", 0, None, 0),
-                (5, "updated", "INTEGER", 0, None, 0),
-            ]
+    def testTempDirContextCleanup(self):
+        """Ensure cleanup of temporary directory after context"""
+        with temp_dir_context() as tempdir:
+            with pytest.raises(FileNotFoundError):
+                with open(tempdir / "foobar.txt", "r") as f:
+                    f.read()
+        assert not os.path.isdir(tempdir)
 
-            # Assert column count
-            assert len(real_schema) == len(expected_schema), "Column count mismatch."
+    def testBaseDBConn(self, base_dbconn):
+        """Tests the base_dbconn fixture."""
+        with base_dbconn as db:
+            assert db.root == db.path.parent
+            assert os.path.isfile(db.path)
+            assert os.path.isdir(db.root)
+            assert DBC.read_root(db.path) == db.root
+            assert DBC.is_scout_db_file(db.path)
 
-            # Assert id column correct
-            id_col, expected_col = real_schema[0], expected_schema[0]
-            assert id_col == expected_col, f"Expected {expected_col}, got {id_col}"
 
-            # Assert parent_id foreign key col
-            parent_col, exp_col = real_schema[1], expected_schema[1]
-            assert parent_col == exp_col, f"Expected {exp_col}, got {parent_col}"
+class TestInitUtils:
+    """Tests FileRepo.__init__ helper methods. Does NOT test __init__ itself."""
 
-            # Assert name column correct
-            name_col, exp_col = real_schema[2], expected_schema[2]
-            assert name_col == exp_col, f"Expected {exp_col}, got {name_col}"
+    def testCreateFileTable(self, base_dbconn):
+        """Tests existance of and schema of the 'file' table."""
+        # Assemble
+        query_table = "SELECT name FROM sqlite_master WHERE type='table'"
+        query_schema = "PRAGMA table_info(file)"
+        expect = [
+            # Expected schema is list for every column with tuple of:
+            # (num: int, name: str, dtype: str, nullable: bool, prime_key: bool)
+            # Bools are represented as 0|1, but python evaluates them as False|True
+            (0, "id", "INTEGER", 1, None, 1),
+            (1, "name", "TEXT", 1, None, 0),
+            (2, "md5", "TEXT", 0, None, 0),
+            (3, "mtime", "INTEGER", 0, None, 0),
+            (4, "updated", "INTEGER", 0, None, 0),
+        ]
 
-            # Assert md5 column correct
-            md5_col, exp_col = real_schema[3], expected_schema[3]
-            assert md5_col == exp_col, f"Expected {exp_col}, got {md5_col}"
+        with base_dbconn as db:
+            FileRepo.create_file_table(db)  # Act
+            with db.connect() as conn:
+                c = conn.cursor()
+                c.execute(query_table)
+                assert ("file",) in c.fetchall()  # Assert Table exists
 
-            # Assert mtime column correct
-            mtime_col, exp_col = real_schema[4], expected_schema[4]
-            assert mtime_col == exp_col, f"Expected {exp_col}, got {mtime_col}"
+                # Assert schema
+                schema = c.execute(query_schema).fetchall()
+                assert len(schema) == 5
+                assert schema[0] == expect[0]  # Assert column 0
+                assert schema[1] == expect[1]  # Assert column 1
+                assert schema[2] == expect[2]  # Assert column 2
+                assert schema[3] == expect[3]  # Assert column 3
+                assert schema[4] == expect[4]  # Assert column 4
 
-            # Assert updated column correct
-            updated_col, exp_col = real_schema[5], expected_schema[5]
-            assert updated_col == exp_col, f"Expected {exp_col}, got {updated_col}"
 
-    def test_table_insert(self, base_repo):
-        """Test transactions can run on base_repo & later that the row is gone."""
-        with sqlite3.connect(base_repo.path_db) as conn:
-            # Insert a row
-            query = "INSERT INTO file (parent_id, name) VALUES (1, 'test');"
-            conn.execute(query)
-            conn.commit()
-        with sqlite3.connect(base_repo.path_db) as conn:
-            # Query for the row
-            query = "SELECT * FROM file WHERE name='test';"
-            res = conn.execute(query).fetchall()
-            assert len(res) >= 1, "Row not found in db."
+class TestInit:
+    """Tests FileRepo.__init__ method."""
 
-    def test_cleanup(self, base_repo):
-        """Test that the base repo cleans up after itself."""
-        with sqlite3.connect(base_repo.path_db) as conn:
-            # Query that the table is there AND empty
-            query = "SELECT * FROM file;"
-            assert len(conn.execute(query).fetchall()) == 0, "Table not empty."
+    def testSetsMembers(self, base_dbconn):
+        """Tests that __init__ sets members."""
+        with base_dbconn as db:
+            fr = FileRepo(db)
+            assert fr.db == db
+
+    def testCallsTableExists(self, base_dbconn):
+        """Tests that DBConnector.table_exists is called to check for table."""
+        with base_dbconn as db:
+            with patch(f"{MOD_DBC}.table_exists") as mock:
+                FileRepo(db)
+                mock.assert_called_once_with("file")
+
+    def testCallsCreateTable(self, base_dbconn):
+        """Tests that create_file_table is called when table does not exist."""
+        with base_dbconn as db:
+            with patch(f"{MOD_DBC}.table_exists", return_value=False):
+                with patch(f"{MOD_FR}.create_file_table") as mock:
+                    FileRepo(db)
+                    mock.assert_called_once_with(db)
