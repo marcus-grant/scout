@@ -48,6 +48,24 @@ class FileRepo:
     def select_dir_where(
         self, id: Optional[int] = None, path: Optional[str] = None
     ) -> Optional[Tuple[int, str]]:
+        """
+        Select a directory record from the 'dir' table by either its ID or path.
+
+        This method executes a SQL query to fetch the `id` and `path` of a directory
+        from the 'dir' table based on the provided ID or path. If both `id` and `path`
+        are provided, only the `id` is used for the query.
+
+        Args:
+            id (Optional[int]): The ID of the directory to fetch.
+            path (Optional[str]): The path of the directory to fetch.
+
+        Returns:
+            Optional[Tuple[int, str]]: A tuple containing the `id` and `path` of the directory,
+            or None if no matching directory is found.
+
+        Raises:
+            TypeError: If neither `id` nor `path` is provided.
+        """
         query = "SELECT id, path FROM dir WHERE "
         if id is not None:
             query += f"id = {id};"
@@ -60,6 +78,7 @@ class FileRepo:
             result = c.execute(query).fetchone()
             return result
 
+    # TODO: Needs uniqueness check for combo of dir_id and name
     def insert_file_query(
         self,
         dir_id: int,
@@ -68,6 +87,23 @@ class FileRepo:
         mtime: Optional[int] = None,
         updated: Optional[int] = None,
     ) -> str:
+        """
+        Generate an SQL query string to insert a new file record into the 'file' table.
+
+        This method constructs an SQL `INSERT` statement to add a new record to the
+        'file' table with the provided directory ID, name, and optional MD5 hash,
+        modification time, and update time.
+
+        Args:
+            dir_id (int): The ID of the directory to which the file belongs.
+            name (str): The name of the file.
+            md5 (Optional[str]): The MD5 hash of the file (default is None).
+            mtime (Optional[int]): The modification time of the file (default is None).
+            updated (Optional[int]): The last updated time of the file (default is None).
+
+        Returns:
+            str: An SQL query string to insert a new file record.
+        """
         # Start with beginning query fragment that will always be needed.
         q = "INSERT INTO file (\n"
         q += "  dir_id, name"
