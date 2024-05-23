@@ -88,6 +88,19 @@ def test_repo(base_repo):
         yield repo
 
 
+class Dirs:
+    def __init__(self, root) -> None:
+        root = PP(root) if root is not None else PP()
+        self.a = Dir(id=1, path=root / "a")
+        self.b = Dir(id=2, path=root / "a/b")
+        self.c = Dir(id=3, path=root / "a/b/c")
+        self.d = Dir(id=4, path=root / "a/d")
+        self.e = Dir(id=5, path=root / "a/e")
+        self.f = Dir(id=6, path=root / "f")
+        self.g = Dir(id=7, path=root / "f/g")
+        self.h = Dir(id=8, path=root / "f/h")
+
+
 class TestFixtures:
     """Test fixtures for use in later tests"""
 
@@ -433,16 +446,6 @@ class TestAdd:
             assert real_da_rows == da_rows
 
 
-# D_A = Dir("a", 1)
-# D_B = Dir("a/b", 2)
-# D_C = Dir("a/b/c", 3)
-# D_D = Dir("a/d", 4)
-# D_E = Dir("a/e", 5)
-# D_F = Dir("f", 6)
-# D_G = Dir("f/g", 7)
-# D_H = Dir("f/h", 8)
-
-
 class TestSelectUtils:
     """Test SELECT query utility methods"""
 
@@ -611,112 +614,53 @@ class TestGetOne:
             assert repo.getone(path=root / "f/g") == repo.getone(path="f/g")
 
 
-# @pytest.mark.parametrize(
-#     "id,path,dir,exp",
-#     [
-#         (2, "f", Dir(id=1, path="a"), (2, 2**31 - 1)),
-#         (None, "f", Dir(id=1, path="a"), (1, 2**31 - 1)),
-#         (None, None, Dir(id=1, path="a"), (1, 2**31 - 1)),
-#         (None, None, Dir(id=7, path="not/there"), (7, 2**31 - 1)),
-#         (2, None, None, (2, 2**31 - 1)),
-#     ],
-# )
-# def test_get_ancestors_id_prio(test_repo, id, path, dir, exp):
-#     """
-#     Ensure that get_ancestors uses id above all other args.
-#     1st param 'id' gets priority over a passed dir's id.
-#     The ancestor_dirs_where_path should never be called when an ID exists.
-#     """
-#     with patch.object(
-#         test_repo, "ancestor_dirs_where_id"
-#     ) as mock_where_id, patch.object(
-#         test_repo, "ancestor_dirs_where_path"
-#     ) as mock_where_path:
-#         test_repo.get_ancestors(id=id, path=path, dir=dir)
-#         mock_where_id.assert_called_once_with(*exp)
-#         mock_where_path.assert_not_called()
-#
-#
-# @pytest.mark.parametrize(
-#     "id,path,dir,exp",
-#     [
-#         (None, "f", Dir(path="a"), ("f", 2**31 - 1)),
-#         (None, None, Dir(path="a"), ("a", 2**31 - 1)),
-#     ],
-# )
-# def test_get_ancestors_path_last(test_repo, id, path, dir, exp):
-#     """
-#     DirRepo.get_ancestors(id=,path=,dir=) will only use path if no id provided.
-#     The path argument takes priority over dir.path argument.
-#     The ancestor_dirs_where_id should never be called when no id exists.
-#     """
-#     with patch.object(
-#         test_repo, "ancestor_dirs_where_path"
-#     ) as mock_where_path, patch.object(
-#         test_repo, "ancestor_dirs_where_id"
-#     ) as mock_where_id:
-#         test_repo.get_ancestors(id=id, path=path, dir=dir)
-#         mock_where_path.assert_called_once_with(*exp)
-#         mock_where_id.assert_not_called()
-#
-#
-# def test_get_ancestors_normalizes(test_repo):
-#     """
-#     get_ancestors' helper methods call normalize_path on paths.
-#     """
-#     with patch.object(test_repo, "normalize_path") as mock_norm:
-#         test_repo.get_ancestors(path="a/b/c")
-#         mock_norm.assert_called_with("a/b/c")
-#     with patch.object(test_repo, "normalize_path") as mock_norm:
-#         test_repo.get_ancestors(dir=Dir("a/b/c"))
-#         mock_norm.assert_called_with("a/b/c")
-#
-#
-# def test_get_ancestors_denormalizes(test_repo):
-#     base = test_repo.path
-#     expect = [Dir(base / "a", id=1)]
-#
-#     dirs = test_repo.get_ancestors(path="a/b")  # path arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_ancestors(dir=Dir(base / "a/b"))  # dir.path arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_ancestors(id=2)  # id arg
-#     assert dirs == expect
-#
-#     dirs = test_repo.get_ancestors(dir=Dir("a/b", id=2))  # dir.id arg
-#     assert dirs == expect
-#
-#
-# def test_get_ancestors_raises(test_repo):
-#     """
-#     Ensure get_ancestors raises ValueError when no id, path, or dir is provided.
-#     """
-#     with pytest.raises(ValueError):
-#         test_repo.get_ancestors()
-#
-#
-# # TODO: Add test function for denormalize checks on get_ancestors
-# @pytest.mark.parametrize(
-#     "id,path,dir,dpth,exp",
-#     [
-#         (None, "f/g", None, 9, [Dir("f", id=6)]),
-#         (3, None, None, 9, [Dir("a/b", id=2), Dir("a", id=1)]),
-#         (3, None, None, 1, [Dir("a/b", id=2)]),
-#         (None, None, Dir("a"), 9, []),
-#     ],
-# )
-# def test_get_ancestors_dirs(test_repo, id, path, dir, dpth, exp):
-#     """
-#     Returns correct contents, formatting and order of Dir ojbects
-#     """
-#     dirs = test_repo.get_ancestors(id=id, path=path, dir=dir, depth=dpth)
-#     fn_dp = test_repo.denormalize_path
-#     exp_dirs = [Dir(path=str(fn_dp(dir.path)), id=dir.id) for dir in exp]
-#     assert dirs == exp_dirs
-#
-#
+class TestGetAncestors:
+    """DirRepo.get_ancestors() method tests"""
+
+    def testPrefersId(self, test_repo):
+        """Prioritizes id over all other args."""
+        with test_repo as repo:
+            dir = repo.get_ancestors(id=1, path="a/b/c", dir=Dir(id=6, path="f/h"))
+            assert dir == []
+
+    def testPrefersPath(self, test_repo):
+        """Prioritizes path arg over all others when id is None."""
+        with test_repo as repo:
+            expect = Dirs(repo.db.root)
+            dir = repo.get_ancestors(path="a/b/c", dir=Dir(id=6, path="f/h"))
+            assert dir == [expect.b, expect.a]
+
+    def testPrefersDirId(self, test_repo):
+        """Prioritizes dir arg's id over its path member when id & path are None."""
+        with test_repo as repo:
+            dir = repo.get_ancestors(dir=Dir(id=6, path="f/h"))
+            assert dir == []
+
+    def testPrefersDirPath(self, test_repo):
+        """Prioritizes dir arg's path only when all other args are None."""
+        with test_repo as repo:
+            dir = repo.get_ancestors(dir=Dir(path="f/h"))
+            expect = Dirs(repo.db.root)
+            assert dir == [expect.f]
+
+    def testRaises(self, base_repo):
+        """Raises ValueError when no args and path outside repo are given."""
+        with base_repo as repo:
+            with pytest.raises(ValueError):
+                repo.getone()
+            with pytest.raises(ValueError):
+                repo.getone(path="/not/in/repo")
+
+    def testAbsAndRelPathsEqual(self, test_repo):
+        """Returns same result for relative and absolute paths."""
+        with test_repo as repo:
+            expect = Dirs(repo.db.root)
+            ancestors = repo.get_ancestors(path="a/b/c")
+            assert ancestors == [expect.b, expect.a]
+            ancestors = repo.get_ancestors(path="f/g")
+            assert ancestors == [expect.f]
+
+
 # @pytest.mark.parametrize(
 #     "id,path,dir,exp",
 #     [

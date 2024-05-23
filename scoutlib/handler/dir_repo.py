@@ -189,7 +189,6 @@ class DirRepo:
             res = conn.execute(query, (id, depth)).fetchall()
         return res
 
-
     def select_descendant_where_path(
         self,
         path: str,
@@ -225,7 +224,7 @@ class DirRepo:
 
     # TODO: Fix depth checks not working as expected in test_get_descendandants_dirs #2
     def select_descendants_where_id(
-        self, id: int, depth: Optional[int] = 2**31 - 1
+        self, id: int, depth: Optional[int] = DEFAULT_DEPTH
     ) -> List[Tuple[int, str]]:
         """
         Selects descendant directories for a given directory ID up to a specified depth.
@@ -255,7 +254,6 @@ class DirRepo:
             """
             res = conn.execute(query, (id, depth)).fetchall()
         return res
-
 
     def add(self, dir: Dir) -> list[Dir]:
         # TODO: Come back to this method later when we know more how to use it.
@@ -291,7 +289,6 @@ class DirRepo:
         dirs = [Dir(path=ap, id=ids[i]) for i, ap in enumerate(daps)]
         return dirs
 
-
     def getone(
         self,
         id: Optional[int] = None,
@@ -319,40 +316,48 @@ class DirRepo:
             return None
         return Dir(id=res[0], path=self.db.denormalize_path(res[1]))
 
-#  def get_ancestors(
-#      self,
-#      id: Optional[int] = None,
-#      path: Optional[Union[PurePath, str]] = None,
-#      dir: Optional[Dir] = None,
-#      depth: int = 2**31 - 1,
-#  ) -> list[Dir]:
-#      """
-#      Gets ancestor directories from repo of a given directory's id or path.
-#      Also limits results to a given depth from the given directory.
-#      """
-#      given_id = dir.id if dir else None
-#      given_id = id if id else given_id
-#      given_path = str(dir.path) if dir else None
-#      given_path = path if path else given_path
-#      rows = []
+    def get_ancestors(
+        self,
+        id: Optional[int] = None,
+        path: Optional[Union[PP, str]] = None,
+        dir: Optional[Dir] = None,
+        depth: int = DEFAULT_DEPTH,
+    ) -> list[Dir]:
+        """
+        Gets ancestor directories from repo of a given directory's id or path.
+        Also limits results to a given depth from the given directory.
+        """
+        id_used = None
+        path_used = None
+        if id is not None:
+            id_used = id
+        elif path is not None:
+            path_used = path
+        elif dir is not None:
+            id_used = dir.id
+            path_used = dir.path
+        else:
+            raise ValueError("Must provide either id, path, or dir argument.")
+        rows = []
+        if id_used:
+            rows = self.select_ancestors_where_id(id_used, depth)
+        elif path_used:
+            path_used = str(self.db.normalize_path(path_used))
+            rows = self.select_ancestors_where_path(path_used, depth)
+        else:
+            raise ValueError("Must provide either id or path argument.")
 
-#      if given_id:
-#          rows = self.ancestor_dirs_where_id(given_id, depth)
-#      elif given_path:
-#          rows = self.ancestor_dirs_where_path(given_path, depth)
-#      else:
-#          raise ValueError("Must provide either id or path argument.")
+        fn_dp = self.db.denormalize_path
+        dirs = [Dir(id=r[0], path=fn_dp(r[1])) for r in rows]
+        return dirs
 
-#      fn_dp = self.denormalize_path
-#      dirs = [Dir(id=r[0], path=fn_dp(r[2])) for r in rows]
-#      return dirs
 
 #  def get_descendants(
 #      self,
 #      id: Optional[int] = None,
 #      path: Optional[Union[PurePath, str]] = None,
 #      dir: Optional[Dir] = None,
-#      depth: int = 2**31 - 1,
+#      depth: int = DEFAULT_DEPTH,
 #  ) -> list[Dir]:
 #      """
 #      Gets descendant directories from repo of a given directory's id or path.
