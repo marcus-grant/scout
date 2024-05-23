@@ -60,3 +60,25 @@ class FileRepo:
             result = c.execute(query).fetchone()
             return result
 
+    def insert_file_query(
+        self,
+        dir_id: int,
+        name: str,
+        md5: Optional[str] = None,
+        mtime: Optional[int] = None,
+        updated: Optional[int] = None,
+    ) -> str:
+        # Start with beginning query fragment that will always be needed.
+        q = "INSERT INTO file (\n"
+        q += "  dir_id, name"
+        # Add optional column names to column list if they are not None.
+        q += ", md5" if md5 is not None else ""
+        q += ", mtime" if mtime is not None else ""
+        q += ", updated" if updated is not None else ""
+        # Close column list and open values list with required values.
+        q += f")\nVALUES (\n  {dir_id}, '{name}'"
+        q += f", '{md5}'" if md5 is not None else ""  # Optional value if there
+        q += f", {mtime}" if mtime is not None else ""  # Same
+        q += f", {updated}" if updated is not None else ""  # Same
+        q += ");"  # Close values list and end query string.
+        return q

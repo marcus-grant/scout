@@ -78,6 +78,7 @@ class TestFixtures:
             assert fr.db.root is not None
             assert fr.db.path == fr.db.root / ".scout.db"
 
+
 # TestInitUtils
 class TestInitUtils:
     """Tests FileRepo.__init__ helper methods. Does NOT test __init__ itself."""
@@ -172,3 +173,65 @@ class TestSelectDirWhere:
             with pytest.raises(TypeError):
                 fr.select_dir_where()
 
+
+# Test InsertFileQuery
+class TestInsertFileQuery:
+    """Tests FileRepo.insert_file_query method."""
+
+    def testReqArgsInDb(self, base_repo):
+        """Tests method returns a string with required SQL syntax.
+        When using only the required arguments."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foobar.txt")
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                c.execute(query)
+                conn.commit()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, 0, "foobar.txt", None, None, None)
+
+    def testAllArgsInDB(self, base_repo):
+        """Tests if when all arguments supplied,
+        returned query results in them in the database."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foobar.txt", "DEADBEEF", 42, 69)
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                c.execute(query)
+                conn.commit()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, 0, "foobar.txt", "DEADBEEF", 42, 69)
+
+    def testSingleOptArgInDb(self, base_repo):
+        """Tests that when only one optional argument is supplied,
+        the query results in that argument in the database.
+        Tests that middle optional arguments are appended correctly."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foobar.txt", mtime=42)
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                c.execute(query)
+                conn.commit()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, 0, "foobar.txt", None, 42, None)
+
+    def testFKWorksWithDirRow(self, base_repo):
+        """Tests that when a dir_id is supplied from real dir row,
+        the query built from this method results in a valid file row."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("bar"))
+            q1 = fr.insert_file_query(2, "foo.md")
+            q2 = fr.insert_file_query(1, "bar.txt")
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                c.execute(q1)
+                c.execute(q2)
+                conn.commit()
+                rows = c.execute("SELECT * FROM file").fetchall()
+            assert len(rows) == 2
+            assert rows[0] == (1, 2, "foo.md", None, None, None)
+            assert rows[1] == (2, 1, "bar.txt", None, None, None)
