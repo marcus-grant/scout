@@ -141,7 +141,9 @@ class TestInit:
                 with patch(f"{MOD_FR}.create_file_table") as mock:
                     FileRepo(db)
                     mock.assert_called_once_with(db)
-# TestSelectDirQuery
+
+
+# TestSelectDirWhere
 class TestSelectDirWhere:
     """Tests FileRepo.select_dir_query method."""
 
