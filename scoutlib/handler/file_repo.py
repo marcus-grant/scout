@@ -89,6 +89,33 @@ class FileRepo:
         mtime: Optional[int] = None,
         updated: Optional[int] = None,
     ) -> str:
+        """
+        Generate an SQL query string to select file records based on provided conditions.
+
+        This method constructs an SQL `SELECT` statement to fetch records from the 'file' table
+        where the specified conditions are met. If `id` is provided, it returns the query
+        immediately since `id` is unique.
+
+        Args:
+            id (Optional[int]): The ID of the file.
+            dir_id (Optional[int]): The ID of the directory containing the file.
+            name (Optional[str]): The name of the file.
+            md5 (Optional[str]): The MD5 hash of the file.
+            mtime (Optional[int]): The modification time of the file.
+            updated (Optional[int]): The last updated time of the file.
+
+        Returns:
+            str: An SQL query string to select file records based on the provided conditions.
+
+        Raises:
+            TypeError: If none of the arguments are provided.
+
+        Example:
+            query = select_files_where_query(name='example_file.txt', md5='d41d8cd98f00b204e9800998ecf8427e')
+            print(query)
+            # Outputs:
+            # SELECT * FROM file WHERE name = 'example_file.txt' AND md5 = 'd41d8cd98f00b204e9800998ecf8427e';
+        """
         args = {
             "id": id,
             "dir_id": dir_id,
