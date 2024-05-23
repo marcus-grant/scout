@@ -1,9 +1,11 @@
 # TODO: SQL location and file handling should go to a separate module
 #       That module should then call this and DirRepo to init tables.
 from pathlib import PurePath as PP
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, List
 
 from scoutlib.handler.db_connector import DBConnector as DBC
+
+FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
 
 
 class FileRepo:
@@ -78,6 +80,48 @@ class FileRepo:
             result = c.execute(query).fetchone()
             return result
 
+    def select_files_where_query(
+        self,
+        id: Optional[int] = None,
+        dir_id: Optional[int] = None,
+        name: Optional[str] = None,
+        md5: Optional[str] = None,
+        mtime: Optional[int] = None,
+        updated: Optional[int] = None,
+    ) -> str:
+        args = {
+            "id": id,
+            "dir_id": dir_id,
+            "name": name,
+            "md5": md5,
+            "mtime": mtime,
+            "updated": updated,
+        }
+        noargs = True
+        for arg in args:
+            if args[arg] is not None:
+                noargs = False
+                break
+        if noargs:
+            raise TypeError("Must provide at least one WHERE predicate argument.")
+        # Start query string with SELECT & FROM clauses that wont change.
+        q = "SELECT * FROM file WHERE "
+        # Return early if id is provided since id is unique.
+        if id is not None:
+            q += f"id = {id};"
+            return q
+        # Add each non-None arg as WHERE clauses with 'AND' between each.
+        for arg in args:
+            if args[arg] is None:
+                continue  # If arg is None, continue to next arg.
+            elif isinstance(args[arg], str):  # Str needs quotes
+                q += f"{arg} = '{args[arg]}' AND "
+            else:
+                q += f"{arg} = {args[arg]} AND "
+        # Remove trailing ' AND ' and add semicolon to close query string.
+        q = q[:-5] + ";"
+        return q
+
     # TODO: Needs uniqueness check for combo of dir_id and name
     def insert_file_query(
         self,
@@ -88,7 +132,7 @@ class FileRepo:
         updated: Optional[int] = None,
     ) -> str:
         """
-        Generate an SQL query string to insert a new file record into the 'file' table.
+        Build a SQL query string to insert a new file record into the 'file' table.
 
         This method constructs an SQL `INSERT` statement to add a new record to the
         'file' table with the provided directory ID, name, and optional MD5 hash,

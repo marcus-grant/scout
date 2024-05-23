@@ -174,6 +174,54 @@ class TestSelectDirWhere:
                 fr.select_dir_where()
 
 
+# TestSelectFileWhereQuery
+class TestSelectFilesQuery:
+    """Tests FileRepo.select_file_where_query builder method."""
+
+    EXPECT = "SELECT * FROM file WHERE"
+
+    def testRaiseOnNoArg(self, base_repo):
+        """Tests that when no arguments are supplied, raises TypeError."""
+        with base_repo as (fr, _):
+            with pytest.raises(TypeError):
+                fr.select_files_where_query()
+
+    def testReturnOn1Args(self, base_repo):
+        """Tests that when only one argument is supplied, the query is correct."""
+        with base_repo as (fr, _):
+            fn = fr.select_files_where_query
+            assert fn(id=1) == f"{self.EXPECT} id = 1;"
+            assert fn(dir_id=1) == f"{self.EXPECT} dir_id = 1;"
+            assert fn(name="foo") == f"{self.EXPECT} name = 'foo';"
+            assert fn(md5="DEADBEEF") == f"{self.EXPECT} md5 = 'DEADBEEF';"
+            assert fn(mtime=42) == f"{self.EXPECT} mtime = 42;"
+            assert fn(updated=69) == f"{self.EXPECT} updated = 69;"
+
+    def testReturnAllArgs(self, base_repo):
+        """Tests that when all arguments are supplied, the query is correct."""
+        with base_repo as (fr, _):
+            fn = fr.select_files_where_query
+            query = fn(dir_id=1, name="foo", md5="CAFE", mtime=42, updated=69)
+            expect = f"{self.EXPECT} dir_id = 1 AND name = 'foo' AND md5 = 'CAFE' AND mtime = 42 AND updated = 69;"
+            assert query == expect
+
+    def testReturnIdOverrides(self, base_repo):
+        """Tests that when id is supplied, a single Where clause is returned."""
+        with base_repo as (fr, _):
+            fn = fr.select_files_where_query
+            query = fn(id=1, dir_id=2, md5="CAFE", mtime=42, updated=69)
+            assert query == f"{self.EXPECT} id = 1;"
+
+    def testReturnSomeArgs(self, base_repo):
+        """Tests that when some arguments are supplied, the query is correct."""
+        with base_repo as (fr, _):
+            fn = fr.select_files_where_query
+            query = fn(dir_id=1, mtime=42, updated=69)
+            expect = f"{self.EXPECT} dir_id = 1 AND mtime = 42 AND updated = 69;"
+            assert query == expect
+            query = fn(name="foo", mtime=42, md5="CAFE")
+            expect = f"{self.EXPECT} name = 'foo' AND mtime = 42 AND md5 = 'CAFE';"
+
 # Test InsertFileQuery
 class TestInsertFileQuery:
     """Tests FileRepo.insert_file_query method."""
