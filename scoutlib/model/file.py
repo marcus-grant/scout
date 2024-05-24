@@ -28,3 +28,16 @@ class File:
         self.md5 = md5
         self.mtime = mtime
         self.updated = updated
+
+    def __eq__(self, value: object, /) -> bool:
+        if not isinstance(value, File):
+            return NotImplemented
+        return (
+            self.path == value.path
+            and self.id == value.id
+            and self.dir_id == value.dir_id
+            and self.size == value.size
+            and self.md5 == value.md5
+            and self.mtime == value.mtime
+            and self.updated == value.updated
+        )
