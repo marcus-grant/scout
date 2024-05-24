@@ -7,7 +7,7 @@ from scoutlib.model.file import File
 
 
 @pytest.mark.parametrize(
-    "path, parent, name, expect",
+    "path, dir_path, name, expect",
     [
         (None, None, None, False),  # Raises
         (None, None, "c", False),  # Raises
@@ -23,28 +23,28 @@ from scoutlib.model.file import File
 class TestInitValidation:
     """
     Test class that groups tests for File.__init__ & its helper .validate_init_args.
-    There's three cases for the args path, parent, name will raise a TypeError.
-        - path is None, parent is None, name is None
-        - path is None, parent is None, but name is given.
-        - path is None, name is None, but parent is given.
+    There's three cases for the args path, dir_path, name will raise a TypeError.
+        - path is None, dir_path is None, name is None
+        - path is None, dir_path is None, but name is given.
+        - path is None, name is None, but dir_path is given.
     That is because there's not enough info to determine the path of a file.
     Parametrized above are the 8 permutations of these three arguments.
     They're split into the 3 cases that raise and the 5 that pass.
     """
 
-    def test_helper(self, path, parent, name, expect):
+    def test_helper(self, path, dir_path, name, expect):
         """File.validate_init_args returns the expected result in 'pass'."""
         fn = File._validate_init_args
-        assert fn(path=path, parent=parent, name=name) == expect
+        assert fn(path=path, dir_path=dir_path, name=name) == expect
 
-    def test_raises(self, path, parent, name, expect):
+    def test_raises(self, path, dir_path, name, expect):
         """File.__init__ raises TypeError if the test case is expected to raise."""
         if not expect:
             with pytest.raises(TypeError):
-                File(path=path, parent=parent, name=name)
+                File(path=path, dir_path=dir_path, name=name)
         else:
             try:
-                File(path=path, parent=parent, name=name)
+                File(path=path, dir_path=dir_path, name=name)
             except TypeError:
                 pytest.fail("File.__init__ raised TypeError unexpectedly.")
 
@@ -54,16 +54,16 @@ class TestInitAttrs:
     Tests proving that the returned File object has the expected attributes.
     """
 
-    def test_parent_is_path(self):
+    def test_dir_path_is_path(self):
         """Test that File.__init__ creates paths for parent attribute."""
         # Relative path as string
-        assert File(path="a/b/c").parent == PP("a/b")
+        assert File(path="a/b/c").dir_path == PP("a/b")
         # Relative path as PurePath
-        assert File(path=PP("a/b/c")).parent == PP("a/b")
+        assert File(path=PP("a/b/c")).dir_path == PP("a/b")
         # Absolute path as string
-        assert File(path="/a/b/c").parent == PP("/a/b")
+        assert File(path="/a/b/c").dir_path == PP("/a/b")
         # Absolute path as PurePath
-        assert File(path=PP("/a/b/c")).parent == PP("/a/b")
+        assert File(path=PP("/a/b/c")).dir_path == PP("/a/b")
 
     def test_name_split_from_path(self):
         """Test that File.__init__ creates name from path correctly as str."""
@@ -82,16 +82,16 @@ class TestInitAttrs:
         expect_rel = PP("a/b")
         expect_abs = PP("/a/b")
         # Relative path as string
-        assert File(path="a/b/c").parent == expect_rel
+        assert File(path="a/b/c").dir_path == expect_rel
         # Relative path as PurePath
-        assert File(path=PP("a/b/c")).parent == expect_rel
+        assert File(path=PP("a/b/c")).dir_path == expect_rel
         # Absolute path as string
-        assert File(path="/a/b/c").parent == expect_abs
+        assert File(path="/a/b/c").dir_path == expect_abs
         # Absolute path as PurePath
-        assert File(path=PP("/a/b/c")).parent == expect_abs
+        assert File(path=PP("/a/b/c")).dir_path == expect_abs
 
     @pytest.mark.parametrize(
-        "path, parent, name",
+        "path, dir_path, name",
         [
             (None, "a/b", "c"),  # No path - join parent & name
             (PP("a/b/c"), "a", "b"),  # PP type path, use path
@@ -101,33 +101,39 @@ class TestInitAttrs:
         ],
         ids=["#0", "#1", "#2", "#3", "#4"],
     )
-    def test_path_priority(self, path, parent, name):
+    def test_path_priority(self, path, dir_path, name):
         """File.__init__ prioritizes path over
         parent and name when assigning parent and name.
         Set expected parent to PurePath("a/b") and name to "c" and
         vary the path, parent, and name arguments to test the priority.
         """
-        file = File(path=path, parent=parent, name=name)
-        assert file.parent == PP("a/b")
+        file = File(path=path, dir_path=dir_path, name=name)
+        assert file.dir_path == PP("a/b")
         assert file.name == "c"
 
     def test_basic_attrs(self):
         """Test that File.__init__ assigns all other attributes correctly."""
         id = 42
+        dir_id = 24
+        size = 1024
         md5 = mock.MagicMock()
         mtime = mock.MagicMock()
-        update = mock.MagicMock()
+        updated = mock.MagicMock()
         file = File(
             path="a/b/c",
             id=id,
+            dir_id=dir_id,
+            size=size,
             md5=md5,
             mtime=mtime,
-            update=update,
+            updated=updated,
         )
         assert file.id == id
+        assert file.dir_id == dir_id
+        assert file.size == size
         assert file.md5 == md5
         assert file.mtime == mtime
-        assert file.update == update
+        assert file.updated == updated
 
 
 @pytest.mark.parametrize(
@@ -143,11 +149,11 @@ class TestPathProperty:
     """
     Tests for the File.path property which join parent and name.
     It is known from previous tests that File(path=) correctly assigns to
-    File.parent and File.name.
+    File.dir_path and File.name.
     This test checks that File.path returns so no need to try different arg types.
     """
 
-    def test_is_path_type(self, path_arg, path_expect):
+    def test_is_path_type(self, path_arg, path_expect):  # noqa
         """Test that File.path is a PurePath."""
         msg = "File.path is not a PurePath type."
         assert isinstance(File(path=path_arg).path, PP), msg
