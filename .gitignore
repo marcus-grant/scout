@@ -28,6 +28,7 @@ MANIFEST
 *.tar.gz
 *.tar.zst
 *.tar.xz
+*.pex
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
