@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import datetime as dt
 import os
 from pathlib import PurePath as PP
 import pytest
@@ -11,6 +12,7 @@ from scoutlib.handler.file_repo import FileRepo
 from scoutlib.handler.dir_repo import DirRepo
 from scoutlib.model.file import File
 from scoutlib.model.dir import Dir
+from scoutlib.model.hash import HashMD5
 
 MOD_DBC = "scoutlib.handler.db_connector.DBConnector"
 MOD_FR = "scoutlib.handler.file_repo.FileRepo"
@@ -222,9 +224,36 @@ class TestSelectFilesQuery:
             query = fn(name="foo", mtime=42, md5="CAFE")
             expect = f"{self.EXPECT} name = 'foo' AND mtime = 42 AND md5 = 'CAFE';"
 
+
 # Test InsertFileQuery
 class TestInsertFileQuery:
     """Tests FileRepo.insert_file_query method."""
+
+    EXP = "INSERT INTO file"
+
+    def testReturnReqOnly(self, base_repo):
+        """Tests returned query of only required arguments."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foobar.txt")
+            expect = f"{self.EXP} (dir_id, name) VALUES (0, 'foobar.txt');"
+            assert query == expect
+
+    def testReturnSomeOpts(self, base_repo):
+        """Tests returned query of required and some optional arguments."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foo.txt", mtime=42)
+            expect = f"{self.EXP} (dir_id, name, mtime) VALUES (0, 'foo.txt', 42);"
+            assert query == expect
+
+    def testReturnAllOpts(self, base_repo):
+        """Tests returned query of all optional arguments."""
+        with base_repo as (fr, _):
+            query = fr.insert_file_query(0, "foo.txt", "DEADBEEF", 42, 69)
+            expect = f"{self.EXP} (dir_id, name, md5, mtime, updated) VALUES (0, 'foo.txt', 'DEADBEEF', 42, 69);"
+            assert query == expect
+
+    # TODO: Only do a few query executions to ensure syntax is good
+    # Turn these into one case and assert all, some, and none of arguments
 
     def testReqArgsInDb(self, base_repo):
         """Tests method returns a string with required SQL syntax.
@@ -252,20 +281,6 @@ class TestInsertFileQuery:
                 assert len(rows) == 1
                 assert rows[0] == (1, 0, "foobar.txt", "DEADBEEF", 42, 69)
 
-    def testSingleOptArgInDb(self, base_repo):
-        """Tests that when only one optional argument is supplied,
-        the query results in that argument in the database.
-        Tests that middle optional arguments are appended correctly."""
-        with base_repo as (fr, _):
-            query = fr.insert_file_query(0, "foobar.txt", mtime=42)
-            with fr.db.connect() as conn:
-                c = conn.cursor()
-                c.execute(query)
-                conn.commit()
-                rows = c.execute("SELECT * FROM file").fetchall()
-                assert len(rows) == 1
-                assert rows[0] == (1, 0, "foobar.txt", None, 42, None)
-
     def testFKWorksWithDirRow(self, base_repo):
         """Tests that when a dir_id is supplied from real dir row,
         the query built from this method results in a valid file row."""
@@ -283,3 +298,90 @@ class TestInsertFileQuery:
             assert len(rows) == 2
             assert rows[0] == (1, 2, "foo.md", None, None, None)
             assert rows[1] == (2, 1, "bar.txt", None, None, None)
+
+
+class TestAdd:
+    """Tests FileRepo.add method."""
+
+    def testAbsRelPathsSame(self, base_repo):
+        """Tests that absolute and relative paths result in same file rows"""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            foobar_abs = fr.add(File(fr.db.root / "foo/bar.txt"))  # id=1
+            foobar_rel = fr.add(File("foo/bar.txt"))  # id=2
+            foobaz_abs = fr.add(File(fr.db.root / "foo/baz.txt"))  # id=3
+            foobaz_rel = fr.add(File("foo/baz.txt"))  # id=4
+            # Everything but the id should be the same so set them equal
+            foobar_abs.id = foobar_rel.id
+            foobaz_abs.id = foobaz_rel.id
+            foobar_abs.updated = foobar_rel.updated
+            foobaz_abs.updated = foobaz_rel.updated
+            assert foobar_abs == foobar_rel
+            assert foobaz_abs == foobaz_rel
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 4
+                # Again everything but the id & updated column should be the same
+                assert rows[0][1:-1] == rows[1][1:-1]
+                assert rows[2][1:-1] == rows[3][1:-1]
+
+    def testWithDirIdGiven(self, base_repo):
+        """Tests that file table correct when adding with dir_id given.
+        NOTE: This means dir_id should override dir in parent of path of file."""
+        with base_repo as (fr, dr):
+            updated = int(dt.now().timestamp())
+            dr.add(dir=Dir("test"))
+            dr.add(dir=Dir("foo"))
+            fr.add(File("NOTfoo/foo.txt", dir_id=2))
+            fr.add(File("NOTtest/test.txt", dir_id=1))
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+            assert len(rows) == 2
+            assert rows[0] == (1, 2, "foo.txt", None, None, updated)
+            assert rows[1] == (2, 1, "test.txt", None, None, updated)
+
+    def testWithoutDirId(self, base_repo):
+        """Tests that file table correct when adding without dir_id given."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("test"))
+            updated = int(dt.now().timestamp())
+            fr.add(File("root.txt"))
+            fr.add(File(fr.db.root / "hello"))
+            fr.add(File("test/foo.txt"))
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+            assert len(rows) == 3
+            assert rows[0] == (1, 0, "root.txt", None, None, updated)
+            assert rows[1] == (2, 0, "hello", None, None, updated)
+            assert rows[2] == (3, 1, "foo.txt", None, None, updated)
+
+    def testRootPath(self, base_repo):
+        """Tests that when a file is added with root path (relative and absolute) the dir_id column is 0."""
+        with base_repo as (fr, _):
+            updated = int(dt.now().timestamp())
+            fr.add(File("root.gpg"))
+            fr.add(File("hello.html"))
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+            assert rows[0] == (1, 0, "root.gpg", None, None, updated)
+            assert rows[1] == (2, 0, "hello.html", None, None, updated)
+
+    def testAllOptionalFileArgs(self, base_repo):
+        """Tests that all optional arguments are added to the file table."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            # mtime should be epoch time integer for current time
+            path = fr.db.root / "foo/foo.txt"
+            mtime = dt.fromtimestamp(42)
+            md5 = HashMD5(hex="CAFE")
+            updated = int(dt.now().timestamp())
+            fr.add(File(path, dir_id=1, size=1024, mtime=mtime, md5=md5))
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 1
+                assert rows[0] == (1, 1, "foo.txt", "cafe", 42, updated)

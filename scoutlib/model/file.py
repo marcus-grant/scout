@@ -41,3 +41,17 @@ class File:
             and self.mtime == value.mtime
             and self.updated == value.updated
         )
+
+    def __str__(self) -> str:
+        return f"File(path={self.path})"
+
+    def __repr__(self) -> str:
+        s = f"File(path={self.path}"
+        s += f", id={self.id}" if self.id is not None else ""
+        s += f", dir_id={self.dir_id}" if self.dir_id is not None else ""
+        s += f", size={self.size}" if self.size is not None else ""
+        s += f", md5={self.md5}" if self.md5 is not None else ""
+        s += f", mtime={self.mtime}" if self.mtime is not None else ""
+        s += f", updated={self.updated}" if self.updated is not None else ""
+        s += ")"
+        return s

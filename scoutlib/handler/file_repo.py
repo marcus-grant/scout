@@ -1,9 +1,11 @@
 # TODO: SQL location and file handling should go to a separate module
 #       That module should then call this and DirRepo to init tables.
+from datetime import datetime as dt
 from pathlib import PurePath as PP
 from typing import Optional, Union, Tuple, List
 
 from scoutlib.handler.db_connector import DBConnector as DBC
+from scoutlib.model.file import File
 
 FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
 
@@ -176,16 +178,61 @@ class FileRepo:
             str: An SQL query string to insert a new file record.
         """
         # Start with beginning query fragment that will always be needed.
-        q = "INSERT INTO file (\n"
-        q += "  dir_id, name"
+        q = "INSERT INTO file ("
+        q += "dir_id, name"
         # Add optional column names to column list if they are not None.
         q += ", md5" if md5 is not None else ""
         q += ", mtime" if mtime is not None else ""
         q += ", updated" if updated is not None else ""
         # Close column list and open values list with required values.
-        q += f")\nVALUES (\n  {dir_id}, '{name}'"
+        q += f") VALUES ({dir_id}, '{name}'"
         q += f", '{md5}'" if md5 is not None else ""  # Optional value if there
         q += f", {mtime}" if mtime is not None else ""  # Same
         q += f", {updated}" if updated is not None else ""  # Same
         q += ");"  # Close values list and end query string.
         return q
+
+    ### Repo Action Methods ###
+    # TODO: Test that all but dir_id & id stays the same on return
+    # TODO: Give interface to DirRepo to get dir_id from path or dir_id
+    def add(self, file: File) -> File:
+        q_sel = "SELECT id from dir WHERE path = ?;"
+        q_ins = "INSERT INTO file (dir_id, name, md5, mtime, updated) "
+        q_ins += "VALUES (?, ?, ?, ?, ?);"
+        dir_id = file.dir_id
+        path = self.db.normalize_path(file.path)
+        parent = path.parent
+        with self.db.connect() as conn:
+            c = conn.cursor()
+            if parent == PP("."):  # Handle files in repo root
+                dir_id = 0
+            elif dir_id is None:
+                dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
+                if dir_id is None:
+                    raise ValueError(
+                        f"Attempting to insert file with no directory @{parent}"
+                    )
+                dir_id = dir_id[0]
+            updated = dt.now()
+            vals = (
+                dir_id,
+                file.path.name,
+                file.md5.hex if file.md5 is not None else None,
+                int(file.mtime.timestamp()) if file.mtime is not None else None,
+                int(updated.timestamp()),
+            )
+            c.execute(q_ins, vals)
+            id = c.lastrowid
+            if id is None:
+                raise ValueError(f"Failed to insert file record of File {file}")
+            # Now collect all attrs from file & dir_id & id to return the new File object
+            path = self.db.denormalize_path(path)
+            return File(
+                path,
+                id=id,
+                dir_id=dir_id,
+                size=file.size,
+                mtime=file.mtime,
+                md5=file.md5,
+                updated=updated,
+            )

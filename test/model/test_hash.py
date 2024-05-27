@@ -59,7 +59,7 @@ def check_hash_members(h: HashMD5, expect: Union[str, bytes]) -> bool:
         msg = "Expect must be str or bytes "
         msg += "(inside tests.test_hash.check_hash_members)"
         raise ValueError(msg)
-    return h.hex == expected_hex and h.bytes == expected_bytes
+    return h.hex == expected_hex and h.bin == expected_bytes
 
 
 CONTENT_HELLO = "Hello, World!\n"
