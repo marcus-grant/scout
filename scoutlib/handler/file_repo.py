@@ -1,8 +1,9 @@
+# TODO: Add 'size' column as optional integer to the table
 # TODO: SQL location and file handling should go to a separate module
 #       That module should then call this and DirRepo to init tables.
 from datetime import datetime as dt
 from pathlib import PurePath as PP
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Any
 
 from scoutlib.handler.db_connector import DBConnector as DBC
 from scoutlib.model.file import File
@@ -195,44 +196,116 @@ class FileRepo:
     ### Repo Action Methods ###
     # TODO: Test that all but dir_id & id stays the same on return
     # TODO: Give interface to DirRepo to get dir_id from path or dir_id
-    def add(self, file: File) -> File:
-        q_sel = "SELECT id from dir WHERE path = ?;"
-        q_ins = "INSERT INTO file (dir_id, name, md5, mtime, updated) "
-        q_ins += "VALUES (?, ?, ?, ?, ?);"
-        dir_id = file.dir_id
-        path = self.db.normalize_path(file.path)
-        parent = path.parent
+    def add(self, files: Union[List[File], File]) -> List[File]:
+        if not isinstance(files, list):
+            files = [files]
+        inserted_files = []
+        for file in files:
+            dir_id = file.dir_id
+            path = self.db.normalize_path(file.path)
+            parent = path.parent
+            with self.db.connect() as conn:
+                c = conn.cursor()
+                if parent == PP("."):  # Handle files in repo root
+                    dir_id = 0
+                elif dir_id is None:
+                    q_sel = "SELECT id from dir WHERE path = ?;"
+                    dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
+                    if dir_id is None:
+                        raise ValueError(
+                            f"Attempting to insert file with no directory @{parent}"
+                        )
+                    dir_id = dir_id[0]
+                updated = int(dt.now().timestamp())
+                vals = (
+                    dir_id,
+                    file.path.name,
+                    file.md5.hex if file.md5 is not None else None,
+                    int(file.mtime.timestamp()) if file.mtime is not None else None,
+                    updated,
+                )
+                q_ins = "INSERT INTO file (dir_id, name, md5, mtime, updated) "
+                q_ins += "VALUES (?, ?, ?, ?, ?);"
+                c.execute(q_ins, vals)
+                id = c.lastrowid
+                if id is None:
+                    raise ValueError(f"Failed to insert file record of File {file}")
+                # Now collect all attrs from file & dir_id & id to return the new File object
+                path = self.db.denormalize_path(path)
+                inserted_files.append(
+                    File(
+                        path,
+                        id=id,
+                        dir_id=dir_id,
+                        size=file.size,
+                        mtime=file.mtime,
+                        md5=file.md5,
+                        updated=dt.fromtimestamp(updated),
+                    )
+                )
+        return inserted_files
+
+    # TODO: WHen more mature, add get methods for specific FileRepo interactions
+    def get(self, **filters: Optional[Any]) -> List[File]:
+        """
+        Retrieve files from the 'file' table based on various filtering criteria.
+
+        Args:
+            **filters: Arbitrary keyword arguments corresponding to the columns in the 'file' table.
+                        - NOTE: Every filter is an 'AND' condition with the others.
+                        - size__lt: Gets files with size less than value passed keyword.
+                        - md5__ne: Gets files that don't have the md5 hash value.
+                        - dir_id: Gets default '=' operator when querying for dir_id.
+
+        Returns:
+            List[File]: A list of File objects representing the rows from the 'file' table that match the filters.
+
+        Example:
+            files = repo.get(name='example_file.txt', mtime__gt=1234567890)
+            # This retrieves all files with name 'example_file.txt' and modification time greater than 1234567890.
+        """
+        query = "SELECT id, dir_id, name, md5, mtime, updated FROM file WHERE "
+        conditions = []
+        params = []
+
+        for key, value in filters.items():
+            if "__" in key:
+                column, operator = key.split("__")
+                if operator == "gt":
+                    conditions.append(f"{column} > ?")
+                elif operator == "lt":
+                    conditions.append(f"{column} < ?")
+                elif operator == "ge":
+                    conditions.append(f"{column} >= ?")
+                elif operator == "le":
+                    conditions.append(f"{column} <= ?")
+                elif operator == "ne":
+                    conditions.append(f"{column} != ?")
+                else:
+                    raise ValueError(f"Unsupported operator: {operator}")
+            else:
+                conditions.append(f"{key} = ?")
+            params.append(value)
+
+        if not conditions:
+            raise ValueError("At least one filter condition must be provided.")
+
+        query += " AND ".join(conditions) + ";"
+
         with self.db.connect() as conn:
             c = conn.cursor()
-            if parent == PP("."):  # Handle files in repo root
-                dir_id = 0
-            elif dir_id is None:
-                dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
-                if dir_id is None:
-                    raise ValueError(
-                        f"Attempting to insert file with no directory @{parent}"
-                    )
-                dir_id = dir_id[0]
-            updated = dt.now()
-            vals = (
-                dir_id,
-                file.path.name,
-                file.md5.hex if file.md5 is not None else None,
-                int(file.mtime.timestamp()) if file.mtime is not None else None,
-                int(updated.timestamp()),
+            c.execute(query, params)
+            rows = c.fetchall()
+
+        files = [
+            File(
+                path=row[2],
+                dir_id=row[1],
+                id=row[0],
+                md5=row[3],
+                mtime=dt.fromtimestamp(row[4]) if row[4] is not None else None,
+                updated=dt.fromtimestamp(row[5]) if row[5] is not None else None,
             )
-            c.execute(q_ins, vals)
-            id = c.lastrowid
-            if id is None:
-                raise ValueError(f"Failed to insert file record of File {file}")
-            # Now collect all attrs from file & dir_id & id to return the new File object
-            path = self.db.denormalize_path(path)
-            return File(
-                path,
-                id=id,
-                dir_id=dir_id,
-                size=file.size,
-                mtime=file.mtime,
-                md5=file.md5,
-                updated=updated,
-            )
+            for row in rows
+        ]
+        return files

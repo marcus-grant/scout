@@ -307,17 +307,19 @@ class TestAdd:
         """Tests that absolute and relative paths result in same file rows"""
         with base_repo as (fr, dr):
             dr.add(dir=Dir("foo"))
-            foobar_abs = fr.add(File(fr.db.root / "foo/bar.txt"))  # id=1
-            foobar_rel = fr.add(File("foo/bar.txt"))  # id=2
-            foobaz_abs = fr.add(File(fr.db.root / "foo/baz.txt"))  # id=3
-            foobaz_rel = fr.add(File("foo/baz.txt"))  # id=4
-            # Everything but the id should be the same so set them equal
-            foobar_abs.id = foobar_rel.id
-            foobaz_abs.id = foobaz_rel.id
-            foobar_abs.updated = foobar_rel.updated
-            foobaz_abs.updated = foobaz_rel.updated
-            assert foobar_abs == foobar_rel
-            assert foobaz_abs == foobaz_rel
+            # Even indices are absolute paths, odd are relative
+            files = [File("foo/bar.txt"), File(fr.db.root / "foo/bar.txt")]
+            files += [File("foo/baz.txt"), File(fr.db.root / "foo/baz.txt")]
+            stored_files = fr.add(files)
+            assert [f.id for f in stored_files] == [1, 2, 3, 4]
+            # Everything but the id & updated should be the same so set them equal
+            stored_files[0].id = stored_files[1].id
+            stored_files[2].id = stored_files[3].id
+            stored_files[0].updated = stored_files[1].updated
+            stored_files[2].updated = stored_files[3].updated
+            assert stored_files[0] == stored_files[1]
+            assert stored_files[2] == stored_files[3]
+            # Now do the same with the associated rows in the database
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
@@ -333,8 +335,7 @@ class TestAdd:
             updated = int(dt.now().timestamp())
             dr.add(dir=Dir("test"))
             dr.add(dir=Dir("foo"))
-            fr.add(File("NOTfoo/foo.txt", dir_id=2))
-            fr.add(File("NOTtest/test.txt", dir_id=1))
+            fr.add([File("foo/foo.txt", dir_id=2), File("test/test.txt", dir_id=1)])
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
@@ -347,9 +348,7 @@ class TestAdd:
         with base_repo as (fr, dr):
             dr.add(dir=Dir("test"))
             updated = int(dt.now().timestamp())
-            fr.add(File("root.txt"))
-            fr.add(File(fr.db.root / "hello"))
-            fr.add(File("test/foo.txt"))
+            fr.add([File("root.txt"), File(fr.db.root / "hello"), File("test/foo.txt")])
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
@@ -362,13 +361,30 @@ class TestAdd:
         """Tests that when a file is added with root path (relative and absolute) the dir_id column is 0."""
         with base_repo as (fr, _):
             updated = int(dt.now().timestamp())
-            fr.add(File("root.gpg"))
-            fr.add(File("hello.html"))
+            fr.add([File(fr.db.root / "root.gpg"), File("hello.html")])
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
             assert rows[0] == (1, 0, "root.gpg", None, None, updated)
             assert rows[1] == (2, 0, "hello.html", None, None, updated)
+
+    def testSinlgeFileSameAsList(self, base_repo):
+        """Tests that adding a single file results in same thing as
+        a list of one file."""
+        with base_repo as (fr, _):
+            single_file = fr.add(File("foo.txt"))
+            file_list = fr.add([File("foo.txt")])
+            # Change File obect's id and updated members to match
+            # They are expected to be different between successive adds
+            single_file[0].id = file_list[0].id
+            file_list[0].updated = single_file[0].updated
+            assert single_file == file_list
+            with fr.db.connect() as conn:
+                c = conn.cursor()
+                rows = c.execute("SELECT * FROM file").fetchall()
+                assert len(rows) == 2
+                # Same as before id (definitely) and updated (occasionally) are different
+                assert rows[0][1:-1] == rows[1][1:-1]
 
     def testAllOptionalFileArgs(self, base_repo):
         """Tests that all optional arguments are added to the file table."""
@@ -385,3 +401,33 @@ class TestAdd:
                 rows = c.execute("SELECT * FROM file").fetchall()
                 assert len(rows) == 1
                 assert rows[0] == (1, 1, "foo.txt", "cafe", 42, updated)
+
+
+class TestGet:
+    """Tests FileRepo.get method."""
+
+    def testByName(self, base_repo):
+        """Tests that get returns the correct file by name."""
+        with base_repo as (fr, _):
+            fr.add([File("a"), File("b"), File("c")])
+            assert fr.get(name="a")[0].id == 1
+            assert fr.get(name="b")[0].id == 2
+            assert fr.get(name__ne="c")[0].id == 1
+            assert fr.get(name__ne="c")[1].id == 2
+
+    def testById(self, base_repo):
+        """Tests that get returns the correct file by id."""
+        with base_repo as (fr, _):
+            fr.add([File("a"), File("b"), File("c")])
+            assert fr.get(id__ne=1)[0].path.name == "b"
+            assert fr.get(id__ne=1)[1].path.name == "c"
+            assert fr.get(id=2)[0].path.name == "b"
+            assert fr.get(id=3)[0].path.name == "c"
+
+    def testByDirId(self, base_repo):
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("bar"))
+            fr.add([File("a", dir_id=1), File("b", dir_id=2), File("c", dir_id=1)])
+            assert fr.get(dir_id=1)[0].path == fr.db.root / "foo/a"
+            assert fr.get(dir_id=1)[1].path == fr.db.root / "foo/c"
