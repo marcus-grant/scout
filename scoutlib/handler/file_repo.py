@@ -284,6 +284,15 @@ class FileRepo:
         query += "LEFT JOIN dir d ON f.dir_id = d.id WHERE "
         conditions = []
         params = []
+        path = filters.pop("path", None)
+
+        if path is not None:
+            if "dir_id" not in filters:
+                if not (isinstance(path, str) or isinstance(path, PP)):
+                    raise ValueError("Path filter must be a string or PurePath.")
+                path = self.db.normalize_path(path)
+                filters["path"] = str(path.parent)
+                filters["name"] = str(path.name)
 
         for key, value in filters.items():
             append_param = True
@@ -312,8 +321,9 @@ class FileRepo:
                 conditions.append(f"f.{key} = ?")
             if append_param:
                 params.append(value)
-
         query += " AND ".join(conditions) + ";"
+        # Handle special case where path is the only selection in dir table
+        query = query.replace("f.path", "d.path")
 
         query_all = "SELECT f.id, f.dir_id, f.name, f.md5, f.mtime, f.updated, d.path "
         query_all += "FROM file f LEFT JOIN dir d ON f.dir_id = d.id;"

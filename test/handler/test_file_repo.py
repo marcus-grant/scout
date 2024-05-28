@@ -1,6 +1,7 @@
 # TODO: updated column can be off by 1 second, make tests resilient to this
 from contextlib import contextmanager
 from datetime import datetime as dt
+from datetime import timedelta as td
 import os
 from pathlib import PurePath as PP
 import pytest
@@ -458,6 +459,17 @@ class TestGet:
             assert fr.get(dir_id__ne=1)[0].path == fr.db.root / "bar/b"
             assert fr.get(dir_id__ne=1)[1].path == fr.db.root / "r"
 
+    def testByPath(self, base_repo):
+        """Tests that get returns the correct file by path."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("a"))
+            dr.add(dir=Dir("a/a"))
+            fr.add(File("a/a/a"))
+            assert len(fr.get(path="a/a/a")) == 1
+            assert fr.get(path="a/a/a")[0].id == 1
+            assert fr.get(path="a/a/a")[0].dir_id == 2
+            assert fr.get(path="a/a/a")[0].path == fr.db.root / "a/a/a"
+
     def testByMtimeAndGreaterThan(self, base_repo):
         """Tests that get returns the correct file by mtime.
         Also tests the __ge, __gt operators."""
@@ -543,7 +555,6 @@ class TestGet:
             dr.add(dir=Dir("foo"))
             dr.add(dir=Dir("bar"))
             dr.add(dir=Dir("baz"))
-            up = int(dt.now().replace(microsecond=0).timestamp())
             fr.add(
                 [
                     File("foo/a.txt"),
@@ -559,5 +570,26 @@ class TestGet:
             assert fr.get(name="a", dir_id=2) == []
             assert fr.get(name="b", dir_id=1) == []
             assert fr.get(name="c", dir_id=1) == []
-            assert fr.get(name="a.txt", dir_id=0)[0].path == fr.db.root / "a.txt"
-            assert fr.get(name="b.txt", dir_id=2)[0].path == fr.db.root / "bar/b.txt"
+            root = fr.db.root
+            assert fr.get(name="a.txt", dir_id=0)[0].path == root / "a.txt"
+            assert fr.get(name="b.txt", dir_id=2)[0].path == root / "bar/b.txt"
+
+    def testAllFilters(self, base_repo):
+        """Tests that get returns correct file with all filters applied."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("foo/bar"))
+            path = fr.db.root / "foo/bar/baz.txt"
+            md5 = HashMD5(hex="cafe")
+            mtime = dt.fromtimestamp(42)
+            up = dt.now().replace(microsecond=0)
+            fr.add(File(path, md5=md5, mtime=mtime))
+            result = fr.get(path="foo/bar/baz.txt", dir_id=2, md5="cafe", mtime=42)
+            assert len(result) == 1
+            result = result[0]
+            assert result.id == 1
+            assert result.dir_id == 2
+            assert result.path == path
+            assert result.md5 == str(md5)
+            assert result.mtime == mtime
+            assert result.updated - up < td(seconds=1)
