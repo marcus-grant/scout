@@ -10,48 +10,48 @@ class File:
     Represents a single file on the filesystem or recorded in the database.
     """
 
-    parent: PP
-    name: str
-
     def __init__(
         self,
-        path: Optional[Union[str, PP]] = None,
-        parent: Optional[Union[str, PP]] = None,
-        name: Optional[str] = None,
+        path: Union[str, PP],
+        dir_id: Optional[int] = None,
         id: Optional[int] = None,
-        md5: Optional[HashMD5] = None,  # Assuming HashMD5 is defined elsewhere
+        size: Optional[int] = None,
         mtime: Optional[dt] = None,  # Assuming dt is an alias for datetime
-        update: Optional[dt] = None,
+        md5: Optional[HashMD5] = None,  # Assuming HashMD5 is defined elsewhere
+        updated: Optional[dt] = None,
     ):
-        if not self._validate_init_args(path=path, parent=parent, name=name):
-            msg = "File.__init__ requires either path or (parent and name) args."
-            raise TypeError(msg)
-
-        if name:  # If ane is given assign it
-            self.name = name
-        if parent:  # Same for parent
-            self.parent = PP(parent)
-        if path:  # If path is given it takes precedence by override
-            path = PP(path)
-            self.parent = path.parent
-            self.name = path.name
-
         # Initialize all other attributes
+        self.path = PP(path)
         self.id = id
+        self.dir_id = dir_id
+        self.size = size
         self.md5 = md5
         self.mtime = mtime
-        self.update = update
+        self.updated = updated
 
-    @classmethod
-    def _validate_init_args(
-        cls,
-        path: Optional[Union[str, PP]] = None,
-        parent: Optional[Union[str, PP]] = None,
-        name: Optional[str] = None,
-    ) -> bool:
-        """Validates the arguments passed to the constructor"""
-        return (path is not None) or ((parent is not None) and (name is not None))
+    def __eq__(self, value: object, /) -> bool:
+        if not isinstance(value, File):
+            return NotImplemented
+        return (
+            self.path == value.path
+            and self.id == value.id
+            and self.dir_id == value.dir_id
+            and self.size == value.size
+            and self.md5 == value.md5
+            and self.mtime == value.mtime
+            and self.updated == value.updated
+        )
 
-    @property
-    def path(self) -> PP:
-        return self.parent / self.name
+    def __str__(self) -> str:
+        return f"File(path={self.path})"
+
+    def __repr__(self) -> str:
+        s = f"File(path={self.path}"
+        s += f", id={self.id}" if self.id is not None else ""
+        s += f", dir_id={self.dir_id}" if self.dir_id is not None else ""
+        s += f", size={self.size}" if self.size is not None else ""
+        s += f", md5={self.md5}" if self.md5 is not None else ""
+        s += f", mtime={self.mtime}" if self.mtime is not None else ""
+        s += f", updated={self.updated}" if self.updated is not None else ""
+        s += ")"
+        return s
