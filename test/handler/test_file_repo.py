@@ -1,3 +1,4 @@
+# TODO: updated column can be off by 1 second, make tests resilient to this
 from contextlib import contextmanager
 from datetime import datetime as dt
 import os
@@ -300,6 +301,7 @@ class TestInsertFileQuery:
             assert rows[1] == (2, 1, "bar.txt", None, None, None)
 
 
+# TODO: Needs filter for path that results in dir_id and name
 class TestAdd:
     """Tests FileRepo.add method."""
 
@@ -423,7 +425,7 @@ class TestGet:
 
     def testByName(self, base_repo):
         """Tests that get returns the correct file by name."""
-        with base_repo as (fr, _):
+        with base_repo as (fr, dr):
             fr.add([File("a"), File("b"), File("c")])
             assert fr.get(name="a")[0].id == 1
             assert fr.get(name="b")[0].id == 2
@@ -440,9 +442,122 @@ class TestGet:
             assert fr.get(id=3)[0].path.name == "c"
 
     def testByDirId(self, base_repo):
+        """Tests that get returns the correct file by dir_id foreign key."""
+        """Essentially what you'd do to find files in same directory."""
         with base_repo as (fr, dr):
             dr.add(dir=Dir("foo"))
             dr.add(dir=Dir("bar"))
-            fr.add([File("a", dir_id=1), File("b", dir_id=2), File("c", dir_id=1)])
+            fa, fc = File("a", dir_id=1), File("c", dir_id=1)
+            fb, fx = File("b", dir_id=2), File("r", dir_id=0)
+            fr.add([fa, fb, fc, fx])
+            assert len(fr.get(dir_id=1)) == 2
             assert fr.get(dir_id=1)[0].path == fr.db.root / "foo/a"
             assert fr.get(dir_id=1)[1].path == fr.db.root / "foo/c"
+            assert fr.get(dir_id=2)[0].path == fr.db.root / "bar/b"
+            assert fr.get(dir_id=0)[0].path == fr.db.root / "r"
+            assert fr.get(dir_id__ne=1)[0].path == fr.db.root / "bar/b"
+            assert fr.get(dir_id__ne=1)[1].path == fr.db.root / "r"
+
+    def testByMtimeAndGreaterThan(self, base_repo):
+        """Tests that get returns the correct file by mtime.
+        Also tests the __ge, __gt operators."""
+        with base_repo as (fr, _):
+            mtimes = [100, 200, 300, 400, 500, 600, 700, 800]
+            mtimes = [dt.fromtimestamp(m) for m in mtimes]
+            files = ["a", "b", "c", "d", "e", "f", "g", "h"]
+            files = [File(f, mtime=m) for f, m in zip(files, mtimes)]
+            fr.add(files)
+            assert len(fr.get(mtime=99)) == 0
+            assert len(fr.get(mtime=100)) == 1
+            assert fr.get(mtime=100)[0].path.name == "a"
+            assert fr.get(mtime=100)[0].id == 1
+            assert fr.get(mtime=100)[0].mtime == dt.fromtimestamp(100)
+            assert len(fr.get(mtime__ge=700)) == 2
+            assert fr.get(mtime__ge=700)[0].id == 7
+            assert fr.get(mtime__ge=700)[0].path.name == "g"
+            assert fr.get(mtime__ge=700)[1].path.name == "h"
+            assert fr.get(mtime__ge=700) == fr.get(mtime__gt=600)
+            assert len(fr.get(mtime__gt=100)) == 7
+
+    def testByUpdatedAndLessThan(self, base_repo):
+        """Tests that get returns correct file objects by updated time column.
+        Also tests the __le, __lt operators.
+        Does so by adding files then altering the updated time column in sqlite."""
+        ups = [100, 200, 300, 400, 500, 600, 700, 800]
+        files = ["a", "b", "c", "d", "e", "f", "g", "h"]
+        files = [File(f) for f in files]
+        with base_repo as (fr, _):
+            with fr.db.connect() as conn:
+                fr.add(files)
+                c = conn.cursor()
+                for i, up in enumerate(ups):
+                    c.execute(f"UPDATE file SET updated = {up} WHERE id = {i+1}")
+                conn.commit()
+            assert len(fr.get(updated=101)) == 0
+            assert len(fr.get(updated=100)) == 1
+            assert fr.get(updated=100)[0].path.name == "a"
+            assert fr.get(updated=100)[0].id == 1
+            assert len(fr.get(updated__le=300)) == 3
+            assert fr.get(updated__le=300)[0].id == 1
+            assert fr.get(updated__le=300)[0].path.name == "a"
+            assert fr.get(updated__le=300)[1].path.name == "b"
+            assert fr.get(updated__le=300)[2].path.name == "c"
+            assert len(fr.get(updated__le=700)) == 7
+            assert fr.get(updated__le=700) == fr.get(updated__lt=800)
+
+    def testByMd5AndNull(self, base_repo):
+        """Tests that get returns the correct file by md5 hash.
+        Also tests the __null operator since this is a likely column to use it on."""
+        with base_repo as (fr, _):
+            md5s = ["deadbeef", "cafefeed", "00", "12345678"]
+            files = [File(str(m), md5=HashMD5(hex=m)) for m in md5s]
+            files += [File("none")]
+            fr.add(files)
+            assert len(fr.get(md5="deadbeef")) == 1
+            assert fr.get(md5="deadbeef")[0].path.name == "deadbeef"
+            assert fr.get(md5="cafefeed")[0].path.name == "cafefeed"
+            assert fr.get(md5="00")[0].path.name == "00"
+            assert fr.get(md5="12345678")[0].path.name == "12345678"
+            assert fr.get(md5__null=True)[0].path.name == "none"
+            assert len(fr.get(md5__null=False)) == 4
+
+    def testNoFilter(self, base_repo):
+        """Tests that get returns all files when no filters are applied."""
+        with base_repo as (fr, _):
+            fr.add([File("a"), File("b"), File("c")])
+            assert len(fr.get()) == 3
+
+    def testEmptyResult(self, base_repo):
+        """Tests that queries with no matches returns empty list."""
+        with base_repo as (fr, _):
+            fr.add([File("a"), File("b"), File("c")])
+            assert len(fr.get(name="d")) == 0
+            assert len(fr.get(id=4)) == 0
+            assert len(fr.get(updated=100)) == 0
+            assert len(fr.get(md5="deadbeef")) == 0
+            assert len(fr.get(dir_id=2)) == 0
+
+    def testManyFilters(self, base_repo):
+        """Tests that get returns correct file with many filters applied."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("bar"))
+            dr.add(dir=Dir("baz"))
+            up = int(dt.now().replace(microsecond=0).timestamp())
+            fr.add(
+                [
+                    File("foo/a.txt"),
+                    File("bar/b.txt"),
+                    File("baz/c.txt"),
+                    File("a.txt"),
+                    File("b.txt"),
+                ]
+            )
+            assert fr.get(name="a.txt", dir_id=1)[0].path.name == "a.txt"
+            assert fr.get(name="b.txt", dir_id=2)[0].path.name == "b.txt"
+            assert fr.get(name="c.txt", dir_id=3)[0].path.name == "c.txt"
+            assert fr.get(name="a", dir_id=2) == []
+            assert fr.get(name="b", dir_id=1) == []
+            assert fr.get(name="c", dir_id=1) == []
+            assert fr.get(name="a.txt", dir_id=0)[0].path == fr.db.root / "a.txt"
+            assert fr.get(name="b.txt", dir_id=2)[0].path == fr.db.root / "bar/b.txt"

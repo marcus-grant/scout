@@ -218,13 +218,18 @@ class FileRepo:
                             )
                         dir_id = dir_id[0]
                 else:
-                    q_sel = "SELECT path from dir WHERE id = ?;"
-                    parent = c.execute(q_sel, (dir_id,)).fetchone()[0]
-                    if path is None:
-                        msg = f"Attempting to insert file with no directory @{dir_id}"
-                        raise ValueError(msg)
-                    parent = self.db.normalize_path(parent)
-                    path = parent / path.name
+                    if dir_id != 0:
+                        q_sel = "SELECT path from dir WHERE id = ?;"
+                        parent = c.execute(q_sel, (dir_id,)).fetchone()
+                        if parent is None or len(parent) == 0:
+                            breakpoint()
+                            msg = f"Trying to insert file with no directory @{dir_id}"
+                            raise ValueError(msg)
+                        parent = self.db.normalize_path(parent[0])
+                        path = parent / path.name
+                    else:
+                        parent = PP(".")
+                        path = parent / path.name
                 updated = int(dt.now().timestamp())
                 vals = (
                     dir_id,
@@ -255,6 +260,7 @@ class FileRepo:
         return inserted_files
 
     # TODO: WHen more mature, add get methods for specific FileRepo interactions
+    # TODO: Needs to query for dir_id and name based on a path filter
     def get(self, **filters: Optional[Any]) -> List[File]:
         """
         Retrieve files from the 'file' table based on various filtering criteria.
@@ -273,13 +279,17 @@ class FileRepo:
             files = repo.get(name='example_file.txt', mtime__gt=1234567890)
             # This retrieves all files with name 'example_file.txt' and modification time greater than 1234567890.
         """
-        query = "SELECT id, dir_id, name, md5, mtime, updated FROM file WHERE "
+        query = "SELECT f.id, f.dir_id, f.name, f.md5, f.mtime, f.updated, d.path "
+        query += "FROM file f "
+        query += "LEFT JOIN dir d ON f.dir_id = d.id WHERE "
         conditions = []
         params = []
 
         for key, value in filters.items():
+            append_param = True
             if "__" in key:
                 column, operator = key.split("__")
+                column = f"f.{column}"
                 if operator == "gt":
                     conditions.append(f"{column} > ?")
                 elif operator == "lt":
@@ -290,31 +300,43 @@ class FileRepo:
                     conditions.append(f"{column} <= ?")
                 elif operator == "ne":
                     conditions.append(f"{column} != ?")
+                elif operator == "null":
+                    append_param = False
+                    if value:
+                        conditions.append(f"{column} IS NULL")
+                    else:
+                        conditions.append(f"{column} IS NOT NULL")
                 else:
                     raise ValueError(f"Unsupported operator: {operator}")
             else:
-                conditions.append(f"{key} = ?")
-            params.append(value)
-
-        if not conditions:
-            raise ValueError("At least one filter condition must be provided.")
+                conditions.append(f"f.{key} = ?")
+            if append_param:
+                params.append(value)
 
         query += " AND ".join(conditions) + ";"
 
+        query_all = "SELECT f.id, f.dir_id, f.name, f.md5, f.mtime, f.updated, d.path "
+        query_all += "FROM file f LEFT JOIN dir d ON f.dir_id = d.id;"
+
         with self.db.connect() as conn:
             c = conn.cursor()
-            c.execute(query, params)
+            if len(filters) == 0:
+                c.execute(query_all)
+            else:
+                c.execute(query, params)
             rows = c.fetchall()
+
+        paths = [r[2] if r[6] is None else f"{r[6]}/{r[2]}" for r in rows]
 
         files = [
             File(
-                path=row[2],
+                path=self.db.denormalize_path(paths[i]),
                 dir_id=row[1],
                 id=row[0],
                 md5=row[3],
                 mtime=dt.fromtimestamp(row[4]) if row[4] is not None else None,
                 updated=dt.fromtimestamp(row[5]) if row[5] is not None else None,
             )
-            for row in rows
+            for i, row in enumerate(rows)
         ]
         return files
