@@ -343,12 +343,27 @@ class TestAdd:
             assert rows[0] == (1, 2, "foo.txt", None, None, updated)
             assert rows[1] == (2, 1, "test.txt", None, None, updated)
 
+    def testDirIdOverridesPath(self, base_repo):
+        """Sometimes you might know the dir_id which saves querying the dir table.
+        Thus it should override the dir in the path of the file."""
+        with base_repo as (fr, dr):
+            dr.add(dir=Dir("foo"))
+            dr.add(dir=Dir("baz"))
+            updated = int(dt.now().timestamp())
+            file = fr.add([File("baz/bar.txt", dir_id=1)])  # Note baz dir is dir_id=2
+            assert file[0].dir_id == 1
+            assert file[0].path == fr.db.root / "foo/bar.txt"
+            with fr.db.connect() as conn:
+                dir_row = conn.execute("SELECT * FROM file").fetchone()
+                assert dir_row == (1, 1, "bar.txt", None, None, updated)
+
     def testWithoutDirId(self, base_repo):
         """Tests that file table correct when adding without dir_id given."""
         with base_repo as (fr, dr):
             dr.add(dir=Dir("test"))
             updated = int(dt.now().timestamp())
-            fr.add([File("root.txt"), File(fr.db.root / "hello"), File("test/foo.txt")])
+            files = [File("root.txt"), File(fr.db.root / "hello"), File("test/foo.txt")]
+            files = fr.add(files)
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()

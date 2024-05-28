@@ -206,20 +206,29 @@ class FileRepo:
             parent = path.parent
             with self.db.connect() as conn:
                 c = conn.cursor()
-                if parent == PP("."):  # Handle files in repo root
-                    dir_id = 0
-                elif dir_id is None:
-                    q_sel = "SELECT id from dir WHERE path = ?;"
-                    dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
-                    if dir_id is None:
-                        raise ValueError(
-                            f"Attempting to insert file with no directory @{parent}"
-                        )
-                    dir_id = dir_id[0]
+                if dir_id is None:
+                    if parent == PP("."):  # Handle files in repo root
+                        dir_id = 0
+                    else:
+                        q_sel = "SELECT id from dir WHERE path = ?;"
+                        dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
+                        if dir_id is None:
+                            raise ValueError(
+                                f"Attempting to insert file with no directory @{parent}"
+                            )
+                        dir_id = dir_id[0]
+                else:
+                    q_sel = "SELECT path from dir WHERE id = ?;"
+                    parent = c.execute(q_sel, (dir_id,)).fetchone()[0]
+                    if path is None:
+                        msg = f"Attempting to insert file with no directory @{dir_id}"
+                        raise ValueError(msg)
+                    parent = self.db.normalize_path(parent)
+                    path = parent / path.name
                 updated = int(dt.now().timestamp())
                 vals = (
                     dir_id,
-                    file.path.name,
+                    path.name,
                     file.md5.hex if file.md5 is not None else None,
                     int(file.mtime.timestamp()) if file.mtime is not None else None,
                     updated,
