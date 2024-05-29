@@ -6,10 +6,10 @@ import sqlite3 as sql
 import tempfile
 from unittest.mock import patch, MagicMock
 
-from scoutlib.handler.db_connector import DBConnector
-from scoutlib.model.dir import Dir
+from lib.handler.db_connector import DBConnector
+from lib.model.dir import Dir
 
-MOD_BASE = "scoutlib.handler.db_connector.DBConnector"
+MOD_BASE = "lib.handler.db_connector.DBConnector"
 
 
 @contextmanager

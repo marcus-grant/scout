@@ -3,7 +3,7 @@ import os
 import pytest
 from pathlib import PurePath as PP
 
-from scoutlib.model.file import File
+from lib.model.file import File
 
 
 class TestInitAttrs:

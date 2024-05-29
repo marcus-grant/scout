@@ -2,8 +2,8 @@ import pathlib
 from pyfakefs.fake_filesystem_unittest import Patcher
 import pytest
 
-from scoutlib.model.dir import Dir
-from scoutlib.handler import fs
+from lib.model.dir import Dir
+from lib.handler import fs
 
 
 @pytest.fixture()

@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from scoutlib.model.dir import Dir
+from lib.model.dir import Dir
 
 
 # Function to use Dir class to create a list of all directories of a path

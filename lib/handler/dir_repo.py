@@ -11,8 +11,8 @@ import sqlite3
 from pathlib import PurePath as PP
 from typing import Optional, Union, List, Tuple
 
-from scoutlib.model.dir import Dir
-from scoutlib.handler.db_connector import DBConnector as DBC
+from lib.model.dir import Dir
+from lib.handler.db_connector import DBConnector as DBC
 
 
 DIR_TABLE = "dir"

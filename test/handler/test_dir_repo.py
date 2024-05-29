@@ -7,14 +7,14 @@ from unittest.mock import patch
 import tempfile
 from typing import List, Tuple
 
-from scoutlib.handler.dir_repo import DirRepo
-from scoutlib.model.dir import Dir
-from scoutlib.handler.db_connector import DBConnector
+from lib.handler.dir_repo import DirRepo
+from lib.model.dir import Dir
+from lib.handler.db_connector import DBConnector
 
 PP = PurePath
 
-MOD_REPO = "scoutlib.handler.dir_repo.DirRepo"
-MOD_DBC = "scoutlib.handler.db_connector.DBConnector"
+MOD_REPO = "lib.handler.dir_repo.DirRepo"
+MOD_DBC = "lib.handler.db_connector.DBConnector"
 
 
 ### Module fixtures
@@ -281,7 +281,7 @@ class TestInit:
         """__init__ calls DBConnector.table_exists for dir table"""
         # Arrange
         with base_dbconn as db:
-            fn_str = "scoutlib.handler.db_connector.DBConnector.table_exists"
+            fn_str = "lib.handler.db_connector.DBConnector.table_exists"
             with patch(fn_str) as mock_fn:
                 # Act
                 DirRepo(db)
