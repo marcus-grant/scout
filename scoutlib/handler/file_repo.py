@@ -27,6 +27,7 @@ class FileRepo:
                 dir_id iINTEGER,
                 name TEXT NOT NULL,
                 md5 TEXT,
+                size INTEGER,
                 mtime INTEGER,
                 updated INTEGER,
                 FOREIGN KEY (dir_id) REFERENCES dir(id)
@@ -194,11 +195,12 @@ class FileRepo:
                     dir_id,
                     path.name,
                     file.md5.hex if file.md5 is not None else None,
+                    file.size,
                     int(file.mtime.timestamp()) if file.mtime is not None else None,
                     updated,
                 )
-                q_ins = "INSERT INTO file (dir_id, name, md5, mtime, updated) "
-                q_ins += "VALUES (?, ?, ?, ?, ?);"
+                q_ins = "INSERT INTO file (dir_id, name, md5, size, mtime, updated) "
+                q_ins += "VALUES (?, ?, ?, ?, ?, ?);"
                 c.execute(q_ins, vals)
                 id = c.lastrowid
                 if id is None:
@@ -210,9 +212,9 @@ class FileRepo:
                         path,
                         id=id,
                         dir_id=dir_id,
+                        md5=file.md5,
                         size=file.size,
                         mtime=file.mtime,
-                        md5=file.md5,
                         updated=dt.fromtimestamp(updated),
                     )
                 )
@@ -238,7 +240,9 @@ class FileRepo:
             files = repo.get(name='example_file.txt', mtime__gt=1234567890)
             # This retrieves all files with name 'example_file.txt' and modification time greater than 1234567890.
         """
-        query = "SELECT f.id, f.dir_id, f.name, f.md5, f.mtime, f.updated, d.path "
+        query = (
+            "SELECT f.id, f.dir_id, f.name, f.md5, f.size, f.mtime, f.updated, d.path "
+        )
         query += "FROM file f "
         query += "LEFT JOIN dir d ON f.dir_id = d.id WHERE "
         conditions = []
@@ -284,7 +288,9 @@ class FileRepo:
         # Handle special case where path is the only selection in dir table
         query = query.replace("f.path", "d.path")
 
-        query_all = "SELECT f.id, f.dir_id, f.name, f.md5, f.mtime, f.updated, d.path "
+        query_all = (
+            "SELECT f.id, f.dir_id, f.name, f.md5, f.size, f.mtime, f.updated, d.path "
+        )
         query_all += "FROM file f LEFT JOIN dir d ON f.dir_id = d.id;"
 
         with self.db.connect() as conn:
@@ -295,7 +301,8 @@ class FileRepo:
                 c.execute(query, params)
             rows = c.fetchall()
 
-        paths = [r[2] if r[6] is None else f"{r[6]}/{r[2]}" for r in rows]
+        # Marshal all paths and do paraticular assignment where None is root paths
+        paths = [r[2] if r[7] is None else f"{r[7]}/{r[2]}" for r in rows]
 
         files = [
             File(
@@ -303,8 +310,9 @@ class FileRepo:
                 dir_id=row[1],
                 id=row[0],
                 md5=row[3],
-                mtime=dt.fromtimestamp(row[4]) if row[4] is not None else None,
-                updated=dt.fromtimestamp(row[5]) if row[5] is not None else None,
+                size=row[4],
+                mtime=dt.fromtimestamp(row[5]) if row[5] is not None else None,
+                updated=dt.fromtimestamp(row[6]) if row[6] is not None else None,
             )
             for i, row in enumerate(rows)
         ]

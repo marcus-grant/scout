@@ -100,8 +100,9 @@ class TestInitUtils:
             (1, "dir_id", "iINTEGER", 0, None, 0),
             (2, "name", "TEXT", 1, None, 0),
             (3, "md5", "TEXT", 0, None, 0),
-            (4, "mtime", "INTEGER", 0, None, 0),
-            (5, "updated", "INTEGER", 0, None, 0),
+            (4, "size", "INTEGER", 0, None, 0),
+            (5, "mtime", "INTEGER", 0, None, 0),
+            (6, "updated", "INTEGER", 0, None, 0),
         ]
 
         with base_dbconn as db:
@@ -227,7 +228,6 @@ class TestSelectFilesQuery:
             expect = f"{self.EXPECT} name = 'foo' AND mtime = 42 AND md5 = 'CAFE';"
 
 
-# TODO: Needs filter for path that results in dir_id and name
 class TestAdd:
     """Tests FileRepo.add method."""
 
@@ -268,8 +268,8 @@ class TestAdd:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
             assert len(rows) == 2
-            assert rows[0] == (1, 2, "foo.txt", None, None, updated)
-            assert rows[1] == (2, 1, "test.txt", None, None, updated)
+            assert rows[0] == (1, 2, "foo.txt", None, None, None, updated)
+            assert rows[1] == (2, 1, "test.txt", None, None, None, updated)
 
     def testDirIdOverridesPath(self, base_repo):
         """Sometimes you might know the dir_id which saves querying the dir table.
@@ -283,7 +283,7 @@ class TestAdd:
             assert file[0].path == fr.db.root / "foo/bar.txt"
             with fr.db.connect() as conn:
                 dir_row = conn.execute("SELECT * FROM file").fetchone()
-                assert dir_row == (1, 1, "bar.txt", None, None, updated)
+                assert dir_row == (1, 1, "bar.txt", None, None, None, updated)
 
     def testWithoutDirId(self, base_repo):
         """Tests that file table correct when adding without dir_id given."""
@@ -296,9 +296,9 @@ class TestAdd:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
             assert len(rows) == 3
-            assert rows[0] == (1, 0, "root.txt", None, None, updated)
-            assert rows[1] == (2, 0, "hello", None, None, updated)
-            assert rows[2] == (3, 1, "foo.txt", None, None, updated)
+            assert rows[0] == (1, 0, "root.txt", None, None, None, updated)
+            assert rows[1] == (2, 0, "hello", None, None, None, updated)
+            assert rows[2] == (3, 1, "foo.txt", None, None, None, updated)
 
     def testRootPath(self, base_repo):
         """Tests that when a file is added with root path (relative and absolute) the dir_id column is 0."""
@@ -308,8 +308,8 @@ class TestAdd:
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
-            assert rows[0] == (1, 0, "root.gpg", None, None, updated)
-            assert rows[1] == (2, 0, "hello.html", None, None, updated)
+            assert rows[0] == (1, 0, "root.gpg", None, None, None, updated)
+            assert rows[1] == (2, 0, "hello.html", None, None, None, updated)
 
     def testSinlgeFileSameAsList(self, base_repo):
         """Tests that adding a single file results in same thing as
@@ -338,12 +338,13 @@ class TestAdd:
             mtime = dt.fromtimestamp(42)
             md5 = HashMD5(hex="CAFE")
             updated = int(dt.now().timestamp())
-            fr.add(File(path, dir_id=1, size=1024, mtime=mtime, md5=md5))
+            size = 4096
+            fr.add(File(path, dir_id=1, size=size, mtime=mtime, md5=md5))
             with fr.db.connect() as conn:
                 c = conn.cursor()
                 rows = c.execute("SELECT * FROM file").fetchall()
                 assert len(rows) == 1
-                assert rows[0] == (1, 1, "foo.txt", "cafe", 42, updated)
+                assert rows[0] == (1, 1, "foo.txt", "cafe", size, 42, updated)
 
 
 class TestGet:
@@ -394,6 +395,21 @@ class TestGet:
             assert fr.get(path="a/a/a")[0].id == 1
             assert fr.get(path="a/a/a")[0].dir_id == 2
             assert fr.get(path="a/a/a")[0].path == fr.db.root / "a/a/a"
+
+    def testBySizeBetween(self, base_repo):
+        """Test that you can chain </= and >/= together to
+        check for range of size and test size column."""
+        with base_repo as (fr, _):
+            sizes = [256, 512, 1024, 2048, 4096]
+            names = ["eight", "nine", "ten", "eleven", "twelve"]
+            files = [File(n, size=s) for n, s in zip(names, sizes)]
+            fr.add(files)
+            assert fr.get(id=1)[0].size == 256
+            assert len(fr.get(size=256)) == 1
+            assert len(fr.get(size__gt=512, size__lt=5000)) == 3
+            assert len(fr.get(size__ge=512, size__lt=1024)) == 1
+            assert fr.get(size__ge=512, size__lt=1024)[0].path.name == "nine"
+            assert fr.get(size__ge=512, size__lt=1024)[0].id == 2
 
     def testByMtimeAndGreaterThan(self, base_repo):
         """Tests that get returns the correct file by mtime.
@@ -506,9 +522,10 @@ class TestGet:
             dr.add(dir=Dir("foo/bar"))
             path = fr.db.root / "foo/bar/baz.txt"
             md5 = HashMD5(hex="cafe")
+            size = 4096
             mtime = dt.fromtimestamp(42)
             up = dt.now().replace(microsecond=0)
-            fr.add(File(path, md5=md5, mtime=mtime))
+            fr.add(File(path, md5=md5, size=size, mtime=mtime))
             result = fr.get(path="foo/bar/baz.txt", dir_id=2, md5="cafe", mtime=42)
             assert len(result) == 1
             result = result[0]
@@ -516,5 +533,6 @@ class TestGet:
             assert result.dir_id == 2
             assert result.path == path
             assert result.md5 == str(md5)
+            assert result.size == size
             assert result.mtime == mtime
             assert result.updated - up < td(seconds=1)
