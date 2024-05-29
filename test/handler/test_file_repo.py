@@ -9,15 +9,15 @@ import sqlite3 as sql
 import tempfile
 from unittest.mock import patch
 
-from scoutlib.handler.db_connector import DBConnector as DBC
-from scoutlib.handler.file_repo import FileRepo
-from scoutlib.handler.dir_repo import DirRepo
-from scoutlib.model.file import File
-from scoutlib.model.dir import Dir
-from scoutlib.model.hash import HashMD5
+from lib.handler.db_connector import DBConnector as DBC
+from lib.handler.file_repo import FileRepo
+from lib.handler.dir_repo import DirRepo
+from lib.model.file import File
+from lib.model.dir import Dir
+from lib.model.hash import HashMD5
 
-MOD_DBC = "scoutlib.handler.db_connector.DBConnector"
-MOD_FR = "scoutlib.handler.file_repo.FileRepo"
+MOD_DBC = "lib.handler.db_connector.DBConnector"
+MOD_FR = "lib.handler.file_repo.FileRepo"
 
 
 ### Fixtures ###

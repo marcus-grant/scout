@@ -8,10 +8,10 @@ import pytest
 import tempfile
 # from typing import Optional, Union, Generator
 
-from scoutlib.handler.db_manager import DBManager
-from scoutlib.handler.db_connector import DBConnector
-from scoutlib.handler.dir_repo import DirRepo
-from scoutlib.handler.file_repo import FileRepo
+from lib.handler.db_manager import DBManager
+from lib.handler.db_connector import DBConnector
+from lib.handler.dir_repo import DirRepo
+from lib.handler.file_repo import FileRepo
 
 
 @pytest.fixture

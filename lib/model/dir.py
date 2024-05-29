@@ -7,7 +7,7 @@ import os
 from pathlib import Path, PurePath
 from typing import Any, Optional, Union
 
-from scoutlib.model.hash import HashMD5
+from lib.model.hash import HashMD5
 
 PathLike = os.PathLike
 

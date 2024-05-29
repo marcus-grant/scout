@@ -5,8 +5,8 @@ from datetime import datetime as dt
 from pathlib import PurePath as PP
 from typing import Optional, Union, Tuple, List, Any
 
-from scoutlib.handler.db_connector import DBConnector as DBC
-from scoutlib.model.file import File
+from lib.handler.db_connector import DBConnector as DBC
+from lib.model.file import File
 
 FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
 

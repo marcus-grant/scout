@@ -3,11 +3,11 @@
 from pathlib import PurePath as PP
 from typing import Optional, Union
 
-from scoutlib.model.dir import Dir
-from scoutlib.model.file import File
-from scoutlib.handler.db_connector import DBConnector
-from scoutlib.handler.dir_repo import DirRepo
-from scoutlib.handler.file_repo import FileRepo
+from lib.model.dir import Dir
+from lib.model.file import File
+from lib.handler.db_connector import DBConnector
+from lib.handler.dir_repo import DirRepo
+from lib.handler.file_repo import FileRepo
 
 
 class DBManager:
@@ -31,5 +31,5 @@ class DBManager:
         self.db = DBConnector(path, root)
 
         # Initialize Repo members
-        self.dir_repo = DirRepo(self.db.path, self.db.root)
-        self.file_repo = FileRepo(self.db.path, self.db.root)
+        # self.dir_repo = DirRepo(self.db.path, self.db.root)
+        # self.file_repo = FileRepo(self.db.path, self.db.root)

@@ -2,7 +2,7 @@ from datetime import datetime as dt
 from pathlib import PurePath as PP
 from typing import Optional, Union
 
-from scoutlib.model.hash import HashMD5
+from lib.model.hash import HashMD5
 
 
 class File:

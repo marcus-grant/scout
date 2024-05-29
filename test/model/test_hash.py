@@ -22,7 +22,7 @@ import pytest
 from pyfakefs.fake_filesystem_unittest import Patcher
 from typing import Union
 
-from scoutlib.model.hash import HashMD5
+from lib.model.hash import HashMD5
 
 
 ### Fixtures & Helpers ###

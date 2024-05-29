@@ -5,12 +5,12 @@ import os
 import pytest
 from pathlib import Path, PurePath
 
-from scoutlib.model.dir import Dir
+from lib.model.dir import Dir
 
 
 @pytest.fixture
 def mock_directory():
-    with mock.patch("scoutlib.model.fs.Dir", autospec=True) as mock_dir:
+    with mock.patch("lib.model.fs.Dir", autospec=True) as mock_dir:
         # Setup mock to return a Dir instance w predefined attrs
         mock_dir.return_value = mock_dir
         yield mock_dir
@@ -18,7 +18,7 @@ def mock_directory():
 
 @pytest.fixture
 def mock_directory_from_path():
-    with mock.patch("scoutlib.model.fs.Dir.from_path", autospec=True) as mock_dir:
+    with mock.patch("lib.model.fs.Dir.from_path", autospec=True) as mock_dir:
         # Setup mock to return a Dir instance w predefined attrs
         mock_dir.return_value = mock_dir
         yield mock_dir
@@ -64,7 +64,7 @@ def test_directory_eq():
 # Test section for standard constructor for File
 @pytest.fixture
 def mock_file():
-    with mock.patch("scoutlib.model.fs.File", autospec=True) as mock_file:
+    with mock.patch("lib.model.fs.File", autospec=True) as mock_file:
         # Setup mock to return a File instance w predefined attrs
         mock_file.return_value = mock_file
         yield mock_file

@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/ # Why is lib ignored?
 lib64/
 parts/
 sdist/

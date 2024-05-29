@@ -4,7 +4,7 @@ from pathlib import PurePath as PP
 import sqlite3 as sql
 from typing import Optional, Union, Generator, List
 
-from scoutlib.model.dir import Dir
+from lib.model.dir import Dir
 
 
 class DBConnector:
