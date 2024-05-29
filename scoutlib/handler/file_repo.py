@@ -152,47 +152,6 @@ class FileRepo:
         q = q[:-5] + ";"
         return q
 
-    # TODO: Needs uniqueness check for combo of dir_id and name
-    def insert_file_query(
-        self,
-        dir_id: int,
-        name: str,
-        md5: Optional[str] = None,
-        mtime: Optional[int] = None,
-        updated: Optional[int] = None,
-    ) -> str:
-        """
-        Build a SQL query string to insert a new file record into the 'file' table.
-
-        This method constructs an SQL `INSERT` statement to add a new record to the
-        'file' table with the provided directory ID, name, and optional MD5 hash,
-        modification time, and update time.
-
-        Args:
-            dir_id (int): The ID of the directory to which the file belongs.
-            name (str): The name of the file.
-            md5 (Optional[str]): The MD5 hash of the file (default is None).
-            mtime (Optional[int]): The modification time of the file (default is None).
-            updated (Optional[int]): The last updated time of the file (default is None).
-
-        Returns:
-            str: An SQL query string to insert a new file record.
-        """
-        # Start with beginning query fragment that will always be needed.
-        q = "INSERT INTO file ("
-        q += "dir_id, name"
-        # Add optional column names to column list if they are not None.
-        q += ", md5" if md5 is not None else ""
-        q += ", mtime" if mtime is not None else ""
-        q += ", updated" if updated is not None else ""
-        # Close column list and open values list with required values.
-        q += f") VALUES ({dir_id}, '{name}'"
-        q += f", '{md5}'" if md5 is not None else ""  # Optional value if there
-        q += f", {mtime}" if mtime is not None else ""  # Same
-        q += f", {updated}" if updated is not None else ""  # Same
-        q += ");"  # Close values list and end query string.
-        return q
-
     ### Repo Action Methods ###
     # TODO: Test that all but dir_id & id stays the same on return
     # TODO: Give interface to DirRepo to get dir_id from path or dir_id
