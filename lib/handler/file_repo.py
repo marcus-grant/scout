@@ -7,6 +7,7 @@ from typing import Optional, Union, Tuple, List, Any
 
 from lib.handler.db_connector import DBConnector as DBC
 from lib.model.file import File
+from lib.model.hash import HashMD5
 
 FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
 
@@ -249,13 +250,22 @@ class FileRepo:
         params = []
         path = filters.pop("path", None)
 
+        # Path can be more useful to determine both f.name & d.path simultaneously
         if path is not None:
+            # However, if dir_id exists a conflict of which foreign key to use exists
             if "dir_id" not in filters:
                 if not (isinstance(path, str) or isinstance(path, PP)):
                     raise ValueError("Path filter must be a string or PurePath.")
+                # If no dir_id use path.parent to get d.path of joined table and name
                 path = self.db.normalize_path(path)
-                filters["path"] = str(path.parent)
+                filters["path"] = str(path.parent)  # Since it's path of parent
                 filters["name"] = str(path.name)
+        # Do nothing if dir_id in filters since path is already popped
+
+        # MD5 could be a HashMD5 object, convert to hex string if so
+        if (md5 := filters.get("md5")) and isinstance(md5, HashMD5):
+            filters["md5"] = md5.hex
+            del md5
 
         for key, value in filters.items():
             append_param = True
