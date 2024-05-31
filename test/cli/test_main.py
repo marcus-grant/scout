@@ -1,12 +1,15 @@
 import pytest
 import subprocess
 
+from cli import VERSION, NAME
+
 
 # TODO: Docstrings
-def testrun(*args, **kwargs):
-    return subprocess.run(
-        ["./scout"] + list(*args), **kwargs, capture_output=True, text=True
-    )
+def run_scout(argv, **kwargs):
+    argv = ["./scout"] + argv
+    kwargs["capture_output"] = True
+    kwargs["text"] = True
+    return subprocess.run(argv, **kwargs)
 
 
 class TestMain:
@@ -15,13 +18,37 @@ class TestMain:
     @pytest.mark.parametrize("option", ["-h", "--help"])
     def testUsageFlag(self, option):
         """Test '-h' or '--help' triggers printing of usage and exits with 0."""
-        result = testrun([option])
+        result = run_scout([option])
         assert result.returncode == 0
-        assert "Usage:" in result.stdout
+        assert "usage" in result.stdout.lower()
+
+    def testDescriptionFormat(self):
+        """Test description of the CLI is formatted correctly.
+        Focusing on section headings spacing, capitalization and content."""
+        result = run_scout(["-h"])
+        assert "\nUsage: " in result.stdout
+        assert "\nDescription:\n" in result.stdout
+        assert "\nSubcommands:\n" in result.stdout
+        assert NAME in result.stdout
 
     def testUnrecognizedFlag(self):
         """Test unrecognized flag triggers printing of usage and exits with 2."""
-        result = testrun(["--unknown"])
+        result = run_scout(["--unknown"])
         assert result.returncode == 2
         assert "Usage:" in result.stderr
 
+    def testNoOpts(self):
+        """Test no options triggers printing of usage, exits with 2,
+        and states non-implementation of TUI."""
+        result = run_scout([])
+        assert result.returncode == 2
+        assert "\nUsage: " in result.stderr
+        assert "not implement" in result.stderr.lower()
+        assert "TUI" in result.stderr
+
+    @pytest.mark.parametrize("option", ["-v", "--version"])
+    def testVersionFlag(self, option):
+        """Test '-v' or '--version' triggers printing of version and exits with 0."""
+        result = run_scout([option])
+        assert result.returncode == 0
+        assert VERSION in result.stdout
