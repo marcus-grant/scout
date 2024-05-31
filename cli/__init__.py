@@ -1,6 +1,7 @@
 import argparse
 from sys import stderr
 
+from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
 import cli.subcmd.init
 
@@ -13,11 +14,6 @@ This is its CLI to interact with the metadata database and
 perform various operations on the files described in the database.
 It also helps analyze the files in the database on and off the filesystem.
 """
-
-# Formatter Constants for Default Settings
-INDENT_INCREMENT = 4  # Default is 4
-MAX_HELP_POSITION = 24  # Default is 24
-MAX_WIDTH = 80  # Default is None (no limit)
 
 
 def main():
@@ -39,9 +35,19 @@ def main():
     subparsers = parser.add_subparsers(title="subcommands", dest="command")
 
     # Add more subcommands here as needed
+    cli.subcmd.init.add_subcommand(subparsers)
 
     # Parse arguments
-    args = parser.parse_args()
+    # args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
+
+    # Handle unknown arguments
+    if unknown:
+        msg = f"Unknown arguments: {unknown}\n"
+        msg += "Please use a subcommand to interact with the CLI instead.\n"
+        print(msg, file=stderr)
+        parser.print_help(stderr)
+        exit(2)
 
     # Check if a command was given
     if args.command is None:
@@ -57,7 +63,7 @@ def main():
             exit(2)
     else:
         # Call the function associated with the command if needed
-        pass
+        args.func(args)
 
 
 if __name__ == "__main__":
