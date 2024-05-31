@@ -14,6 +14,17 @@ If the destination directory is not specified, the repository will be created in
 
 
 def add_subcommand(subparsers: "argparse._SubParsersAction") -> None:
+    """
+    Add the 'init' subcommand to the given subparsers.
+
+    This subcommand initializes a new scout repository. It creates a new `.scout.db` file
+    for the repository and initializes the SQLite database with the necessary tables.
+    The repository will be empty until you sync file metadata to it.
+
+    Parameters:
+    subparsers (argparse._SubParsersAction): The subparsers action object to which the
+                                             'init' subcommand will be added.
+    """
     parser = subparsers.add_parser(
         "init",
         help="Initialize a new scout repository.",
@@ -36,6 +47,17 @@ def add_subcommand(subparsers: "argparse._SubParsersAction") -> None:
 
 
 def handle_subcommand(args):
+    """
+    Handle the 'init' subcommand.
+
+    This function initializes the repository by creating a new `.scout.db` file
+    and setting up the necessary tables in the SQLite database. The repository
+    will be empty until file metadata is synced to it.
+
+    Parameters:
+    args (argparse.Namespace): The parsed arguments. Should contain 'target' for the root
+                               directory and 'repo' for the repository path.
+    """
     target = args.target
     repo = args.repo
     if repo is None:
