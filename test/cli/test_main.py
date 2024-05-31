@@ -16,3 +16,5 @@ class TestMain:
         """Test '-h' or '--help' triggers printing of usage and exits with 0."""
         result = testrun([option])
         assert result.returncode == 0
+        assert "Usage:" in result.stdout
+
