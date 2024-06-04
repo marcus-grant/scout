@@ -10,6 +10,7 @@ from lib.handler.db_connector import (
     DBConnector,
     DBConnectorError,
     DBNotInDirError,
+    DBFileOccupiedError,
 )
 from lib.model.dir import Dir
 
@@ -120,6 +121,7 @@ class TestFixtures:
 
 class TestErrors:
     """Test this module's custom error classes."""
+
     def testDBNotInDir(self):
         """Test type and message of DBNotInDir error."""
         e = None
@@ -129,6 +131,17 @@ class TestErrors:
         assert isinstance(e.value, DBConnectorError)
         assert "foobar" in str(e.value)
         assert "foobar" in e.value.message
+
+    def testDBFileOccupied(self):
+        """Test type and message of DBFileOccupied error."""
+        e = None
+        with pytest.raises(DBFileOccupiedError) as e:
+            raise DBFileOccupiedError("foobar")
+        assert isinstance(e.value, DBFileOccupiedError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
 
 class TestInitValid:
     """Tests the validation of the __init__ arguments only through
@@ -178,10 +191,10 @@ class TestInitValid:
         [
             (1, TypeError),
             (None, TypeError),
-            ("test.db", ValueError),
-            ("test.txt", ValueError),
-            ("noroot.db", ValueError),
             ("not/there", DBNotInDirError),
+            ("test.db", DBFileOccupiedError),
+            ("test.txt", DBFileOccupiedError),
+            ("noroot.db", DBFileOccupiedError),
         ],
         ids=["#1", "#2", "#3", "#4", "#5", "#6"],
     )
@@ -192,8 +205,11 @@ class TestInitValid:
         2. Raise a TypeError when None is given
         3. Raise a DBNotInDirError when root's parent is not a valid directory on FS
           - Note, sometimes we need a non-existing path to start a new DB file
-        4. Raise a ValueError when path exists AND is NOT a scout db file
+        4. Raise a DBFileOccupiedError when path exists AND is NOT a scout db file
           - Dangerous error that could cause data loss outside of program scope
+        5. Raise a DBFileOccupiedError when path exists and is not a db file at all
+        6. Raise a DBFileOccupiedError when path exists and is db file,
+           but doesnt contain the fs_meta.root marker
         """
         with fake_files_dir as dp:
             with pytest.raises(raises):
@@ -441,8 +457,8 @@ class TestInit:
         [
             ("doesnt/exist", None, DBNotInDirError),
             (".scout.db", "doesnt/exist", FileNotFoundError),
-            ("test.txt", "dir", ValueError),
-            ("test.db", "dir", ValueError),
+            ("test.txt", "dir", DBFileOccupiedError),
+            ("test.db", "dir", DBFileOccupiedError),
         ],
         ids=["#1", "#2", "#3", "#4"],
     )
@@ -451,8 +467,8 @@ class TestInit:
         These circumstances should raise an error.
         1. parent of path is not a dir: FileNotFoundError
         2. root is not a dir: FileNotFoundError
-        3. path exists and is not a sqlite file: ValueError
-        4. path exists and is not a scout db file, but is sqlite: ValueError
+        3. path exists and is not a sqlite file: DBFileOccupiedError
+        4. path exists and is not a scout db file, but is sqlite: DBFileOccupiedError
         """
         with fake_files_dir as dp:
             with pytest.raises(raises):

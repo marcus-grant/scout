@@ -21,6 +21,16 @@ class DBNotInDirError(DBConnectorError):
         super().__init__(self.message)
 
 
+class DBFileOccupiedError(DBConnectorError):
+    """Raised when a path for a potential Scout database file is already
+    occupied by a non-scout db file."""
+
+    def __init__(self, path):
+        self.message = "Given path:\n"
+        self.message += f"{path}\nis occupied by a non-scout database file."
+        super().__init__(self.message)
+
+
 class DBConnector:
     """
     A class for managing connections to a scout database file and
@@ -97,7 +107,7 @@ class DBConnector:
         if not os.path.isdir(result.parent):
             raise DBNotInDirError(str(path))
         if os.path.exists(result) and not cls.is_scout_db_file(result):
-            raise ValueError(f"{result} must be a valid scout db file or empty path.")
+            raise DBFileOccupiedError(str(path))
 
         return result
 
