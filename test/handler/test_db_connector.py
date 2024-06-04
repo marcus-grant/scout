@@ -6,7 +6,11 @@ import sqlite3 as sql
 import tempfile
 from unittest.mock import patch, MagicMock
 
-from lib.handler.db_connector import DBConnector
+from lib.handler.db_connector import (
+    DBConnector,
+    DBConnectorError,
+    DBNotInDirError,
+)
 from lib.model.dir import Dir
 
 MOD_BASE = "lib.handler.db_connector.DBConnector"
@@ -114,6 +118,18 @@ class TestFixtures:
             assert db.path == db.root.parent / "test.db"
 
 
+class TestErrors:
+    """Test this module's custom error classes."""
+    def testDBNotInDir(self):
+        """Test type and message of DBNotInDir error."""
+        e = None
+        with pytest.raises(DBNotInDirError) as e:
+            raise DBNotInDirError("foobar")
+        assert isinstance(e.value, DBNotInDirError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
 class TestInitValid:
     """Tests the validation of the __init__ arguments only through
     the class methods that get used during argument validation."""
@@ -162,10 +178,10 @@ class TestInitValid:
         [
             (1, TypeError),
             (None, TypeError),
-            ("not/there", FileNotFoundError),
             ("test.db", ValueError),
             ("test.txt", ValueError),
             ("noroot.db", ValueError),
+            ("not/there", DBNotInDirError),
         ],
         ids=["#1", "#2", "#3", "#4", "#5", "#6"],
     )
@@ -174,7 +190,7 @@ class TestInitValid:
         DBConnector.validate_arg_path should:
         1. Raise a TypeError when neither a str nor PP is given
         2. Raise a TypeError when None is given
-        3. Raise a FileNotFoundError when root's parent is not a valid directory on FS
+        3. Raise a DBNotInDirError when root's parent is not a valid directory on FS
           - Note, sometimes we need a non-existing path to start a new DB file
         4. Raise a ValueError when path exists AND is NOT a scout db file
           - Dangerous error that could cause data loss outside of program scope
@@ -423,7 +439,7 @@ class TestInit:
     @pytest.mark.parametrize(
         "path, root, raises",
         [
-            ("doesnt/exist", None, FileNotFoundError),
+            ("doesnt/exist", None, DBNotInDirError),
             (".scout.db", "doesnt/exist", FileNotFoundError),
             ("test.txt", "dir", ValueError),
             ("test.db", "dir", ValueError),

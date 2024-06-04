@@ -7,6 +7,20 @@ from typing import Optional, Union, Generator, List
 from lib.model.dir import Dir
 
 
+class DBConnectorError(Exception):
+    """Base class for DBConnector errors."""
+
+    pass
+
+
+class DBNotInDirError(DBConnectorError):
+    """Raised when a path for a Scout database doesn't have a parent directory."""
+
+    def __init__(self, path):
+        self.message = f"Given path:\n{path}\nmust exist inside a valid directory."
+        super().__init__(self.message)
+
+
 class DBConnector:
     """
     A class for managing connections to a scout database file and
@@ -81,7 +95,7 @@ class DBConnector:
             raise TypeError(f"path {path} must be a PurePath or str")
 
         if not os.path.isdir(result.parent):
-            raise FileNotFoundError(f"{result} must be in a valid directory.")
+            raise DBNotInDirError(str(path))
         if os.path.exists(result) and not cls.is_scout_db_file(result):
             raise ValueError(f"{result} must be a valid scout db file or empty path.")
 
