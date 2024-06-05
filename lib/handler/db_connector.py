@@ -57,6 +57,26 @@ class DBTargetPropMissingError(DBConnectorError):
         super().__init__(self.message)
 
 
+class DBPathOutsideTargetError(DBConnectorError):
+    """Raised when a path is outside the target directory tree of the database."""
+
+    def __init__(self, path, target):
+        self.message = f"Given path:\n{path}\n"
+        self.message += f"is outside of the target directory:\n{target}\n"
+        super().__init__(self.message)
+
+
+class DBPathNotSupportedError(DBConnectorError):
+    """Raised when something about the path syntax is not supported."""
+
+    def __init__(self, path):
+        if ".." in str(path):
+            self.message = f"Relative ancestor paths (..) of {path} not supported."
+        else:
+            self.message = f"Path {path} not supported."
+        super().__init__(self.message)
+
+
 class DBConnector:
     """
     A class for managing connections to a scout database file and
@@ -237,8 +257,7 @@ class DBConnector:
         elif self.is_scout_db_file(self.path):
             self.root = DBConnector.read_root(self.path)
         else:
-            # TODO: Needs own DBConnectorError subclass
-            raise ValueError(f"{self.path} must be empty or scout db file.")
+            raise DBFileOccupiedError(str(self.path))
 
     ### Path Utility Methods
     def normalize_path(self, denormalized_path: Union[Dir, PP, str]) -> PP:
@@ -255,9 +274,7 @@ class DBConnector:
         """
         # Check for unresolvable path syntax
         if ".." in str(denormalized_path):
-            msg = f"Relative ancestor paths (..) of {denormalized_path} not supported."
-            # TODO: Needs own DBConnectorError subclass
-            raise ValueError(msg)
+            raise DBPathNotSupportedError(denormalized_path)
         # Coerce to PP type
         path = None
         if isinstance(denormalized_path, Dir):
@@ -272,7 +289,10 @@ class DBConnector:
         # If relative prepend the root so we can use pathlib's relative_to
         if not path.is_absolute():
             path = self.root / path
-        path = path.relative_to(self.root)  # Finally normalize
+        try:  # Check for paths outside target when conducting relative_to
+            path = path.relative_to(self.root)  # Finally normalize
+        except ValueError as e:
+            raise DBPathOutsideTargetError(path, self.root) from e
         return path
 
     def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:

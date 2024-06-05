@@ -14,6 +14,8 @@ from lib.handler.db_connector import (
     DBRootNotDirError,
     DBNoFsMetaTableError,
     DBTargetPropMissingError,
+    DBPathOutsideTargetError,
+    DBPathNotSupportedError,
 )
 from lib.model.dir import Dir
 
@@ -173,6 +175,34 @@ class TestErrors:
         assert isinstance(e.value, DBConnectorError)
         assert "target" in e.value.message
         assert "prop" in e.value.message
+
+    def testPathOutsideTarget(self):
+        """Test type and message of PathOutsideTarget error."""
+        e = None
+        with pytest.raises(DBPathOutsideTargetError) as e:
+            raise DBPathOutsideTargetError("foobar-path", "foobar-target")
+        assert isinstance(e.value, DBPathOutsideTargetError)
+        assert "foobar-path" in str(e.value)
+        assert "foobar-target" in str(e.value)
+        assert "foobar-path" in e.value.message
+        assert "foobar-target" in e.value.message
+
+    def testPathNotSupported(self):
+        """Test type and message of PathNotSupported error."""
+        e = None
+        with pytest.raises(DBPathNotSupportedError) as e:
+            raise DBPathNotSupportedError("foobar-path")
+        assert isinstance(e.value, DBPathNotSupportedError)
+        assert "foobar-path" in str(e.value)
+        assert "foobar-path" in e.value.message
+        assert "not" in e.value.message
+        assert "support" in e.value.message
+        with pytest.raises(DBPathNotSupportedError) as e:
+            raise DBPathNotSupportedError("../../foobar-path")
+        assert "not" in e.value.message
+        assert "support" in e.value.message
+        assert "foobar-path" in e.value.message
+        assert "(..)" in e.value.message
 
 
 class TestInitValid:
@@ -583,8 +613,16 @@ class TestPathHelpers:
         """
         assert mock_db_conn.normalize_path(path) == expect
 
-    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
-    def testNormRaise(self, mock_db_conn, path):
+    @pytest.mark.parametrize(
+        "path,raises",
+        [
+            ("/test", DBPathOutsideTargetError),
+            ("/out/root", DBPathOutsideTargetError),
+            ("../a", DBPathNotSupportedError),
+        ],
+        ids=["parent", "parallel", ".."],
+    )
+    def testNormRaise(self, mock_db_conn, path, raises):
         """
         Test that normalize_path raises an error when path is not within root.
         While checking for inputs of...
@@ -592,7 +630,7 @@ class TestPathHelpers:
             2. Parallel to root
             3. Relative ancestor
         """
-        with pytest.raises(ValueError):
+        with pytest.raises(raises):
             mock_db_conn.normalize_path(path)
 
     @pytest.mark.parametrize(
