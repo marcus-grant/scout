@@ -1,5 +1,6 @@
 import argparse
-from sys import stderr
+import sys
+from typing import List, Optional
 
 from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
@@ -16,7 +17,13 @@ It also helps analyze the files in the database on and off the filesystem.
 """
 
 
-def main():
+def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if len(argv) > 0:
+        if "scout" in argv[0] or "./" in argv[0]:
+            argv = argv[1:]
+
     formatter = HelpFormatter(
         prog=NAME,
         indent_increment=INDENT_INCREMENT,
@@ -39,32 +46,34 @@ def main():
 
     # Parse arguments
     # args = parser.parse_args()
-    args, unknown = parser.parse_known_args()
+    args, unknown = parser.parse_known_args(argv)
 
     # Handle unknown arguments
     if unknown:
         msg = f"Unknown arguments: {unknown}\n"
         msg += "Please use a subcommand to interact with the CLI instead.\n"
-        print(msg, file=stderr)
-        parser.print_help(stderr)
-        exit(2)
+        print(msg, file=sys.stderr)
+        parser.print_help(sys.stderr)
+        return 2
 
     # Check if a command was given
     if args.command is None:
         # If none given we are in the main command scope - later the TUI
         if any(arg in ("-h", "--help") for arg in parser._get_args()):
+            breakpoint()
             parser.print_help()
-            exit(0)
+            return 0
         else:
             msg = "Warning: TUI is not implemented yet.\n"
             msg += "Please use a subcommand to interact with the CLI instead.\n"
-            print(msg, file=stderr)
-            parser.print_help(stderr)
-            exit(2)
+            print(msg, file=sys.stderr)
+            parser.print_help(sys.stderr)
+            return 2
     else:
         # Call the function associated with the command if needed
         args.func(args, parser.print_help)
+    return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main(sys.argv[1:]))
