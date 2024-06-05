@@ -11,6 +11,7 @@ from lib.handler.db_connector import (
     DBConnectorError,
     DBNotInDirError,
     DBFileOccupiedError,
+    DBRootNotDirError,
 )
 from lib.model.dir import Dir
 
@@ -142,6 +143,16 @@ class TestErrors:
         assert "foobar" in str(e.value)
         assert "foobar" in e.value.message
 
+    def testDBRootNotDir(self):
+        """Test type and message of DBRootNotDir error."""
+        e = None
+        with pytest.raises(DBRootNotDirError) as e:
+            raise DBRootNotDirError("foobar")
+        assert isinstance(e.value, DBRootNotDirError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
 
 class TestInitValid:
     """Tests the validation of the __init__ arguments only through
@@ -233,20 +244,20 @@ class TestInitValid:
         """
         DBConnector.validate_arg_root raises when:
         - TypeError when root arg given not of type PurePath, str, or None
-        - FileNotFoundError when root arg points to non-existing path
-        - FileNotFoundError when root arg points to non-dir path (txt file)
-        - FileNotFoundError when root arg points to non-dir path (scout file)
+        - DBRootNotDirError when root arg points to non-existing path
+        - DBRootNotDirError when root arg points to non-dir path (txt file)
+        - DBRootNotDirError when root arg points to non-dir path (scout file)
         """
         fn = DBConnector.validate_arg_root
         basename = "base.scout.db"
         with fake_files_dir as dp:
             with pytest.raises(TypeError):
                 fn(dp / basename, 1)  # type: ignore
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, "/not/there")
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, dp / "test.txt")
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, dp / basename)
 
 
@@ -456,7 +467,7 @@ class TestInit:
         "path, root, raises",
         [
             ("doesnt/exist", None, DBNotInDirError),
-            (".scout.db", "doesnt/exist", FileNotFoundError),
+            (".scout.db", "doesnt/exist", DBRootNotDirError),
             ("test.txt", "dir", DBFileOccupiedError),
             ("test.db", "dir", DBFileOccupiedError),
         ],
@@ -466,7 +477,7 @@ class TestInit:
         """
         These circumstances should raise an error.
         1. parent of path is not a dir: FileNotFoundError
-        2. root is not a dir: FileNotFoundError
+        2. root is not a dir: DBRootNotDirError
         3. path exists and is not a sqlite file: DBFileOccupiedError
         4. path exists and is not a scout db file, but is sqlite: DBFileOccupiedError
         """

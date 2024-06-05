@@ -31,6 +31,15 @@ class DBFileOccupiedError(DBConnectorError):
         super().__init__(self.message)
 
 
+class DBRootNotDirError(DBConnectorError):
+    """Raised when the root path for a Scout database is not a directory."""
+
+    def __init__(self, root):
+        self.message = "Given root path:\n"
+        self.message += f"{root}\nis not a valid directory."
+        super().__init__(self.message)
+
+
 class DBConnector:
     """
     A class for managing connections to a scout database file and
@@ -111,6 +120,9 @@ class DBConnector:
 
         return result
 
+    # NOTE: If we ever implement remote fs or db handling,
+    # the raise here needs to be handled accordingly to the remote case.
+    # Same for sneaker net scenarios.
     @classmethod
     def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
         """
@@ -137,7 +149,10 @@ class DBConnector:
             raise TypeError(f"root must be PurePath or str, given {type(root)}")
 
         if not os.path.isdir(result):
-            raise FileNotFoundError(f"root must be a valid directory, given {root}")
+            # TODO: Needs own DBConnectorError subclass
+            # raise FileNotFoundError(f"root must be a valid directory, given {root}")
+            raise DBRootNotDirError(str(root))
+
         return result
 
     @classmethod
@@ -159,6 +174,7 @@ class DBConnector:
             c.execute("SELECT value FROM fs_meta WHERE property='root';")
             res = c.fetchone()
             if res is None:
+                # TODO: Needs own DBConnectorError subclass
                 raise sql.OperationalError("No root property in fs_meta table.")
             return PP(res[0])
 
@@ -200,6 +216,7 @@ class DBConnector:
         elif self.is_scout_db_file(self.path):
             self.root = DBConnector.read_root(self.path)
         else:
+            # TODO: Needs own DBConnectorError subclass
             raise ValueError(f"{self.path} must be empty or scout db file.")
 
     ### Path Utility Methods
@@ -218,6 +235,7 @@ class DBConnector:
         # Check for unresolvable path syntax
         if ".." in str(denormalized_path):
             msg = f"Relative ancestor paths (..) of {denormalized_path} not supported."
+            # TODO: Needs own DBConnectorError subclass
             raise ValueError(msg)
         # Coerce to PP type
         path = None
@@ -249,6 +267,7 @@ class DBConnector:
         """
         if ".." in str(normalized_path):
             msg = f"Relative ancestor paths (..) of {normalized_path} not supported."
+            # TODO: Needs own DBConnectorError subclass
             raise ValueError(msg)
         path = PP(normalized_path)
         if path.is_absolute():
@@ -256,6 +275,7 @@ class DBConnector:
             try:
                 path = path.relative_to(self.root)
             except:  # noqa
+                # TODO: Needs own DBConnectorError subclass
                 raise ValueError(f"{path} is outside of {self.root}")
         path = self.root / path
         return path
