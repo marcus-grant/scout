@@ -270,7 +270,8 @@ class DBConnector:
         Returns:
             PP: The normalized PurePath relative to the root directory.
         Raises:
-            ValueError: If the path is not relative to the root directory.
+            DBPathNotSupportedError: If unsupported (..) syntax in path
+            DBPathOutsideTargetError: If the path is not relative to repo target.
         """
         # Check for unresolvable path syntax
         if ".." in str(denormalized_path):
@@ -304,20 +305,18 @@ class DBConnector:
         Returns:
             PP: The denormalized PurePath relative to the root directory.
         Raises:
-            ValueError: If the path is not relative to the root directory.
+            DBPathNotSupportedError: If unsupported (..) syntax in path
+            DBPathOutsideTargetError: If the path is not relative to repo target.
         """
         if ".." in str(normalized_path):
-            msg = f"Relative ancestor paths (..) of {normalized_path} not supported."
-            # TODO: Needs own DBConnectorError subclass
-            raise ValueError(msg)
+            raise DBPathNotSupportedError(normalized_path)
         path = PP(normalized_path)
         if path.is_absolute():
             # Raise if path outside root
             try:
-                path = path.relative_to(self.root)
-            except:  # noqa
-                # TODO: Needs own DBConnectorError subclass
-                raise ValueError(f"{path} is outside of {self.root}")
+                path = path.relative_to(self.root)  # Finally normalize
+            except ValueError as e:
+                raise DBPathOutsideTargetError(path, self.root) from e
         path = self.root / path
         return path
 

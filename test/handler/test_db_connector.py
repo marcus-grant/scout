@@ -620,7 +620,7 @@ class TestPathHelpers:
             ("/out/root", DBPathOutsideTargetError),
             ("../a", DBPathNotSupportedError),
         ],
-        ids=["parent", "parallel", ".."],
+        ids=["parent", "out", ".."],
     )
     def testNormRaise(self, mock_db_conn, path, raises):
         """
@@ -666,15 +666,23 @@ class TestPathHelpers:
         """
         assert mock_db_conn.denormalize_path(path) == expect
 
-    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
-    def testDenormRaise(self, mock_db_conn, path):
+    @pytest.mark.parametrize(
+        "path,raises",
+        [
+            ("/test", DBPathOutsideTargetError),
+            ("/out/root", DBPathOutsideTargetError),
+            ("../a", DBPathNotSupportedError),
+        ],
+        ids=["parent", "out", ".."],
+    )
+    def testDenormRaise(self, mock_db_conn, path, raises):
         """
         Test that denormalize_path raises an error when path is not within root.
         1. Ancestor paths to root
         2. Parallel to root
         3. Relative ancestor
         """
-        with pytest.raises(ValueError):
+        with pytest.raises(raises):
             mock_db_conn.denormalize_path(path)
 
     @pytest.mark.parametrize(
