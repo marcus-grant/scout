@@ -1,8 +1,18 @@
 import argparse
 import os
+import sys
 
 # from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
+from lib.scout_manager import ScoutManager
+from lib.handler.db_connector import (
+    DBConnectorError,
+    DBNotInDirError,
+    DBFileOccupiedError,
+    DBRootNotDirError,
+    DBNoFsMetaTableError,
+    DBTargetPropMissingError,
+)
 
 SUBCMD_DESCRIPTION = """Initialize a new scout repository.
 This command will create a new `.scout.db` file for the repository.
@@ -46,7 +56,7 @@ def add_subcommand(subparsers: "argparse._SubParsersAction") -> None:
     parser.set_defaults(func=handle_subcommand)
 
 
-def handle_subcommand(args):
+def handle_subcommand(args, print_help_fn):
     """
     Handle the 'init' subcommand.
 
@@ -60,8 +70,20 @@ def handle_subcommand(args):
     """
     target = args.target
     repo = args.repo
+
+    # Default handling for args
+    if target == "." or target is None:
+        target = os.getcwd()
     if repo is None:
         repo = f"{target}/.scout.db"
-    # TODO: Implement the initialization of the project
-    # Implementation will be added later
-    print(f"Initializing repo for {target} with repo stored at {repo}")
+
+    # Call the ScoutManager to initialize the database
+    # While checking for potential errors to give messages for
+    try:
+        ScoutManager.init_db(repo, target)
+    except DBNotInDirError as e:
+        msg = f"Error: {e}\n"
+        msg += f"Target '{target}' is not inside a directory.\n"
+        msg += "Please a target path in a directory.\n"
+        print(msg, file=sys.stderr)
+        print_help_fn()

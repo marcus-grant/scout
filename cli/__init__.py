@@ -63,7 +63,7 @@ def main():
             exit(2)
     else:
         # Call the function associated with the command if needed
-        args.func(args)
+        args.func(args, parser.print_help)
 
 
 if __name__ == "__main__":
