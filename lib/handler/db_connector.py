@@ -31,12 +31,29 @@ class DBFileOccupiedError(DBConnectorError):
         super().__init__(self.message)
 
 
+# TODO: Rename Root to Target to better fit CLI commands
 class DBRootNotDirError(DBConnectorError):
     """Raised when the root path for a Scout database is not a directory."""
 
     def __init__(self, root):
         self.message = "Given root path:\n"
         self.message += f"{root}\nis not a valid directory."
+        super().__init__(self.message)
+
+
+class DBNoFsMetaTableError(DBConnectorError):
+    """Raised when the fs_meta table is missing from the database."""
+
+    def __init__(self):
+        self.message = "The fs_meta table is missing from the database."
+        super().__init__(self.message)
+
+
+class DBTargetPropMissingError(DBConnectorError):
+    """Raised when the target property is missing from the fs_meta table."""
+
+    def __init__(self):
+        self.message = "The target property is missing from the fs_meta table."
         super().__init__(self.message)
 
 
@@ -103,8 +120,8 @@ class DBConnector:
 
         Raises:
             TypeError: If the path is not a string or PurePath.
-            FileNotFoundError: If the parent directory of the path does not exist.
-            ValueError: If the path exists but is not a scout database file.
+            DBNotInDirError: If the parent directory of the path does not exist.
+            DBFileOccupiedError: If the path exists but is not a scout database file.
         """
         if isinstance(path, str):
             result = PP(path)
@@ -137,7 +154,7 @@ class DBConnector:
 
         Raises:
             TypeError: If the root is not None, a string, or PurePath.
-            FileNotFoundError: If the root is not a valid directory.
+            DBRootNotDirError: If the root is not a valid directory.
         """
         if root is None:
             result = path.parent
@@ -149,12 +166,11 @@ class DBConnector:
             raise TypeError(f"root must be PurePath or str, given {type(root)}")
 
         if not os.path.isdir(result):
-            # TODO: Needs own DBConnectorError subclass
-            # raise FileNotFoundError(f"root must be a valid directory, given {root}")
             raise DBRootNotDirError(str(root))
 
         return result
 
+    # TODO: Needs to rename property.root to property.target to match CLI commands
     @classmethod
     def read_root(cls, path: PP) -> PP:
         """
@@ -167,15 +183,20 @@ class DBConnector:
             PP: The root property value as a PurePath.
 
         Raises:
-            sql.OperationalError: If the root property is not found in the fs_meta table.
+            DBNoFsMetaTableError: fs_meta table is missing from the database.
+            DBTargetPropMissingError: target property is not in the fs_meta table.
         """
         with sql.connect(path) as conn:
             c = conn.cursor()
+            # Check if fs_meta table exists
+            c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = c.fetchall()
+            if ("fs_meta",) not in tables:
+                raise DBNoFsMetaTableError()
             c.execute("SELECT value FROM fs_meta WHERE property='root';")
             res = c.fetchone()
             if res is None:
-                # TODO: Needs own DBConnectorError subclass
-                raise sql.OperationalError("No root property in fs_meta table.")
+                raise DBTargetPropMissingError()
             return PP(res[0])
 
     @classmethod

@@ -12,6 +12,8 @@ from lib.handler.db_connector import (
     DBNotInDirError,
     DBFileOccupiedError,
     DBRootNotDirError,
+    DBNoFsMetaTableError,
+    DBTargetPropMissingError,
 )
 from lib.model.dir import Dir
 
@@ -152,6 +154,25 @@ class TestErrors:
         assert isinstance(e.value, DBConnectorError)
         assert "foobar" in str(e.value)
         assert "foobar" in e.value.message
+
+    def testDBNoFsMetaTable(self):
+        """Test type and message of DBNoFsMetaTable error."""
+        e = None
+        with pytest.raises(DBNoFsMetaTableError) as e:
+            raise DBNoFsMetaTableError()
+        assert isinstance(e.value, DBNoFsMetaTableError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "fs_meta" in e.value.message
+
+    def testTargetPropMissing(self):
+        """Test type and message of DBTargetPropMissing error."""
+        e = None
+        with pytest.raises(DBTargetPropMissingError) as e:
+            raise DBTargetPropMissingError()
+        assert isinstance(e.value, DBTargetPropMissingError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "target" in e.value.message
+        assert "prop" in e.value.message
 
 
 class TestInitValid:
@@ -336,11 +357,13 @@ class TestInitSql:
             assert isinstance(DBConnector.read_root(path), PP)
 
     def testReadRootRaisesNoRoot(self, fake_files_dir):
-        """DBConnector.read_root raises an error when root property is not found.
-        True for both no fs_meta and no root property in fs_meta."""
+        """DBConnector.read_root raises DBNoFsMetaTableError when
+        fs_meta table doesn't exist and
+        DBConnector.read_root raises DBTargetPropMissingError when
+        root property is not found."""
         with fake_files_dir as dp:
             # Check raises when no fs_meta table
-            with pytest.raises(sql.OperationalError):
+            with pytest.raises(DBNoFsMetaTableError):
                 DBConnector.read_root(dp / "test.db")
             # Check raises when no 'root' in property column
             with sql.connect(dp / "test.db") as conn:
@@ -348,7 +371,7 @@ class TestInitSql:
                 q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
                 c.execute(q)
                 conn.commit()
-            with pytest.raises(sql.OperationalError):
+            with pytest.raises(DBTargetPropMissingError):
                 DBConnector.read_root(dp / "test.db")
 
 
