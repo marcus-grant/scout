@@ -1,6 +1,7 @@
 import pytest
 import subprocess
 
+from cli import main
 from lib.handler.db_connector import (
     DBConnectorError,
     DBNotInDirError,
@@ -20,6 +21,11 @@ def run_scout_init(argv, **kwargs):
     return subprocess.run(argv, **kwargs)
 
 
+def run_main_init(argv):
+    argv = ["./scout", "init"] + argv
+    main(argv)
+
+
 class TestMain:
     """Test Suite for Init Subcommand argparser."""
 
@@ -29,21 +35,33 @@ class TestMain:
     # Will add exit(main(sys.argv)) to __main__ check to allow for testing
     # Also the above will allow regular execution of cli as main script
     #
-    # @pytest.mark.parametrize("option", ["-h", "--help"])
-    # def testUsageFlag(self, option):
-    #     """Test '-h' or '--help' triggers printing of usage and exits with 0."""
-    #     result = run_scout_init([option])
-    #     assert result.returncode == 0
-    #     assert "usage" in result.stdout.lower()
+    @pytest.mark.parametrize("option", ["-h", "--help"])
+    def testUsageFlag(self, option):
+        """Test '-h' or '--help' triggers printing of usage and exits with 0."""
+        result = run_scout_init([option])
+        assert result.returncode == 0
+        assert "usage" in result.stdout.lower()
 
-    # def testDescriptionFormat(self):
-    #     """Test description of subcommand is formatted correctly.
-    #     Focusing on section headings spacing, capitalization and content."""
-    #     result = run_scout_init(["-h"])
-    #     assert " init " in result.stdout
-    #     assert "Usage: " in result.stdout
-    #     assert "\nPositional arguments:\n" in result.stdout
-    #     assert "\nOptions:\n" in result.stdout
+    def testMainSameAsScript(self, capsys):
+        """Tests calling main function same as running cli module as script."""
+        with pytest.raises(SystemExit) as exc_info:
+            run_main_init(["-h"])
+        captured = capsys.readouterr()
+        assert "usage" in captured.out.lower()
+        assert exc_info.value.code == 0
+        assert exc_info.type == SystemExit
+
+    def testDescriptionFormat(self, capsys):
+        """Test description of subcommand is formatted correctly.
+        Focusing on section headings spacing, capitalization and content."""
+        with pytest.raises(SystemExit) as exc_info:
+            run_main_init(["-h"])
+
+        captured = capsys.readouterr()
+        assert " init " in captured.out
+        assert "Usage: " in captured.out
+        assert "\nPositional arguments:\n" in captured.out
+        assert "\nOptions:\n" in captured.out
 
     # def testUnrecognizedFlag(self):
     #     """Test unrecognized flag triggers printing of usage and exits with 2."""
