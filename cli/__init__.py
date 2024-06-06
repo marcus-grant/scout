@@ -59,8 +59,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Check if a command was given
     if args.command is None:
         # If none given we are in the main command scope - later the TUI
+        # TODO: Does this even get called?
         if any(arg in ("-h", "--help") for arg in parser._get_args()):
-            breakpoint()
             parser.print_help()
             return 0
         else:
@@ -70,9 +70,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             parser.print_help(sys.stderr)
             return 2
     else:
-        # Call the function associated with the command if needed
-        args.func(args, parser.print_help)
-    return 1
+        # Call the function associated with the command if command parsed
+        return args.func(args, parser.print_help)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
+import os
 import pytest
 import subprocess
+from unittest.mock import patch, Mock
 
 from cli import main
 from lib.handler.db_connector import (
@@ -23,10 +25,10 @@ def run_scout_init(argv, **kwargs):
 
 def run_main_init(argv):
     argv = ["./scout", "init"] + argv
-    main(argv)
+    return main(argv)
 
 
-class TestMain:
+class TestOpts:
     """Test Suite for Init Subcommand argparser."""
 
     # TODO: cli.main needs to be refactored better for testing.
@@ -54,42 +56,83 @@ class TestMain:
     def testDescriptionFormat(self, capsys):
         """Test description of subcommand is formatted correctly.
         Focusing on section headings spacing, capitalization and content."""
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(SystemExit):
             run_main_init(["-h"])
-
         captured = capsys.readouterr()
         assert " init " in captured.out
         assert "Usage: " in captured.out
         assert "\nPositional arguments:\n" in captured.out
         assert "\nOptions:\n" in captured.out
 
-    # def testUnrecognizedFlag(self):
-    #     """Test unrecognized flag triggers printing of usage and exits with 2."""
-    #     result = run_scout_init(["--unknown"])
-    #     assert result.returncode == 2
-    #     assert "Usage:" in result.stderr
+    def testUnrecognizedFlag(self, capsys):
+        """Test unrecognized flag triggers printing of usage and exits with 2."""
+        rc = run_main_init(["--unknown"])
+        assert "Usage:" in capsys.readouterr().err
+        assert rc == 2
 
-    # def testNoOpts(self):
-    #     """Test no options triggers default pwd target and repo in pwd, exit 0."""
-    #     result = run_scout_init([])
-    #     assert result.returncode == 0
-    #     assert "." in result.stdout
-    #     assert "./.scout.db" in result.stdout
+    def testNoOpts(self, capsys):
+        """Test no options triggers default pwd target and repo in pwd, exit 0."""
+        cwd = os.getcwd()
+        with patch("cli.subcmd.init.ScoutManager.init_db") as mock:
+            rc = run_main_init([])
+            assert rc == 0
+            assert mock.called
+            assert mock.call_args[0][0] == f"{cwd}/.scout.db"
+            assert mock.call_args[0][1] == str(cwd)
 
-    # def testTargetOpt(self):
-    #     """Test target option sets target correctly."""
-    #     result = run_scout_init(["test"])
-    #     assert result.returncode == 0
-    #     assert "test" in result.stdout
-    #     result = run_scout_init(["-r", "test"])
-    #     assert result.returncode == 0
-    #     assert "test" in result.stdout
+    def testTargetOpt(self, capsys):
+        """Test target option sets target correctly."""
+        cwd = os.getcwd()
+        target = f"{cwd}/test/foobar"
+        mock_db = Mock()
+        mock_db.path = cwd
+        mock_db.root = target
+        with patch(
+            "cli.subcmd.init.ScoutManager.init_db", return_value=mock_db
+        ) as mock:
+            rc = run_main_init([target])
+        assert rc == 0
+        stdout = capsys.readouterr().out
+        assert "init" in stdout.lower()
+        assert target in stdout
+        mock.assert_called_once_with(f"{target}/.scout.db", target)
 
-    # def testRepoOpt(self):
-    #     """Test repo option sets repo correctly."""
-    #     result = run_scout_init(["-r", "test"])
-    #     assert result.returncode == 0
-    #     assert "test" in result.stdout
+    @pytest.mark.parametrize("option", ["-r", "--repo"])
+    def testRepoOpt(self, capsys, option):
+        """Test target option sets target correctly."""
+        cwd = os.getcwd()
+        repo = f"{cwd}/test/foobar"
+        mock_db = Mock()
+        mock_db.path = repo
+        mock_db.root = cwd
+        with patch(
+            "cli.subcmd.init.ScoutManager.init_db", return_value=mock_db
+        ) as mock:
+            rc = run_main_init([option, repo])
+        stdout = capsys.readouterr().out
+        assert "init" in stdout.lower()
+        assert cwd in stdout
+        assert rc == 0
+        mock.assert_called_once_with(repo, cwd)
+
+    @pytest.mark.parametrize("option", ["-r", "--repo"])
+    def testAllOpts(self, capsys, option):
+        """Test repo option sets repo correctly."""
+        target = "/test/target"
+        repo = "/test/repo"
+        # Mock object with path=repo and root=test
+        mock_db = Mock()
+        mock_db.path = repo
+        mock_db.root = target
+        with patch(
+            "cli.subcmd.init.ScoutManager.init_db", return_value=mock_db
+        ) as mock:
+            rc = run_main_init([target, option, repo])
+        assert rc == 0
+        stdout = capsys.readouterr().out
+        assert "init" in stdout.lower()
+        assert target in stdout
+        mock.assert_called_once_with(repo, target)
 
 
 class TestHandleRaises:

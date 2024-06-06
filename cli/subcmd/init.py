@@ -56,7 +56,7 @@ def add_subcommand(subparsers: "argparse._SubParsersAction") -> None:
     parser.set_defaults(func=handle_subcommand)
 
 
-def handle_subcommand(args, print_help_fn):
+def handle_subcommand(args, print_help_fn) -> int:
     """
     Handle the 'init' subcommand.
 
@@ -80,10 +80,16 @@ def handle_subcommand(args, print_help_fn):
     # Call the ScoutManager to initialize the database
     # While checking for potential errors to give messages for
     try:
-        ScoutManager.init_db(repo, target)
+        db = ScoutManager.init_db(repo, target)
     except DBNotInDirError as e:
-        msg = f"Error: {e}\n"
-        msg += f"Target '{target}' is not inside a directory.\n"
-        msg += "Please a target path in a directory.\n"
-        print(msg, file=sys.stderr)
-        print_help_fn()
+        # msg = f"Error: {e}\n"
+        # msg += f"Target '{target}' is not inside a directory.\n"
+        # msg += "Please a target path in a directory.\n"
+        # print(msg, file=sys.stderr)
+        print(f"Error: {e}\n", file=sys.stderr)
+        print_help_fn(file=sys.stderr)
+        return 16
+    print(f"Initialized scout repository at '{db.path}' with target '{db.root}'.")
+    print("You can now use scout subcommands to perform actions with it.")
+    print()
+    return 0
