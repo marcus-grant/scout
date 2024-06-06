@@ -138,7 +138,12 @@ class TestOpts:
 class TestHandleRaises:
     """Tests the raise conditions in handle_subcommand."""
 
-    def testNotInDir(self):
+    def testNotInDir(self, capsys):
         """Test DBNotInDirError when target doesn't have valid parent directory."""
-        pass
-        # with pytest.raises(DBNotInDirError):
+        target = "/definitely/not/a/valid/path"
+        rc = run_main_init([target])
+        assert rc == 16
+        captured = capsys.readouterr()
+        assert "Error: " in captured.err
+        assert "Usage: " in captured.err
+        assert target in captured.err
