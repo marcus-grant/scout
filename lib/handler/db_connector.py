@@ -7,6 +7,76 @@ from typing import Optional, Union, Generator, List
 from lib.model.dir import Dir
 
 
+class DBConnectorError(Exception):
+    """Base class for DBConnector errors."""
+
+    pass
+
+
+class DBNotInDirError(DBConnectorError):
+    """Raised when a path for a Scout database doesn't have a parent directory."""
+
+    def __init__(self, path):
+        self.message = f"Given path:\n{path}\nmust exist inside a valid directory."
+        super().__init__(self.message)
+
+
+class DBFileOccupiedError(DBConnectorError):
+    """Raised when a path for a potential Scout database file is already
+    occupied by a non-scout db file."""
+
+    def __init__(self, path):
+        self.message = "Given path:\n"
+        self.message += f"{path}\nis occupied by a non-scout database file."
+        super().__init__(self.message)
+
+
+# TODO: Rename Root to Target to better fit CLI commands
+class DBRootNotDirError(DBConnectorError):
+    """Raised when the root path for a Scout database is not a directory."""
+
+    def __init__(self, root):
+        self.message = "Given root path:\n"
+        self.message += f"{root}\nis not a valid directory."
+        super().__init__(self.message)
+
+
+class DBNoFsMetaTableError(DBConnectorError):
+    """Raised when the fs_meta table is missing from the database."""
+
+    def __init__(self):
+        self.message = "The fs_meta table is missing from the database."
+        super().__init__(self.message)
+
+
+class DBTargetPropMissingError(DBConnectorError):
+    """Raised when the target property is missing from the fs_meta table."""
+
+    def __init__(self):
+        self.message = "The target property is missing from the fs_meta table."
+        super().__init__(self.message)
+
+
+class DBPathOutsideTargetError(DBConnectorError):
+    """Raised when a path is outside the target directory tree of the database."""
+
+    def __init__(self, path, target):
+        self.message = f"Given path:\n{path}\n"
+        self.message += f"is outside of the target directory:\n{target}\n"
+        super().__init__(self.message)
+
+
+class DBPathNotSupportedError(DBConnectorError):
+    """Raised when something about the path syntax is not supported."""
+
+    def __init__(self, path):
+        if ".." in str(path):
+            self.message = f"Relative ancestor paths (..) of {path} not supported."
+        else:
+            self.message = f"Path {path} not supported."
+        super().__init__(self.message)
+
+
 class DBConnector:
     """
     A class for managing connections to a scout database file and
@@ -70,8 +140,8 @@ class DBConnector:
 
         Raises:
             TypeError: If the path is not a string or PurePath.
-            FileNotFoundError: If the parent directory of the path does not exist.
-            ValueError: If the path exists but is not a scout database file.
+            DBNotInDirError: If the parent directory of the path does not exist.
+            DBFileOccupiedError: If the path exists but is not a scout database file.
         """
         if isinstance(path, str):
             result = PP(path)
@@ -81,12 +151,15 @@ class DBConnector:
             raise TypeError(f"path {path} must be a PurePath or str")
 
         if not os.path.isdir(result.parent):
-            raise FileNotFoundError(f"{result} must be in a valid directory.")
+            raise DBNotInDirError(str(path))
         if os.path.exists(result) and not cls.is_scout_db_file(result):
-            raise ValueError(f"{result} must be a valid scout db file or empty path.")
+            raise DBFileOccupiedError(str(path))
 
         return result
 
+    # NOTE: If we ever implement remote fs or db handling,
+    # the raise here needs to be handled accordingly to the remote case.
+    # Same for sneaker net scenarios.
     @classmethod
     def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
         """
@@ -101,7 +174,7 @@ class DBConnector:
 
         Raises:
             TypeError: If the root is not None, a string, or PurePath.
-            FileNotFoundError: If the root is not a valid directory.
+            DBRootNotDirError: If the root is not a valid directory.
         """
         if root is None:
             result = path.parent
@@ -113,9 +186,11 @@ class DBConnector:
             raise TypeError(f"root must be PurePath or str, given {type(root)}")
 
         if not os.path.isdir(result):
-            raise FileNotFoundError(f"root must be a valid directory, given {root}")
+            raise DBRootNotDirError(str(root))
+
         return result
 
+    # TODO: Needs to rename property.root to property.target to match CLI commands
     @classmethod
     def read_root(cls, path: PP) -> PP:
         """
@@ -128,14 +203,20 @@ class DBConnector:
             PP: The root property value as a PurePath.
 
         Raises:
-            sql.OperationalError: If the root property is not found in the fs_meta table.
+            DBNoFsMetaTableError: fs_meta table is missing from the database.
+            DBTargetPropMissingError: target property is not in the fs_meta table.
         """
         with sql.connect(path) as conn:
             c = conn.cursor()
+            # Check if fs_meta table exists
+            c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = c.fetchall()
+            if ("fs_meta",) not in tables:
+                raise DBNoFsMetaTableError()
             c.execute("SELECT value FROM fs_meta WHERE property='root';")
             res = c.fetchone()
             if res is None:
-                raise sql.OperationalError("No root property in fs_meta table.")
+                raise DBTargetPropMissingError()
             return PP(res[0])
 
     @classmethod
@@ -176,7 +257,7 @@ class DBConnector:
         elif self.is_scout_db_file(self.path):
             self.root = DBConnector.read_root(self.path)
         else:
-            raise ValueError(f"{self.path} must be empty or scout db file.")
+            raise DBFileOccupiedError(str(self.path))
 
     ### Path Utility Methods
     def normalize_path(self, denormalized_path: Union[Dir, PP, str]) -> PP:
@@ -189,12 +270,12 @@ class DBConnector:
         Returns:
             PP: The normalized PurePath relative to the root directory.
         Raises:
-            ValueError: If the path is not relative to the root directory.
+            DBPathNotSupportedError: If unsupported (..) syntax in path
+            DBPathOutsideTargetError: If the path is not relative to repo target.
         """
         # Check for unresolvable path syntax
         if ".." in str(denormalized_path):
-            msg = f"Relative ancestor paths (..) of {denormalized_path} not supported."
-            raise ValueError(msg)
+            raise DBPathNotSupportedError(denormalized_path)
         # Coerce to PP type
         path = None
         if isinstance(denormalized_path, Dir):
@@ -209,7 +290,10 @@ class DBConnector:
         # If relative prepend the root so we can use pathlib's relative_to
         if not path.is_absolute():
             path = self.root / path
-        path = path.relative_to(self.root)  # Finally normalize
+        try:  # Check for paths outside target when conducting relative_to
+            path = path.relative_to(self.root)  # Finally normalize
+        except ValueError as e:
+            raise DBPathOutsideTargetError(path, self.root) from e
         return path
 
     def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:
@@ -221,18 +305,18 @@ class DBConnector:
         Returns:
             PP: The denormalized PurePath relative to the root directory.
         Raises:
-            ValueError: If the path is not relative to the root directory.
+            DBPathNotSupportedError: If unsupported (..) syntax in path
+            DBPathOutsideTargetError: If the path is not relative to repo target.
         """
         if ".." in str(normalized_path):
-            msg = f"Relative ancestor paths (..) of {normalized_path} not supported."
-            raise ValueError(msg)
+            raise DBPathNotSupportedError(normalized_path)
         path = PP(normalized_path)
         if path.is_absolute():
             # Raise if path outside root
             try:
-                path = path.relative_to(self.root)
-            except:  # noqa
-                raise ValueError(f"{path} is outside of {self.root}")
+                path = path.relative_to(self.root)  # Finally normalize
+            except ValueError as e:
+                raise DBPathOutsideTargetError(path, self.root) from e
         path = self.root / path
         return path
 

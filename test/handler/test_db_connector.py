@@ -6,7 +6,17 @@ import sqlite3 as sql
 import tempfile
 from unittest.mock import patch, MagicMock
 
-from lib.handler.db_connector import DBConnector
+from lib.handler.db_connector import (
+    DBConnector,
+    DBConnectorError,
+    DBNotInDirError,
+    DBFileOccupiedError,
+    DBRootNotDirError,
+    DBNoFsMetaTableError,
+    DBTargetPropMissingError,
+    DBPathOutsideTargetError,
+    DBPathNotSupportedError,
+)
 from lib.model.dir import Dir
 
 MOD_BASE = "lib.handler.db_connector.DBConnector"
@@ -114,6 +124,87 @@ class TestFixtures:
             assert db.path == db.root.parent / "test.db"
 
 
+class TestErrors:
+    """Test this module's custom error classes."""
+
+    def testDBNotInDir(self):
+        """Test type and message of DBNotInDir error."""
+        e = None
+        with pytest.raises(DBNotInDirError) as e:
+            raise DBNotInDirError("foobar")
+        assert isinstance(e.value, DBNotInDirError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
+    def testDBFileOccupied(self):
+        """Test type and message of DBFileOccupied error."""
+        e = None
+        with pytest.raises(DBFileOccupiedError) as e:
+            raise DBFileOccupiedError("foobar")
+        assert isinstance(e.value, DBFileOccupiedError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
+    def testDBRootNotDir(self):
+        """Test type and message of DBRootNotDir error."""
+        e = None
+        with pytest.raises(DBRootNotDirError) as e:
+            raise DBRootNotDirError("foobar")
+        assert isinstance(e.value, DBRootNotDirError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "foobar" in str(e.value)
+        assert "foobar" in e.value.message
+
+    def testDBNoFsMetaTable(self):
+        """Test type and message of DBNoFsMetaTable error."""
+        e = None
+        with pytest.raises(DBNoFsMetaTableError) as e:
+            raise DBNoFsMetaTableError()
+        assert isinstance(e.value, DBNoFsMetaTableError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "fs_meta" in e.value.message
+
+    def testTargetPropMissing(self):
+        """Test type and message of DBTargetPropMissing error."""
+        e = None
+        with pytest.raises(DBTargetPropMissingError) as e:
+            raise DBTargetPropMissingError()
+        assert isinstance(e.value, DBTargetPropMissingError)
+        assert isinstance(e.value, DBConnectorError)
+        assert "target" in e.value.message
+        assert "prop" in e.value.message
+
+    def testPathOutsideTarget(self):
+        """Test type and message of PathOutsideTarget error."""
+        e = None
+        with pytest.raises(DBPathOutsideTargetError) as e:
+            raise DBPathOutsideTargetError("foobar-path", "foobar-target")
+        assert isinstance(e.value, DBPathOutsideTargetError)
+        assert "foobar-path" in str(e.value)
+        assert "foobar-target" in str(e.value)
+        assert "foobar-path" in e.value.message
+        assert "foobar-target" in e.value.message
+
+    def testPathNotSupported(self):
+        """Test type and message of PathNotSupported error."""
+        e = None
+        with pytest.raises(DBPathNotSupportedError) as e:
+            raise DBPathNotSupportedError("foobar-path")
+        assert isinstance(e.value, DBPathNotSupportedError)
+        assert "foobar-path" in str(e.value)
+        assert "foobar-path" in e.value.message
+        assert "not" in e.value.message
+        assert "support" in e.value.message
+        with pytest.raises(DBPathNotSupportedError) as e:
+            raise DBPathNotSupportedError("../../foobar-path")
+        assert "not" in e.value.message
+        assert "support" in e.value.message
+        assert "foobar-path" in e.value.message
+        assert "(..)" in e.value.message
+
+
 class TestInitValid:
     """Tests the validation of the __init__ arguments only through
     the class methods that get used during argument validation."""
@@ -162,10 +253,10 @@ class TestInitValid:
         [
             (1, TypeError),
             (None, TypeError),
-            ("not/there", FileNotFoundError),
-            ("test.db", ValueError),
-            ("test.txt", ValueError),
-            ("noroot.db", ValueError),
+            ("not/there", DBNotInDirError),
+            ("test.db", DBFileOccupiedError),
+            ("test.txt", DBFileOccupiedError),
+            ("noroot.db", DBFileOccupiedError),
         ],
         ids=["#1", "#2", "#3", "#4", "#5", "#6"],
     )
@@ -174,10 +265,13 @@ class TestInitValid:
         DBConnector.validate_arg_path should:
         1. Raise a TypeError when neither a str nor PP is given
         2. Raise a TypeError when None is given
-        3. Raise a FileNotFoundError when root's parent is not a valid directory on FS
+        3. Raise a DBNotInDirError when root's parent is not a valid directory on FS
           - Note, sometimes we need a non-existing path to start a new DB file
-        4. Raise a ValueError when path exists AND is NOT a scout db file
+        4. Raise a DBFileOccupiedError when path exists AND is NOT a scout db file
           - Dangerous error that could cause data loss outside of program scope
+        5. Raise a DBFileOccupiedError when path exists and is not a db file at all
+        6. Raise a DBFileOccupiedError when path exists and is db file,
+           but doesnt contain the fs_meta.root marker
         """
         with fake_files_dir as dp:
             with pytest.raises(raises):
@@ -201,20 +295,20 @@ class TestInitValid:
         """
         DBConnector.validate_arg_root raises when:
         - TypeError when root arg given not of type PurePath, str, or None
-        - FileNotFoundError when root arg points to non-existing path
-        - FileNotFoundError when root arg points to non-dir path (txt file)
-        - FileNotFoundError when root arg points to non-dir path (scout file)
+        - DBRootNotDirError when root arg points to non-existing path
+        - DBRootNotDirError when root arg points to non-dir path (txt file)
+        - DBRootNotDirError when root arg points to non-dir path (scout file)
         """
         fn = DBConnector.validate_arg_root
         basename = "base.scout.db"
         with fake_files_dir as dp:
             with pytest.raises(TypeError):
                 fn(dp / basename, 1)  # type: ignore
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, "/not/there")
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, dp / "test.txt")
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(DBRootNotDirError):
                 fn(dp / basename, dp / basename)
 
 
@@ -293,11 +387,13 @@ class TestInitSql:
             assert isinstance(DBConnector.read_root(path), PP)
 
     def testReadRootRaisesNoRoot(self, fake_files_dir):
-        """DBConnector.read_root raises an error when root property is not found.
-        True for both no fs_meta and no root property in fs_meta."""
+        """DBConnector.read_root raises DBNoFsMetaTableError when
+        fs_meta table doesn't exist and
+        DBConnector.read_root raises DBTargetPropMissingError when
+        root property is not found."""
         with fake_files_dir as dp:
             # Check raises when no fs_meta table
-            with pytest.raises(sql.OperationalError):
+            with pytest.raises(DBNoFsMetaTableError):
                 DBConnector.read_root(dp / "test.db")
             # Check raises when no 'root' in property column
             with sql.connect(dp / "test.db") as conn:
@@ -305,7 +401,7 @@ class TestInitSql:
                 q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
                 c.execute(q)
                 conn.commit()
-            with pytest.raises(sql.OperationalError):
+            with pytest.raises(DBTargetPropMissingError):
                 DBConnector.read_root(dp / "test.db")
 
 
@@ -423,10 +519,10 @@ class TestInit:
     @pytest.mark.parametrize(
         "path, root, raises",
         [
-            ("doesnt/exist", None, FileNotFoundError),
-            (".scout.db", "doesnt/exist", FileNotFoundError),
-            ("test.txt", "dir", ValueError),
-            ("test.db", "dir", ValueError),
+            ("doesnt/exist", None, DBNotInDirError),
+            (".scout.db", "doesnt/exist", DBRootNotDirError),
+            ("test.txt", "dir", DBFileOccupiedError),
+            ("test.db", "dir", DBFileOccupiedError),
         ],
         ids=["#1", "#2", "#3", "#4"],
     )
@@ -434,9 +530,9 @@ class TestInit:
         """
         These circumstances should raise an error.
         1. parent of path is not a dir: FileNotFoundError
-        2. root is not a dir: FileNotFoundError
-        3. path exists and is not a sqlite file: ValueError
-        4. path exists and is not a scout db file, but is sqlite: ValueError
+        2. root is not a dir: DBRootNotDirError
+        3. path exists and is not a sqlite file: DBFileOccupiedError
+        4. path exists and is not a scout db file, but is sqlite: DBFileOccupiedError
         """
         with fake_files_dir as dp:
             with pytest.raises(raises):
@@ -517,8 +613,16 @@ class TestPathHelpers:
         """
         assert mock_db_conn.normalize_path(path) == expect
 
-    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
-    def testNormRaise(self, mock_db_conn, path):
+    @pytest.mark.parametrize(
+        "path,raises",
+        [
+            ("/test", DBPathOutsideTargetError),
+            ("/out/root", DBPathOutsideTargetError),
+            ("../a", DBPathNotSupportedError),
+        ],
+        ids=["parent", "out", ".."],
+    )
+    def testNormRaise(self, mock_db_conn, path, raises):
         """
         Test that normalize_path raises an error when path is not within root.
         While checking for inputs of...
@@ -526,7 +630,7 @@ class TestPathHelpers:
             2. Parallel to root
             3. Relative ancestor
         """
-        with pytest.raises(ValueError):
+        with pytest.raises(raises):
             mock_db_conn.normalize_path(path)
 
     @pytest.mark.parametrize(
@@ -562,15 +666,23 @@ class TestPathHelpers:
         """
         assert mock_db_conn.denormalize_path(path) == expect
 
-    @pytest.mark.parametrize("path", ["/test", "/out/root", "../a"])
-    def testDenormRaise(self, mock_db_conn, path):
+    @pytest.mark.parametrize(
+        "path,raises",
+        [
+            ("/test", DBPathOutsideTargetError),
+            ("/out/root", DBPathOutsideTargetError),
+            ("../a", DBPathNotSupportedError),
+        ],
+        ids=["parent", "out", ".."],
+    )
+    def testDenormRaise(self, mock_db_conn, path, raises):
         """
         Test that denormalize_path raises an error when path is not within root.
         1. Ancestor paths to root
         2. Parallel to root
         3. Relative ancestor
         """
-        with pytest.raises(ValueError):
+        with pytest.raises(raises):
             mock_db_conn.denormalize_path(path)
 
     @pytest.mark.parametrize(

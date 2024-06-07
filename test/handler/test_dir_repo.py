@@ -10,6 +10,7 @@ from typing import List, Tuple
 from lib.handler.dir_repo import DirRepo
 from lib.model.dir import Dir
 from lib.handler.db_connector import DBConnector
+from lib.handler.db_connector import DBPathOutsideTargetError
 
 PP = PurePath
 
@@ -360,7 +361,7 @@ class TestInsertUtils:
     def testInsertDirRaise(self, base_repo):
         """DirRepo.insert_into_dir() raises ValueError for invalid paths."""
         with base_repo as repo:
-            with pytest.raises(ValueError):
+            with pytest.raises(DBPathOutsideTargetError):
                 repo.insert_dir(repo.db.root.parent)
 
     def testInsertDirAncestorValues(self, base_repo):
@@ -593,11 +594,12 @@ class TestGetOne:
             assert dir == Dir(id=8, path=repo.db.root / "f/h")
 
     def testRaises(self, base_repo):
-        """Raises ValueError when no args and path outside repo are given."""
+        """Raises ValueError when no args and
+        DBPathOutsideTargetError when path outside repo are given."""
         with base_repo as repo:
             with pytest.raises(ValueError):
                 repo.getone()
-            with pytest.raises(ValueError):
+            with pytest.raises(DBPathOutsideTargetError):
                 repo.getone(path="/not/in/repo")
 
     def testDirNotFound(self, test_repo):
@@ -644,11 +646,12 @@ class TestGetAncestors:
             assert dir == [expect.f]
 
     def testRaises(self, base_repo):
-        """Raises ValueError when no args and path outside repo are given."""
+        """Raises ValueError when no args and
+        DBPathOutsideTargetError when path outside repo are given."""
         with base_repo as repo:
             with pytest.raises(ValueError):
                 repo.get_ancestors()
-            with pytest.raises(ValueError):
+            with pytest.raises(DBPathOutsideTargetError):
                 repo.get_ancestors(path="/not/in/repo")
 
     def testAbsAndRelPathsEqual(self, test_repo):
@@ -700,11 +703,12 @@ class TestGetDescendants:
             assert dir == []
 
     def testRaises(self, base_repo):
-        """Raises ValueError when no args and path outside repo are given."""
+        """Raises ValueError when no args and
+        DBPathOutsideTargetError when path outside repo are given."""
         with base_repo as repo:
             with pytest.raises(ValueError):
                 repo.get_descendants()
-            with pytest.raises(ValueError):
+            with pytest.raises(DBPathOutsideTargetError):
                 repo.get_descendants(path="/not/in/repo")
 
     def testAbsAndRelPathsEqual(self, test_repo):

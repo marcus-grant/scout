@@ -1,8 +1,18 @@
 import argparse
 import os
+import sys
 
 # from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
+from lib.scout_manager import ScoutManager, ScoutAlreadyInitError
+from lib.handler.db_connector import (
+    DBConnectorError,
+    DBNotInDirError,
+    DBFileOccupiedError,
+    DBRootNotDirError,
+    DBNoFsMetaTableError,
+    DBTargetPropMissingError,
+)
 
 SUBCMD_DESCRIPTION = """Initialize a new scout repository.
 This command will create a new `.scout.db` file for the repository.
@@ -46,7 +56,15 @@ def add_subcommand(subparsers: "argparse._SubParsersAction") -> None:
     parser.set_defaults(func=handle_subcommand)
 
 
-def handle_subcommand(args):
+def print_error_and_help(e: DBConnectorError, print_help_fn):
+    """Helper function to print error message,
+    call print_help_fn to print usage.
+    Used to reduce code duplication in handle_subcommand."""
+    print(f"Error:\n{type(e).__name__}\n{e}\n", file=sys.stderr)
+    print_help_fn(file=sys.stderr)
+
+
+def handle_subcommand(args, print_help_fn) -> int:
     """
     Handle the 'init' subcommand.
 
@@ -60,8 +78,32 @@ def handle_subcommand(args):
     """
     target = args.target
     repo = args.repo
+
+    # Default handling for args
+    if target == "." or target is None:
+        target = os.getcwd()
     if repo is None:
         repo = f"{target}/.scout.db"
-    # TODO: Implement the initialization of the project
-    # Implementation will be added later
-    print(f"Initializing repo for {target} with repo stored at {repo}")
+
+    # Call the ScoutManager to initialize the database
+    # While checking for potential errors to give messages for
+    try:
+        db = ScoutManager.init_db(repo, target)
+    except DBNotInDirError as e:
+        print_error_and_help(e, print_help_fn)
+        return 16
+    except DBFileOccupiedError as e:
+        print_error_and_help(e, print_help_fn)
+        return 17
+    except DBRootNotDirError as e:
+        print_error_and_help(e, print_help_fn)
+        return 18
+    except ScoutAlreadyInitError as e:
+        print_error_and_help(e, print_help_fn)
+        return 20
+
+    # Finally check
+    print(f"Initialized scout repository at '{db.path}' with target '{db.root}'.")
+    print("You can now use scout subcommands to perform actions with it.")
+    print()
+    return 0

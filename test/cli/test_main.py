@@ -1,7 +1,7 @@
 import pytest
 import subprocess
 
-from cli import VERSION, NAME
+from cli import VERSION, NAME, main
 
 
 # TODO: Docstrings
@@ -52,3 +52,43 @@ class TestMain:
         result = run_scout([option])
         assert result.returncode == 0
         assert VERSION in result.stdout
+
+
+class TestSameAsScript:
+    """Test Suite for main function being same as when script is run as module run."""
+
+    def testUsageFlag(self, capsys):
+        """Test '-h' or '--help' triggers printing of usage and exits with 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-h"])
+
+        captured = capsys.readouterr()
+        assert exc_info.type == SystemExit
+        assert exc_info.value.code == 0
+        assert "usage" in captured.out.lower()
+
+    def testUnrecognizedFlag(self, capsys):
+        """Test unrecognized flag triggers printing of usage and exits with 2."""
+        result = main(["--unknown"])
+        captured = capsys.readouterr()
+        assert result == 2
+        assert "Usage:" in captured.err
+
+    def testNoOpts(self, capsys):
+        """Test no options triggers printing of usage, exits with 2,
+        and states non-implementation of TUI."""
+        result = main([])
+        captured = capsys.readouterr()
+        assert result == 2
+        assert "\nUsage: " in captured.err
+        assert "not implement" in captured.err.lower()
+        assert "TUI" in captured.err
+
+    def testVersionFlag(self, capsys):
+        """Test '-v' or '--version' triggers printing of version and exits with 0."""
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-v"])
+        captured = capsys.readouterr()
+        assert exc_info.type == SystemExit
+        assert exc_info.value.code == 0
+        assert VERSION in captured.out
