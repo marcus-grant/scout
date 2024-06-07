@@ -4,7 +4,7 @@ import sys
 
 # from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
-from lib.scout_manager import ScoutManager
+from lib.scout_manager import ScoutManager, ScoutAlreadyInitError
 from lib.handler.db_connector import (
     DBConnectorError,
     DBNotInDirError,
@@ -98,6 +98,11 @@ def handle_subcommand(args, print_help_fn) -> int:
     except DBRootNotDirError as e:
         print_error_and_help(e, print_help_fn)
         return 18
+    except ScoutAlreadyInitError as e:
+        print_error_and_help(e, print_help_fn)
+        return 20
+
+    # Finally check
     print(f"Initialized scout repository at '{db.path}' with target '{db.root}'.")
     print("You can now use scout subcommands to perform actions with it.")
     print()

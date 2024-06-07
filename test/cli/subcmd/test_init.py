@@ -7,6 +7,7 @@ import tempfile
 from unittest.mock import patch, Mock
 
 from cli import main
+from lib.scout_manager import ScoutAlreadyInitError
 from lib.handler.db_connector import (
     DBNotInDirError,
     DBFileOccupiedError,
@@ -191,3 +192,22 @@ class TestHandleErrors:
         assert "Usage: " in captured.err
         assert target_path in captured.err
         assert DBRootNotDirError.__name__ in captured.err
+
+    def testScoutAlreadyInit(self, capsys, temp_dir_context):
+        """Tests that if a scout db file already exists in the target directory,
+        that the function raises and handles properly a DBScoutAlreadyInitError."""
+        with temp_dir_context as dp:
+            scout_db = f"{dp}/.scout.db"
+            with sql.connect(scout_db) as conn:
+                q = "CREATE TABLE fs_meta (property TEXT PRIMARY KEY, value TEXT);"
+                conn.execute(q)
+                ins_query = "INSERT INTO fs_meta (property, value) VALUES (?, ?);"
+                conn.execute(ins_query, ("root", "test"))
+                conn.commit()
+            rc = run_main_init([dp])
+        assert rc == 20
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+        assert "Usage: " in captured.err
+        assert scout_db in captured.err
+        assert ScoutAlreadyInitError.__name__ in captured.err
