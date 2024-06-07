@@ -1,6 +1,9 @@
+from contextlib import contextmanager
 import os
 import pytest
 import subprocess
+import sqlite3 as sql
+import tempfile
 from unittest.mock import patch, Mock
 
 from cli import main
@@ -26,6 +29,25 @@ def run_scout_init(argv, **kwargs):
 def run_main_init(argv):
     argv = ["./scout", "init"] + argv
     return main(argv)
+
+
+@pytest.fixture
+@contextmanager
+def temp_dir_context():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield str(temp_dir)
+
+
+@pytest.fixture
+@contextmanager
+def non_scout_db(temp_dir_context):
+    with temp_dir_context as dp:
+        db_path = f"{dp}/nonscout.db"
+        with sql.connect(db_path) as conn:
+            conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, txt TEXT);")
+            conn.execute("INSERT INTO test (txt) VALUES ('test');")
+            conn.commit()
+        yield dp, str(db_path)
 
 
 class TestOpts:
@@ -135,15 +157,47 @@ class TestOpts:
         mock.assert_called_once_with(repo, target)
 
 
-class TestHandleRaises:
+class TestHandleErrors:
     """Tests the raise conditions in handle_subcommand."""
 
     def testNotInDir(self, capsys):
-        """Test DBNotInDirError when target doesn't have valid parent directory."""
-        target = "/definitely/not/a/valid/path"
-        rc = run_main_init([target])
-        assert rc == 16
+        """Test DBNotInDirError when repo doesn't have valid parent directory."""
+        repo = "/definitely/not/a/valid/path"
+        rc = run_main_init(["-r", repo])
+        assert rc == 16  # Test return code
         captured = capsys.readouterr()
-        assert "Error: " in captured.err
+        assert "Error:" in captured.err  # Check error indicated
+        assert "Usage: " in captured.err  # Check usage printed
+        assert repo in captured.err  # Check wrongful target in message
+        assert DBNotInDirError.__name__ in captured.err  # Check correct error
+
+    def testFileOccupied(self, capsys, temp_dir_context):
+        """Test DBFileOccupiedError when repo path is a file."""
+        with temp_dir_context as dp:
+            occupied_path = f"{dp}/occupied.txt"
+            with open(occupied_path, "w") as f:
+                f.write("DELETEME\ntest file from test/cli/subcmd/test_init.py")
+            rc = run_main_init(["-r", occupied_path])
+        assert rc == 17
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
         assert "Usage: " in captured.err
-        assert target in captured.err
+        assert occupied_path in captured.err
+        assert DBFileOccupiedError.__name__ in captured.err
+
+    def testDBRootNotDir(self, capsys, temp_dir_context):
+        """Test DBRootNotDirError when target is a file.
+        Need to make sure the repo path is empty and in valid directory and
+        put target path in a file not dir."""
+        with temp_dir_context as dp:
+            target_path = f"{dp}/target-not-a-dir.txt"
+            with open(target_path, "w") as f:
+                f.write("DELETEME\ntest file from test/cli/subcmd/test_init.py")
+            rc = run_main_init([target_path, "-r", f"{dp}/test.db"])
+        assert rc == 18
+        captured = capsys.readouterr()
+        assert "Error:" in captured.err
+        assert "Usage: " in captured.err
+        assert target_path in captured.err
+        assert DBRootNotDirError.__name__ in captured.err
+
