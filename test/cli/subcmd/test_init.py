@@ -8,12 +8,9 @@ from unittest.mock import patch, Mock
 
 from cli import main
 from lib.handler.db_connector import (
-    DBConnectorError,
     DBNotInDirError,
     DBFileOccupiedError,
     DBRootNotDirError,
-    DBNoFsMetaTableError,
-    DBTargetPropMissingError,
 )
 
 
@@ -53,12 +50,6 @@ def non_scout_db(temp_dir_context):
 class TestOpts:
     """Test Suite for Init Subcommand argparser."""
 
-    # TODO: cli.main needs to be refactored better for testing.
-    # Will add argv param to main() to allow for testing argparse
-    # Will add return with exit code to main to test exits
-    # Will add exit(main(sys.argv)) to __main__ check to allow for testing
-    # Also the above will allow regular execution of cli as main script
-    #
     @pytest.mark.parametrize("option", ["-h", "--help"])
     def testUsageFlag(self, option):
         """Test '-h' or '--help' triggers printing of usage and exits with 0."""
@@ -200,4 +191,3 @@ class TestHandleErrors:
         assert "Usage: " in captured.err
         assert target_path in captured.err
         assert DBRootNotDirError.__name__ in captured.err
-
