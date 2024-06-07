@@ -10,8 +10,6 @@ from lib.handler.db_connector import (
     DBNotInDirError,
     DBFileOccupiedError,
     DBRootNotDirError,
-    DBNoFsMetaTableError,
-    DBTargetPropMissingError,
 )
 
 SUBCMD_DESCRIPTION = """Initialize a new scout repository.
