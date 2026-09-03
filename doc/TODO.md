@@ -39,9 +39,9 @@
 
 ### chr/housekeeping
 
-- `scripts/hook/commit-msg`: copied verbatim from Marcustack.
+- `script/hook/commit-msg`: copied verbatim from Marcustack.
 - `justfile`:
-  - `install-hooks`: point git at `scripts/hook` (method to match Marcustack).
+  - `install-hooks`: point git at `script/hook` (method to match Marcustack).
   - `lint *args`: `ruff check {{args}}`
   - `typecheck *args`: `pyright {{args}}`
   - `test *args`: `pytest {{args}}`
