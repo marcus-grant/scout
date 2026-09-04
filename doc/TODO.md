@@ -1,6 +1,8 @@
 # Scout - TODO
 
-## Crucial rules
+## Before Working
+
+### Crucial rules
 
 <!-- Placeholder: improve with CONTRIBUTE.md and QA.md exist. Draft candidates: -->
 - Strict lib/adapter split.
@@ -29,49 +31,13 @@
   and exit code. New failure modes get a new subclass in the same PR
   that introduces them, never a bare `Exception` or a string check.
 
-## Required reading
+### Required reading
 
 - `doc/CONTRIBUTE.md` (mandatory)
 - `doc/QA.md` (mandatory)
 - `README.md` (optional)
 
 ## Sequenced PRs to MVP
-
-### chr/housekeeping
-
-- `script/hook/commit-msg`: copied verbatim from Marcustack.
-- `justfile`:
-  - `install-hooks`: point git at `script/hook` (method to match Marcustack).
-  - `lint *args`: `ruff check {{args}}`
-  - `typecheck *args`: `pyright {{args}}`
-  - `test *args`: `pytest {{args}}`
-  - `check`: `lint`, `typecheck`, `test` in that order, fail fast.
-- `pyproject.toml`:
-  - add `ruff` and `pyright` as dev dependencies with config.
-- `doc/CONTRIBUTE.md` and `doc/QA.md`:
-  - adapted from Galleria where its workflows apply.
-- `doc/TODO.md`: this document.
-- `README.md`:
-  - broad project introduction.
-  - Its only doc link is to `doc/README.md`.
-  - Carries the Datasette credit.
-- `doc/README.md`: index of `doc/`.
-  - Links to every peer file in `doc/` and,
-    - for each subdirectory,
-    - only to that subdirectory's own `README.md`.
-  - Includes a short paragraph stating this linking convention:
-    - one level deep, each topic directory owns its own index.
-- Scout is inspired by Simon Willison's `Datasette`.
-  - Credit belongs in `README.md`;
-  - noted here until that exists.
-- Migrate `requirements.txt` to `pyproject.toml` under uv:
-  - project table,
-  - runtime deps,
-  - dev dependency group
-    - *(pytest, pyfakefs, ruff, pyright)*,
-  - `scout` console script,
-  - committed `uv.lock`.
-- `justfile` recipes run through `uv run`.
 
 ### Test foundation
 
@@ -401,4 +367,3 @@ Needs more thought before any of these become tasks.
   hierarchy table returns.
 - Explore hand-rolled abstractions past the above as they become
   interesting: lazy loading and caching first. Roadmap material.
-
