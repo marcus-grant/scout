@@ -1,8 +1,8 @@
-from contextlib import contextmanager
 import os
-from pathlib import PurePath as PP
 import sqlite3 as sql
-from typing import Optional, Union, Generator, List
+from collections.abc import Generator
+from contextlib import contextmanager
+from pathlib import PurePath as PP
 
 from lib.model.dir import Dir
 
@@ -10,7 +10,6 @@ from lib.model.dir import Dir
 class DBConnectorError(Exception):
     """Base class for DBConnector errors."""
 
-    pass
 
 
 class DBNotInDirError(DBConnectorError):
@@ -128,7 +127,7 @@ class DBConnector:
             return False
 
     @classmethod
-    def validate_arg_path(cls, path: Union[PP, str]) -> PP:
+    def validate_arg_path(cls, path: PP | str) -> PP:
         """
         Validate and normalize the 'path' argument for the constructor.
 
@@ -161,7 +160,7 @@ class DBConnector:
     # the raise here needs to be handled accordingly to the remote case.
     # Same for sneaker net scenarios.
     @classmethod
-    def validate_arg_root(cls, path: PP, root: Optional[Union[PP, str]]) -> PP:
+    def validate_arg_root(cls, path: PP, root: PP | str | None) -> PP:
         """
         Validate and normalize the 'root' argument for the constructor.
 
@@ -237,7 +236,7 @@ class DBConnector:
             conn.commit()
 
     def __init__(
-        self, path: Union[PP, str], root: Optional[Union[PP, str]] = None
+        self, path: PP | str, root: PP | str | None = None
     ) -> None:
         """
         Initialize the DBConnector with the given path and root.
@@ -260,7 +259,7 @@ class DBConnector:
             raise DBFileOccupiedError(str(self.path))
 
     ### Path Utility Methods
-    def normalize_path(self, denormalized_path: Union[Dir, PP, str]) -> PP:
+    def normalize_path(self, denormalized_path: Dir | PP | str) -> PP:
         """
         Normalize a path relative to the root directory this database tracks.
         Relative paths are kept relative on
@@ -296,7 +295,7 @@ class DBConnector:
             raise DBPathOutsideTargetError(path, self.root) from e
         return path
 
-    def denormalize_path(self, normalized_path: Union[PP, str]) -> PP:
+    def denormalize_path(self, normalized_path: PP | str) -> PP:
         """
         Denormalize a path relative to the root directory this database tracks.
         Basically appending the normalized path to the root directory.
@@ -320,7 +319,7 @@ class DBConnector:
         path = self.root / path
         return path
 
-    def ancestor_paths(self, path: Union[PP, str]) -> List[PP]:
+    def ancestor_paths(self, path: PP | str) -> list[PP]:
         """
         Generate all ancestor paths of a given path.
         Args:

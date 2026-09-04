@@ -1,6 +1,5 @@
-from typing import Optional
 
-from lib.handler.db_connector import DBConnector, DBFileOccupiedError
+from lib.handler.db_connector import DBConnector
 
 
 class ScoutManagerError(Exception):
@@ -17,7 +16,7 @@ class ScoutAlreadyInitError(ScoutManagerError):
 
 class ScoutManager:
     @classmethod
-    def init_db(cls, repo: str, target: Optional[str]) -> DBConnector:
+    def init_db(cls, repo: str, target: str | None) -> DBConnector:
         """Initialize a scout repository without starting a scout session.
         Primarily used in cli.subcmd.init.handle_subcommand."""
         try:  # First determine if init'ing a pre-existing scout repository
@@ -29,5 +28,5 @@ class ScoutManager:
         db = DBConnector(repo, target)  # Otherwise init with DBConnector
         return db  # Return DBConnector object to help interface report on it
 
-    def __init__(self, repo: str, target: Optional[str]):
+    def __init__(self, repo: str, target: str | None):
         self.db = DBConnector(repo, target)

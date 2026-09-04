@@ -3,13 +3,13 @@
 #       That module should then call this and DirRepo to init tables.
 from datetime import datetime as dt
 from pathlib import PurePath as PP
-from typing import Optional, Union, Tuple, List, Any
+from typing import Any
 
 from lib.handler.db_connector import DBConnector as DBC
 from lib.model.file import File
 from lib.model.hash import HashMD5
 
-FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
+FileRow = tuple[int, int, str, str | None, int | None, int | None]
 
 
 class FileRepo:
@@ -53,8 +53,8 @@ class FileRepo:
     # TODO: Could be a query method that other method combines with insert query like below:
     # INSERT INTO file (dir_id, name, md5, mtime, updated) SELECT id, ?, ?, ?, ? FROM dir WHERE path = ?
     def select_dir_where(
-        self, id: Optional[int] = None, path: Optional[str] = None
-    ) -> Optional[Tuple[int, str]]:
+        self, id: int | None = None, path: str | None = None
+    ) -> tuple[int, str] | None:
         """
         Select a directory record from the 'dir' table by either its ID or path.
 
@@ -87,12 +87,12 @@ class FileRepo:
 
     def select_files_where_query(
         self,
-        id: Optional[int] = None,
-        dir_id: Optional[int] = None,
-        name: Optional[str] = None,
-        md5: Optional[str] = None,
-        mtime: Optional[int] = None,
-        updated: Optional[int] = None,
+        id: int | None = None,
+        dir_id: int | None = None,
+        name: str | None = None,
+        md5: str | None = None,
+        mtime: int | None = None,
+        updated: int | None = None,
     ) -> str:
         """
         Generate an SQL query string to select file records based on provided conditions.
@@ -157,7 +157,7 @@ class FileRepo:
     ### Repo Action Methods ###
     # TODO: Test that all but dir_id & id stays the same on return
     # TODO: Give interface to DirRepo to get dir_id from path or dir_id
-    def add(self, files: Union[List[File], File]) -> List[File]:
+    def add(self, files: list[File] | File) -> list[File]:
         if not isinstance(files, list):
             files = [files]
         inserted_files = []
@@ -223,7 +223,7 @@ class FileRepo:
 
     # TODO: WHen more mature, add get methods for specific FileRepo interactions
     # TODO: Needs to query for dir_id and name based on a path filter
-    def get(self, **filters: Optional[Any]) -> List[File]:
+    def get(self, **filters: Any | None) -> list[File]:
         """
         Retrieve files from the 'file' table based on various filtering criteria.
 

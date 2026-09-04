@@ -7,13 +7,10 @@
 # NOTE: The way we handle query building is messy, consider a query builder & refactor
 # TODO: Ensure docstrings are on every method
 # TODO: Refactor to use DBConnector instead of path and root & remove methods from it.
-import sqlite3
 from pathlib import PurePath as PP
-from typing import Optional, Union, List, Tuple
 
-from lib.model.dir import Dir
 from lib.handler.db_connector import DBConnector as DBC
-
+from lib.model.dir import Dir
 
 DIR_TABLE = "dir"
 DIR_ANCESTOR_TABLE = "dir_ancestor"
@@ -69,7 +66,7 @@ class DirRepo:
     #  ### SQL Query Helper Methods ###
 
     # TODO: Benchmark this, no server so latency not a concern, but could be slow
-    def insert_dir(self, path: Union[PP, str]) -> Optional[int]:
+    def insert_dir(self, path: PP | str) -> int | None:
         """
         Inserts a new record into the 'dir' table with the given path.
 
@@ -109,7 +106,7 @@ class DirRepo:
                 )
             conn.commit()
 
-    def select_dir_where_path(self, path: str) -> Optional[tuple[int, str]]:
+    def select_dir_where_path(self, path: str) -> tuple[int, str] | None:
         """Basic query execution helper that
         selects a 'dir' table row WHERE path = passed path"""
         res = None  # Result
@@ -118,7 +115,7 @@ class DirRepo:
             res = conn.execute(q).fetchone()
         return res
 
-    def select_dir_where_id(self, id: int) -> Optional[tuple[int, str, str]]:
+    def select_dir_where_id(self, id: int) -> tuple[int, str, str] | None:
         """
         Selects a 'dir' table row where id matches the given id.
 
@@ -137,8 +134,8 @@ class DirRepo:
     def select_ancestors_where_path(
         self,
         path: str,
-        depth: Optional[int] = DEFAULT_DEPTH,
-    ) -> List[Tuple[int, str]]:
+        depth: int | None = DEFAULT_DEPTH,
+    ) -> list[tuple[int, str]]:
         """
         Selects ancestor directories for a given path up to a specified depth.
 
@@ -168,8 +165,8 @@ class DirRepo:
         return res
 
     def select_ancestors_where_id(
-        self, id: int, depth: Optional[int] = DEFAULT_DEPTH
-    ) -> List[Tuple[int, str, str]]:
+        self, id: int, depth: int | None = DEFAULT_DEPTH
+    ) -> list[tuple[int, str, str]]:
         """
         Selects ancestor directories for a given directory ID up to a specified depth.
 
@@ -201,8 +198,8 @@ class DirRepo:
     def select_descendants_where_path(
         self,
         path: str,
-        depth: Optional[int] = DEFAULT_DEPTH,
-    ) -> List[Tuple[int, str, str]]:
+        depth: int | None = DEFAULT_DEPTH,
+    ) -> list[tuple[int, str, str]]:
         """
         Selects descendant directories for a given path up to a specified depth.
 
@@ -233,8 +230,8 @@ class DirRepo:
 
     # TODO: Fix depth checks not working as expected in test_get_descendandants_dirs #2
     def select_descendants_where_id(
-        self, id: int, depth: Optional[int] = DEFAULT_DEPTH
-    ) -> List[Tuple[int, str]]:
+        self, id: int, depth: int | None = DEFAULT_DEPTH
+    ) -> list[tuple[int, str]]:
         """
         Selects descendant directories for a given directory ID up to a specified depth.
 
@@ -301,10 +298,10 @@ class DirRepo:
 
     def getone(
         self,
-        id: Optional[int] = None,
-        path: Optional[Union[PP, str]] = None,
-        dir: Optional[Dir] = None,
-    ) -> Optional[Dir]:
+        id: int | None = None,
+        path: PP | str | None = None,
+        dir: Dir | None = None,
+    ) -> Dir | None:
         """
         Retrieves a single directory based on id, path, or Dir object.
 
@@ -339,9 +336,9 @@ class DirRepo:
 
     def get_ancestors(
         self,
-        id: Optional[int] = None,
-        path: Optional[Union[PP, str]] = None,
-        dir: Optional[Dir] = None,
+        id: int | None = None,
+        path: PP | str | None = None,
+        dir: Dir | None = None,
         depth: int = DEFAULT_DEPTH,
     ) -> list[Dir]:
         """
@@ -382,9 +379,9 @@ class DirRepo:
 
     def get_descendants(
         self,
-        id: Optional[int] = None,
-        path: Optional[Union[PP, str]] = None,
-        dir: Optional[Dir] = None,
+        id: int | None = None,
+        path: PP | str | None = None,
+        dir: Dir | None = None,
         depth: int = DEFAULT_DEPTH,
     ) -> list[Dir]:
         """

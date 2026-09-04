@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 from lib.model.dir import Dir
 
@@ -16,7 +15,7 @@ def find_all_dirs(rootpath: str = os.sep) -> list[Dir]:
     return dirs
 
 
-def find_common_root(dirs: list[Dir]) -> Optional[Dir]:
+def find_common_root(dirs: list[Dir]) -> Dir | None:
     """Finds the deepest shared root directory from a list of directories."""
     if len(dirs) == 0:  # If there are no directories, None
         return None

@@ -4,13 +4,13 @@ import sys
 
 # from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
 from cli.help_formatter import HelpFormatter
-from lib.scout_manager import ScoutManager, ScoutAlreadyInitError
 from lib.handler.db_connector import (
     DBConnectorError,
-    DBNotInDirError,
     DBFileOccupiedError,
+    DBNotInDirError,
     DBRootNotDirError,
 )
+from lib.scout_manager import ScoutAlreadyInitError, ScoutManager
 
 SUBCMD_DESCRIPTION = """Initialize a new scout repository.
 This command will create a new `.scout.db` file for the repository.

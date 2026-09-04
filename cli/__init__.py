@@ -2,9 +2,9 @@ import argparse
 import sys
 from typing import List, Optional
 
-from cli.defaults import MAX_WIDTH, MAX_HELP_POSITION, INDENT_INCREMENT
-from cli.help_formatter import HelpFormatter
 import cli.subcmd.init
+from cli.defaults import INDENT_INCREMENT, MAX_HELP_POSITION, MAX_WIDTH
+from cli.help_formatter import HelpFormatter
 
 # Text Constants for Argparse
 NAME = "scout"
@@ -17,7 +17,7 @@ It also helps analyze the files in the database on and off the filesystem.
 """
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
     if len(argv) > 0:
