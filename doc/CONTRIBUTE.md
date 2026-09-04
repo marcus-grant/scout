@@ -178,6 +178,23 @@ Refer to other work by branch name, never by position.
 - Escalate scope changes; never fold them in silently.
 - Read the code before making a claim about it.
 
+### Relay hygiene
+
+Shell output reaches the collaborator through `cc`, a local clipboard
+utility that copies stdin to the system clipboard.
+*(`OSC 52`, falling back to `wl-copy` under Wayland)*.
+Every command the collaborator provides ends in `| cc`, with stderr
+merged (`2>&1 | cc`) when failure output matters.
+
+- Bound all output before it runs: pipe through `head`, `tail`,
+  `wc -l`, or a count.
+  One unbounded command can flood the channel.
+- When the answer is "did this differ", relay the count, not the
+  difference.
+- Never `cd`; run everything from the repository root.
+- Brace-group multiple commands before the pipe so an intermediate
+  failure halts loudly.
+
 ## Style and formatting
 
 Applies to all text: code, comments, docstrings, commit messages, PR
