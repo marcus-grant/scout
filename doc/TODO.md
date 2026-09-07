@@ -39,29 +39,11 @@
 
 ## Sequenced PRs to MVP
 
-### Test foundation
-
-- Salvage
-  - `git mv test/ salvage/test/`. Nothing under `salvage/` is collected
-    (`norecursedirs` in `pyproject.toml`).
-  - Each later PR, for the modules it touches, either moves a salvaged
-    test module back (with or without edits) or rewrites it and deletes
-    the salvaged one. The PR description says which.
-  - `salvage/` is deleted when empty. Target: gone by the end of MVP.
-- Conventions (record in `doc/QA.md`)
-  - No pyfakefs. Real files under pytest `tmp_path`.
-  - Factories with default outputs and override kwargs (`make_tree`,
-    `make_manifest`, `make_file_entry`). Fixtures are the zero-arg
-    factory calls. Factories compose: a manifest factory takes a tree.
-  - PR workflow: write the e2e test for the PR's feature first, marked
-    skip. Green the unit tests it depends on. Unskip as acceptance.
-  - e2e tests touch only the CLI (`CliRunner`, in-process) and the DB file
-    (sqlite3), never `lib/` internals. Marked `@pytest.mark.e2e`;
-    `just test -m "not e2e"` is the fast loop. Factory trees stay tiny.
-- Scope: factories and conftest only. No production code changes.
-
 ### Schema
 
+- Factory
+  - Add `mk_manifest` to `test/factory.py`, taking a `Tree`, with its
+    fixture as the zero-arg call in `test/conftest.py`
 - Table ownership
   - Each repo owns its DDL as a class constant: `DirRepo.SCHEMA`,
     `FileRepo.SCHEMA`, `MetaRepo.SCHEMA`, `ScanRepo.SCHEMA`.
@@ -136,6 +118,9 @@
 ### Init port
 
 - Click
+  - The argparse `cli/subcmd/init.py` was deleted on tst/test-foundation;
+    read it with `git show main:cli/subcmd/init.py` when porting.
+    Its tests are written fresh; the salvaged `test_main.py` is gone.
   - `scout` becomes a Click group in `adapter/cli/`; `init` is its first
     subcommand. argparse removed.
   - `target` defaults to cwd; `-r/--repo` is the full path to the DB file,
@@ -160,6 +145,10 @@
 
 ### Repo refactor
 
+- Factory
+  - Add `mk_file_entry` to `test/factory.py` with its fixture
+- `file_repo.py` is a mess: hoist logic into helpers or split it
+  across modules, and replace string-interpolated SQL with params
 - Connector injection
   - `DirRepo`, `FileRepo`, `MetaRepo` accept a `DBConnector`; they no
     longer take `path` and `root` or open their own connection.
@@ -188,6 +177,13 @@
 
 ### Scanner
 
+- Hashing
+  - Use the b3c32 path entry point with `on_progress` wired in from
+    the start; large files are the bulk of scan bytes, not outliers
+  - Skip the callback below a size threshold so small files take the
+    fast path
+  - b3c32 stays single-threaded; per-file threading is Scout's, later
+  - `lib/fs/dir_reader.py` is unreferenced; keep or delete here
 - `lib/scanner.py`: walk and stat only. Yields one record per file in DFS
   path order (`dirs_sorted_dfs`), with `hash` computed only when the
   caller asks for that file.
@@ -270,6 +266,11 @@
     `dir`, and `scan` rows through sqlite3. Rerun with one file deleted,
     one modified, one added; assert `gone`, `hashed`, and the new row.
   - Unit: the rehash decision, the `gone` query, batched commits.
+
+### Public API
+
+- Pin `lib`'s public interface in `test/lib/test_import.py` once it
+  stops moving: the exported names, not just that modules import.
 
 ## Unsequenced PRs before MVP
 

@@ -32,12 +32,15 @@ packages = ["cli", "lib"]
 
 [tool.ruff]
 line-length = 88
+extend-exclude = ["salvage"]
 
 [tool.pyright]
 include = ["cli", "lib", "test"]
 pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["test"]
-norecursedirs = ["salvage", ".venv"]
 markers = ["e2e: end-to-end tests through the CLI and DB file"]

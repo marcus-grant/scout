@@ -1,24 +1,21 @@
 # TODO: Figure out how to make attrs properly validate optional ints above -1
 # TODO: Should we even use attrs?
-import attrs
-
 # from datetime import datetime as dt
 import os
-from pathlib import Path, PurePath
-from typing import Any, Optional, Union
+from pathlib import PurePath
 
-from lib.model.hash import HashMD5
+import attrs
 
 PathLike = os.PathLike
 
 
 class Validator:
     @staticmethod
-    def id(value: Optional[int]):
+    def id(value: int | None):
         if value is None:
             return
         if not isinstance(value, int):
-            raise ValueError((f"Invalid Dir.id value: {value}, must be int or None"))
+            raise TypeError(f"Invalid Dir.id value: {value}, must be int or None")
         if value < 0:
             raise ValueError(f"Invalid Dir.id value: {value}, must be >= 0")
 
@@ -29,18 +26,18 @@ class Dir:
     """Represents a single directory"""
 
     path: PurePath
-    id: Optional[int]
+    id: int | None
 
-    def __init__(self, path: Union[str, PurePath], id: Optional[int] = None):
+    def __init__(self, path: str | PurePath, id: int | None = None):
         self.path: PurePath = PurePath(path) if isinstance(path, str) else path
         self.id = id
 
     @classmethod
-    def from_path(cls, path: str, id: Optional[int] = None) -> "Dir":
+    def from_path(cls, path: str, id: int | None = None) -> "Dir":
         return cls(path=path, id=id)
 
     @property
-    def name(self) -> Optional[str]:
+    def name(self) -> str | None:
         # raise LookupError(f"Dir.name = {self.path.name}")
         return self.path.name
 
@@ -54,7 +51,7 @@ class Dir:
     def find_files(self, all_files: list["File"]) -> list["File"]:
         return [f for f in all_files if f.parent.path == self.path]
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Dir):
             return False
         for attr in ["name", "path", "id"]:
@@ -72,7 +69,7 @@ class File:
 
     name: str
     parent: Dir
-    id: Optional[int] = attrs.field(default=None)
+    id: int | None = attrs.field(default=None)
 
     # TODO: Add ability to search Directories for parent
     @classmethod

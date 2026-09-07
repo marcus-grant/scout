@@ -1,7 +1,6 @@
 # TODO: Add crc32
 import hashlib
 import os
-from typing import Optional
 
 
 class HashMD5:
@@ -29,7 +28,7 @@ class HashMD5:
                 h.update(chunk)
         return cls(h.digest())
 
-    def __init__(self, bin: Optional[bytes] = None, hex: Optional[str] = None):
+    def __init__(self, bin: bytes | None = None, hex: str | None = None):
         """
         Initialize a HashMD5 object with either bytes or hex string.
         """

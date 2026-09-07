@@ -1,15 +1,16 @@
 # TODO: Add 'size' column as optional integer to the table
 # TODO: SQL location and file handling should go to a separate module
 #       That module should then call this and DirRepo to init tables.
+from datetime import UTC
 from datetime import datetime as dt
 from pathlib import PurePath as PP
-from typing import Optional, Union, Tuple, List, Any
+from typing import Any
 
 from lib.handler.db_connector import DBConnector as DBC
 from lib.model.file import File
 from lib.model.hash import HashMD5
 
-FileRow = Tuple[int, int, str, Optional[str], Optional[int], Optional[int]]
+FileRow = tuple[int, int, str, str | None, int | None, int | None]
 
 
 class FileRepo:
@@ -53,8 +54,8 @@ class FileRepo:
     # TODO: Could be a query method that other method combines with insert query like below:
     # INSERT INTO file (dir_id, name, md5, mtime, updated) SELECT id, ?, ?, ?, ? FROM dir WHERE path = ?
     def select_dir_where(
-        self, id: Optional[int] = None, path: Optional[str] = None
-    ) -> Optional[Tuple[int, str]]:
+        self, id: int | None = None, path: str | None = None
+    ) -> tuple[int, str] | None:
         """
         Select a directory record from the 'dir' table by either its ID or path.
 
@@ -87,39 +88,17 @@ class FileRepo:
 
     def select_files_where_query(
         self,
-        id: Optional[int] = None,
-        dir_id: Optional[int] = None,
-        name: Optional[str] = None,
-        md5: Optional[str] = None,
-        mtime: Optional[int] = None,
-        updated: Optional[int] = None,
+        id: int | None = None,
+        dir_id: int | None = None,
+        name: str | None = None,
+        md5: str | None = None,
+        mtime: int | None = None,
+        updated: int | None = None,
     ) -> str:
-        """
-        Generate an SQL query string to select file records based on provided conditions.
+        """Build a SELECT on the file table from the non-None arguments.
 
-        This method constructs an SQL `SELECT` statement to fetch records from the 'file' table
-        where the specified conditions are met. If `id` is provided, it returns the query
-        immediately since `id` is unique.
-
-        Args:
-            id (Optional[int]): The ID of the file.
-            dir_id (Optional[int]): The ID of the directory containing the file.
-            name (Optional[str]): The name of the file.
-            md5 (Optional[str]): The MD5 hash of the file.
-            mtime (Optional[int]): The modification time of the file.
-            updated (Optional[int]): The last updated time of the file.
-
-        Returns:
-            str: An SQL query string to select file records based on the provided conditions.
-
-        Raises:
-            TypeError: If none of the arguments are provided.
-
-        Example:
-            query = select_files_where_query(name='example_file.txt', md5='d41d8cd98f00b204e9800998ecf8427e')
-            print(query)
-            # Outputs:
-            # SELECT * FROM file WHERE name = 'example_file.txt' AND md5 = 'd41d8cd98f00b204e9800998ecf8427e';
+        If id is given it is the only predicate, since id is unique.
+        Raises TypeError when every argument is None.
         """
         args = {
             "id": id,
@@ -129,35 +108,26 @@ class FileRepo:
             "mtime": mtime,
             "updated": updated,
         }
-        noargs = True
-        for arg in args:
-            if args[arg] is not None:
-                noargs = False
-                break
-        if noargs:
+        if all(val is None for val in args.values()):
             raise TypeError("Must provide at least one WHERE predicate argument.")
-        # Start query string with SELECT & FROM clauses that wont change.
         q = "SELECT * FROM file WHERE "
-        # Return early if id is provided since id is unique.
         if id is not None:
             q += f"id = {id};"
             return q
-        # Add each non-None arg as WHERE clauses with 'AND' between each.
-        for arg in args:
-            if args[arg] is None:
-                continue  # If arg is None, continue to next arg.
-            elif isinstance(args[arg], str):  # Str needs quotes
-                q += f"{arg} = '{args[arg]}' AND "
+        for arg, val in args.items():
+            if val is None:
+                continue
+            elif isinstance(val, str):
+                q += f"{arg} = '{val}' AND "
             else:
-                q += f"{arg} = {args[arg]} AND "
-        # Remove trailing ' AND ' and add semicolon to close query string.
+                q += f"{arg} = {val} AND "
         q = q[:-5] + ";"
         return q
 
     ### Repo Action Methods ###
     # TODO: Test that all but dir_id & id stays the same on return
     # TODO: Give interface to DirRepo to get dir_id from path or dir_id
-    def add(self, files: Union[List[File], File]) -> List[File]:
+    def add(self, files: list[File] | File) -> list[File]:
         if not isinstance(files, list):
             files = [files]
         inserted_files = []
@@ -183,7 +153,6 @@ class FileRepo:
                         q_sel = "SELECT path from dir WHERE id = ?;"
                         parent = c.execute(q_sel, (dir_id,)).fetchone()
                         if parent is None or len(parent) == 0:
-                            breakpoint()
                             msg = f"Trying to insert file with no directory @{dir_id}"
                             raise ValueError(msg)
                         parent = self.db.normalize_path(parent[0])
@@ -191,7 +160,7 @@ class FileRepo:
                     else:
                         parent = PP(".")
                         path = parent / path.name
-                updated = int(dt.now().timestamp())
+                updated = int(dt.now(UTC).timestamp())
                 vals = (
                     dir_id,
                     path.name,
@@ -216,14 +185,14 @@ class FileRepo:
                         md5=file.md5,
                         size=file.size,
                         mtime=file.mtime,
-                        updated=dt.fromtimestamp(updated),
+                        updated=dt.fromtimestamp(updated, tz=UTC),
                     )
                 )
         return inserted_files
 
     # TODO: WHen more mature, add get methods for specific FileRepo interactions
     # TODO: Needs to query for dir_id and name based on a path filter
-    def get(self, **filters: Optional[Any]) -> List[File]:
+    def get(self, **filters: Any | None) -> list[File]:
         """
         Retrieve files from the 'file' table based on various filtering criteria.
 
@@ -251,15 +220,14 @@ class FileRepo:
         path = filters.pop("path", None)
 
         # Path can be more useful to determine both f.name & d.path simultaneously
-        if path is not None:
-            # However, if dir_id exists a conflict of which foreign key to use exists
-            if "dir_id" not in filters:
-                if not (isinstance(path, str) or isinstance(path, PP)):
-                    raise ValueError("Path filter must be a string or PurePath.")
-                # If no dir_id use path.parent to get d.path of joined table and name
-                path = self.db.normalize_path(path)
-                filters["path"] = str(path.parent)  # Since it's path of parent
-                filters["name"] = str(path.name)
+        # However, if dir_id exists a conflict of which foreign key to use exists
+        if path is not None and "dir_id" not in filters:
+            if not isinstance(path, (str, PP)):
+                raise ValueError("Path filter must be a string or PurePath.")
+            # If no dir_id use path.parent to get d.path of joined table and name
+            path = self.db.normalize_path(path)
+            filters["path"] = str(path.parent)  # Since it's path of parent
+            filters["name"] = str(path.name)
         # Do nothing if dir_id in filters since path is already popped
 
         # MD5 could be a HashMD5 object, convert to hex string if so
@@ -321,8 +289,10 @@ class FileRepo:
                 id=row[0],
                 md5=row[3],
                 size=row[4],
-                mtime=dt.fromtimestamp(row[5]) if row[5] is not None else None,
-                updated=dt.fromtimestamp(row[6]) if row[6] is not None else None,
+                mtime=dt.fromtimestamp(row[5], tz=UTC) if row[5] is not None else None,
+                updated=dt.fromtimestamp(row[6], tz=UTC)
+                if row[6] is not None
+                else None,
             )
             for i, row in enumerate(rows)
         ]
