@@ -6,9 +6,9 @@ from datetime import datetime as dt
 from pathlib import PurePath as PP
 from typing import Any
 
-from lib.handler.db_connector import DBConnector as DBC
-from lib.model.file import File
-from lib.model.hash import HashMD5
+from scout.lib.model.file import File
+from scout.lib.model.hash import HashMD5
+from scout.lib.repo.db_connector import DBConnector as DBC
 
 FileRow = tuple[int, int, str, str | None, int | None, int | None]
 

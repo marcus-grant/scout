@@ -1,5 +1,5 @@
 
-from lib.handler.db_connector import DBConnector
+from scout.lib.repo.db_connector import DBConnector
 
 
 class ScoutManagerError(Exception):

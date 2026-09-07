@@ -4,7 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import PurePath as PP
 
-from lib.model.dir import Dir
+from scout.lib.model.dir import Dir
 
 
 class DBConnectorError(Exception):

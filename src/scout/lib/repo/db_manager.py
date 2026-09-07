@@ -2,9 +2,9 @@
 #       This will also require extra rewrites of init.
 from pathlib import PurePath as PP
 
-from lib.handler.db_connector import DBConnector
-from lib.handler.dir_repo import DirRepo
-from lib.handler.file_repo import FileRepo
+from scout.lib.repo.db_connector import DBConnector
+from scout.lib.repo.dir_repo import DirRepo
+from scout.lib.repo.file_repo import FileRepo
 
 
 class DBManager:

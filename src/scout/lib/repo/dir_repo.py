@@ -9,8 +9,8 @@
 # TODO: Refactor to use DBConnector instead of path and root & remove methods from it.
 from pathlib import PurePath as PP
 
-from lib.handler.db_connector import DBConnector as DBC
-from lib.model.dir import Dir
+from scout.lib.model.dir import Dir
+from scout.lib.repo.db_connector import DBConnector as DBC
 
 DIR_TABLE = "dir"
 DIR_ANCESTOR_TABLE = "dir_ancestor"

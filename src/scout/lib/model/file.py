@@ -1,7 +1,7 @@
 from datetime import datetime as dt
 from pathlib import PurePath as PP
 
-from lib.model.hash import HashMD5
+from scout.lib.model.hash import HashMD5
 
 
 class File:

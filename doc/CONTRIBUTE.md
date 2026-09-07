@@ -95,7 +95,7 @@ The rhythm for a PR is e2e first:
 
 1. Write the e2e test for the PR's feature, marked skip.
    It touches only the CLI (`CliRunner`, in-process) and the DB file
-   (`sqlite3`), never `lib/` internals.
+   (`sqlite3`), never `scout.lib` internals.
 2. Identify the unit tests it depends on.
    Green them red-green-refactor, one behavior at a time.
 3. Unskip the e2e test.
@@ -214,7 +214,7 @@ Code conventions:
 - Stored paths are `PurePosixPath`, imported as
   `from pathlib import PurePosixPath as PPP`.
   `Path` exists only at the I/O boundary (scanner, `DBConnector`, CLI).
-- Errors: `import lib.error as Err`.
+- Errors: `import scout.lib.error as Err`.
   Subclasses of `Err.ScoutError` carry no `Error` suffix unless they
   are a domain divider meant to be subclassed.
   The lib raises; the CLI catches at the subcommand boundary and maps

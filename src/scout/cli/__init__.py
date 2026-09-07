@@ -1,4 +1,4 @@
-# cli/__init__.py
+# src/scout/cli/__init__.py
 """Click entry point for the scout command line adapter.
 
 Author: Marcus
