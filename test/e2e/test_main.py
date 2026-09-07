@@ -1,4 +1,4 @@
-# test/cli/test_main.py
+# test/e2e/test_main.py
 """Pin the CLI entry point: usage, version, and bad-flag exit codes.
 
 Author: Marcus
@@ -9,7 +9,7 @@ License: AGPL-3.0-or-later
 import pytest
 from click.testing import CliRunner
 
-from cli import DESCRIPTION, NAME, VERSION_STR, main
+from scout.cli import DESCRIPTION, NAME, VERSION_STR, main
 
 
 @pytest.mark.e2e

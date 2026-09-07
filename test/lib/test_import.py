@@ -9,12 +9,12 @@ License: AGPL-3.0-or-later
 import importlib
 import pkgutil
 
-import lib
+from scout import lib
 
 
 def lib_modules() -> list[str]:
     """Return the dotted names of every module under the lib package."""
-    return [m.name for m in pkgutil.walk_packages(lib.__path__, prefix="lib.")]
+    return [m.name for m in pkgutil.walk_packages(lib.__path__, prefix="scout.lib.")]
 
 
 def test_every_lib_module_imports() -> None:
