@@ -138,11 +138,6 @@
   - fs detail readers stubbed; one unit test per reader against canned
     input.
 
-### Rename
-
-- `lib/handler/` to `lib/repo/`, `cli/` to `adapter/cli/`. Pure `git mv`
-  plus import fixes. No other changes, so history and blame survive.
-
 ### Repo refactor
 
 - Factory
