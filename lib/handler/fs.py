@@ -9,9 +9,9 @@ def find_all_dirs(rootpath: str = os.sep) -> list[Dir]:
     if not os.path.isdir(rootpath):
         return []
     dirs = [Dir.from_path(rootpath)]
-    for rootpath, dirnames, _ in os.walk(rootpath):
+    for parent, dirnames, _ in os.walk(rootpath):
         for dirname in dirnames:
-            dirs.append(Dir.from_path(os.path.join(rootpath, dirname)))
+            dirs.append(Dir.from_path(os.path.join(parent, dirname)))
     return dirs
 
 

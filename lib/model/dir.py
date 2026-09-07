@@ -15,7 +15,7 @@ class Validator:
         if value is None:
             return
         if not isinstance(value, int):
-            raise ValueError(f"Invalid Dir.id value: {value}, must be int or None")
+            raise TypeError(f"Invalid Dir.id value: {value}, must be int or None")
         if value < 0:
             raise ValueError(f"Invalid Dir.id value: {value}, must be >= 0")
 

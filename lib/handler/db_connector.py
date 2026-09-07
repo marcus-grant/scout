@@ -11,7 +11,6 @@ class DBConnectorError(Exception):
     """Base class for DBConnector errors."""
 
 
-
 class DBNotInDirError(DBConnectorError):
     """Raised when a path for a Scout database doesn't have a parent directory."""
 
@@ -235,9 +234,7 @@ class DBConnector:
             )
             conn.commit()
 
-    def __init__(
-        self, path: PP | str, root: PP | str | None = None
-    ) -> None:
+    def __init__(self, path: PP | str, root: PP | str | None = None) -> None:
         """
         Initialize the DBConnector with the given path and root.
 
@@ -338,7 +335,7 @@ class DBConnector:
     # TODO: Come up with way to close cleanly if leaks are a concern
     @contextmanager
     def connect(self) -> Generator[sql.Connection, None, None]:
-        """"""
+        """Yield an open sqlite3 connection, committing on clean exit."""
         with sql.connect(self.path) as conn:
             yield conn
 
