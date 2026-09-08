@@ -6,6 +6,7 @@ Created: 2026-09-04
 License: AGPL-3.0-or-later
 """
 
+import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -15,6 +16,7 @@ import pytest
 mk_file = factory.mk_file
 mk_dir = factory.mk_dir
 mk_tree = factory.mk_tree
+mk_db = factory.mk_db
 
 
 class TestMkFile:
@@ -83,3 +85,13 @@ class TestMkTree:
         assert (tree := mk_tree(tmp_path, files={}, dirs=[])).files == {}
         assert tree.dirs == []
         assert list(tmp_path.iterdir()) == []
+
+
+class TestMkDb:
+    """mk_db opens a fresh manifest under tmp_path."""
+
+    def test_fresh_manifest_answers_sql(self, tmp_path: Path) -> None:
+        """A raw sqlite3 query on the file returns the root mk_db wrote."""
+        db = mk_db(tmp_path)
+        q = "SELECT value FROM fs_meta WHERE property = 'root'"
+        assert sql.connect(db.path).execute(q).fetchone() == (str(tmp_path),)

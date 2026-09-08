@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from scout.lib.repo.db_connector import DBConnector
+
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:
     """Write content to root/rel, creating parents, and return the path."""
@@ -60,3 +62,8 @@ def mk_tree(
     for path in tree.files:
         mk_file(root, str(path), tree.files[path])
     return tree
+
+
+def mk_db(root: Path, name: str = ".scout.db") -> DBConnector:
+    """Return a DBConnector on a fresh manifest at root / name, rooted at root"""
+    return DBConnector(root / name)
