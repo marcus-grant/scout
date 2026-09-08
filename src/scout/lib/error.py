@@ -53,3 +53,17 @@ class BadSchemaVersion(ManifestDomain):
 
 class ManifestExists(ManifestDomain):
     """A manifest is already present at the target path."""
+
+
+class HashDomain(ScoutDomain):
+    """Errors about a hash code: its alphabet or its width."""
+
+    code: str | None
+
+    def __init__(self, msg: str, code: str | None = None) -> None:
+        self.code = code
+        super().__init__(msg)
+
+
+class BadHash(HashDomain):
+    """A string that is not a certified-width b3c32 code."""

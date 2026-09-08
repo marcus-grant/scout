@@ -18,6 +18,8 @@ HIERARCHY: dict[type[Err.ScoutDomain], type[Err.ScoutDomain]] = {
     Err.NotAManifest: Err.ManifestDomain,
     Err.BadSchemaVersion: Err.ManifestDomain,
     Err.ManifestExists: Err.ManifestDomain,
+    Err.HashDomain: Err.ScoutDomain,
+    Err.BadHash: Err.HashDomain,
 }
 
 
@@ -85,3 +87,15 @@ class TestScoutUnknown:
         """str() of a wrapped error is the cause's type name and message."""
         cause = RuntimeError("boom")
         assert str(Err.ScoutUnknown.wrap(cause)) == "RuntimeError: boom"
+
+
+class TestHashDomain:
+    """HashDomain carries the optional code its children inherit."""
+
+    @pytest.mark.parametrize(
+        "cls", [c for c, p in HIERARCHY.items() if p is Err.HashDomain]
+    )
+    def test_carries_optional_code(self, cls: type[Err.HashDomain]) -> None:
+        """code is None by default and stored when given, on every child."""
+        assert cls("x").code is None
+        assert cls("x", code="y").code == "y"
