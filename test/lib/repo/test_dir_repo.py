@@ -17,7 +17,7 @@ from scout.lib.repo.dir_repo import DirRepo
 from scout.lib.repo.scan_repo import ScanRepo
 
 
-def mk_dirs(db: DBConnector) -> DirRepo:
+def mk_dir_repo(db: DBConnector) -> DirRepo:
     """Create the scan and dir tables on db and return a DirRepo over it."""
     with sql.connect(db.path) as conn:
         conn.executescript(ScanRepo.SCHEMA + DirRepo.SCHEMA)
@@ -29,7 +29,7 @@ class TestSchema:
 
     def test_idempotent(self, db: DBConnector) -> None:
         """Running SCHEMA twice leaves exactly one row, (0, '.', NULL)."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         with sql.connect(db.path) as conn:
             conn.executescript(DirRepo.SCHEMA)
             assert conn.execute("SELECT count(*) FROM dir;").fetchone() == (1,)
@@ -41,14 +41,14 @@ class TestAdd:
 
     def test_returns_dir_with_id(self, db: DBConnector) -> None:
         """The Dir returned has the given path, gone None, and an int id."""
-        repo, path = mk_dirs(db), PPP("a/b")
+        repo, path = mk_dir_repo(db), PPP("a/b")
         assert (dir := repo.add(path)).path == path
         assert dir.gone is None
         assert isinstance(dir, Dir)
 
     def test_same_path_returns_same_id(self, db: DBConnector) -> None:
         """Adding a path twice yields one row and the same id."""
-        repo, path = mk_dirs(db), PPP("a/b")
+        repo, path = mk_dir_repo(db), PPP("a/b")
         a, b = repo.add(path), repo.add(path)
         assert a.id == b.id
         with repo.db.connect() as conn:
@@ -57,7 +57,7 @@ class TestAdd:
 
     def test_creates_ancestors(self, db: DBConnector) -> None:
         """Adding a/b/c stores a and a/b as live dirs too, in one call."""
-        mk_dirs(db).add(PPP("a/b/c"))
+        mk_dir_repo(db).add(PPP("a/b/c"))
         q = "SELECT id, path, gone FROM dir WHERE id != 0 ORDER BY id;"
         with sql.connect(db.path) as conn:
             rows = conn.execute(q).fetchall()
@@ -67,7 +67,7 @@ class TestAdd:
     def test_rejects_paths_outside_root(self, db: DBConnector, bad: PPP) -> None:
         """Absolute paths and paths escaping root raise Err.NotUnderRoot."""
         with pytest.raises(Err.NotUnderRoot, match="not under root") as exc:
-            mk_dirs(db).add(bad)
+            mk_dir_repo(db).add(bad)
         assert exc.value.path == bad
 
 
@@ -76,14 +76,14 @@ class TestGet:
 
     def test_returns_added(self, db: DBConnector) -> None:
         """get returns the Dir add returned, and None for an unknown path."""
-        repo, missing = mk_dirs(db), PPP("a/b/c")
+        repo, missing = mk_dir_repo(db), PPP("a/b/c")
         result = repo.add(added := PPP("a/b"))
         assert repo.get(added) == result
         assert repo.get(missing) is None
 
     def test_hides_gone(self, db: DBConnector) -> None:
         """A dir whose gone is set reads as None."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         repo.add(PPP("a"))
         with sql.connect(db.path) as conn:
             conn.execute("UPDATE dir SET gone = 7 WHERE path = 'a';")
@@ -95,13 +95,13 @@ class TestDescendants:
 
     def test_strict_prefix_matches(self, db: DBConnector) -> None:
         """descendants of a excludes a itself and the sibling ab."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         _, ab, abc, _ = (repo.add(PPP(p)) for p in ("a", "a/b", "a/b/c", "ab"))
         assert repo.descendants(PPP("a")) == [ab, abc]
 
     def test_respects_byte_boundaries(self, db: DBConnector) -> None:
         """Edge names around the a/ range are excluded; wildcards and UTF-8 kept."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         edges = ("a.", "a0", "a\U0001f600", "A/x")
         under = ("a/50%_x", "a/\u00e9", "a/\U0001f600")
         for name in edges:
@@ -111,14 +111,14 @@ class TestDescendants:
 
     def test_of_root_is_everything(self, db: DBConnector) -> None:
         """descendants of PPP('.') returns every live dir; '' spells root too."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         expect = [repo.add(PPP(p)) for p in ("a", "b", "b/c")]
         assert repo.descendants(PPP(".")) == expect
         assert repo.descendants(PPP("")) == expect
 
     def test_hides_gone(self, db: DBConnector) -> None:
         """A dir whose gone is set is left out of the list."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         for n in ("a/x", "a/y/z", "b"):
             repo.add(PPP(n))
         with db.connect() as conn:
@@ -133,7 +133,7 @@ class TestMarkGone:
 
     def test_covers_subtree(self, db: DBConnector) -> None:
         """gone is set on the dir and its descendants, not on siblings."""
-        repo, started = mk_dirs(db), 42
+        repo, started = mk_dir_repo(db), 42
         parent, child, sibling = PPP("a"), PPP("a/b"), PPP("ab")
         for p in (parent, child, sibling):
             repo.add(p)
@@ -146,7 +146,7 @@ class TestMarkGone:
 
     def test_revived_by_add(self, db: DBConnector) -> None:
         """Re-adding a path under a gone dir clears gone on the whole chain."""
-        repo = mk_dirs(db)
+        repo = mk_dir_repo(db)
         repo.add(PPP("a/b"))
         repo.mark_gone(PPP("a"), 7)
         repo.add(PPP("a/b"))
