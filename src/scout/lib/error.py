@@ -69,6 +69,10 @@ class BadHash(HashDomain):
     """A string that is not a certified-width b3c32 code."""
 
 
+class UnpairedHash(HashDomain):
+    """A hash without its hashed scan, or a hashed scan without a hash."""
+
+
 class PathDomain(ScoutDomain):
     """Errors about a path handed to the lib: shape or placement."""
 

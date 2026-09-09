@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from scout.lib.model.file import File
+from scout.lib.model.hash import Hash
 from scout.lib.repo.db_connector import DBConnector
 
 
@@ -67,3 +69,25 @@ def mk_tree(
 def mk_db(root: Path, name: str = ".scout.db") -> DBConnector:
     """Return a DBConnector on a fresh manifest at root / name, rooted at root"""
     return DBConnector(root / name)
+
+
+# TODO: Revisit if this actually gets used in more than its own test module and one actual test module
+def mk_file_model(
+    dir_id: int = 0,
+    name: str = "f",
+    size: int = 1,
+    mtime: int = 1,
+    hash: Hash | None = None,
+    hashed: int | None = None,
+    gone: int | None = None,
+) -> File:
+    """Return a File with small defaults; kw overrides hash, hashed, or gone."""
+    return File(
+        dir_id,
+        name,
+        size,
+        mtime,
+        hash=hash,
+        hashed=hashed,
+        gone=gone,
+    )

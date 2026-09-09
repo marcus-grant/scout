@@ -1,299 +1,100 @@
-# TODO: Add 'size' column as optional integer to the table
-# TODO: SQL location and file handling should go to a separate module
-#       That module should then call this and DirRepo to init tables.
-from datetime import UTC
-from datetime import datetime as dt
-from pathlib import PurePath as PP
-from typing import Any
+# src/scout/lib/repo/file_repo.py
+"""FileRepo: the file table, keyed on (dir_id, name).
+Author: Marcus
+Created: 2026-09-09
+License: AGPL-3.0-or-later
+"""
+
+import sqlite3 as sql
 
 from scout.lib.model.file import File
-from scout.lib.model.hash import HashMD5
-from scout.lib.repo.db_connector import DBConnector as DBC
-
-FileRow = tuple[int, int, str, str | None, int | None, int | None]
+from scout.lib.model.hash import Hash
+from scout.lib.repo.db_connector import DBConnector
 
 
 class FileRepo:
-    """
-    Repository pattern class for managing sqlite storage layer of File objects.
-    """
+    """Owns file(dir_id, name, hash, size, mtime, hashed, gone); hides gone rows."""
 
-    db: DBC
+    SCHEMA = """CREATE TABLE IF NOT EXISTS file (
+        dir_id INTEGER NOT NULL REFERENCES dir(id),
+        name TEXT NOT NULL,
+        hash TEXT,
+        size INTEGER NOT NULL,
+        mtime INTEGER NOT NULL,
+        hashed INTEGER REFERENCES scan(started),
+        gone INTEGER REFERENCES scan(started),
+        PRIMARY KEY (dir_id, name)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS file_hash ON file(hash);"""
 
-    @classmethod
-    def create_file_table(cls, db: DBC):
-        """Create 'file' table in database within DBConnector."""
-        query_schema = """
-            CREATE TABLE IF NOT EXISTS file (
-                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                dir_id iINTEGER,
-                name TEXT NOT NULL,
-                md5 TEXT,
-                size INTEGER,
-                mtime INTEGER,
-                updated INTEGER,
-                FOREIGN KEY (dir_id) REFERENCES dir(id)
-        );
-        """
-        with db.connect() as conn:
-            c = conn.cursor()
-            c.execute(query_schema)
-            # TODO: Benchmark differences in size, memory, and speed when using indexes.
-            # c.execute("CREATE INDEX IF NOT EXISTS file_md5 ON file (md5);")
-            # c.execute("CREATE INDEX IF NOT EXISTS file_mtime ON file (mtime);")
-            # c.execute("CREATE INDEX IF NOT EXISTS file_update ON file (update);")
-            conn.commit()
+    _SELECT = (
+        "SELECT dir_id, name, hash, size, mtime, hashed, gone FROM file "
+        "WHERE gone IS NULL AND ({}) ORDER BY dir_id, name;"
+    )
 
-    def __init__(self, db: DBC):
-        """Initialize FileRepo with a DBConnector."""
+    def __init__(self, db: DBConnector) -> None:
+        """Bind to the manifest db shares."""
         self.db = db
-        if not self.db.table_exists("file"):
-            self.create_file_table(self.db)
 
-    ### SQL Query Methods ###
-    # TODO: Could be a query method that other method combines with insert query like below:
-    # INSERT INTO file (dir_id, name, md5, mtime, updated) SELECT id, ?, ?, ?, ? FROM dir WHERE path = ?
-    def select_dir_where(
-        self, id: int | None = None, path: str | None = None
-    ) -> tuple[int, str] | None:
-        """
-        Select a directory record from the 'dir' table by either its ID or path.
+    @staticmethod
+    def _row_to_file(r: tuple) -> File:
+        """Build a File from one row in _SELECT column order."""
+        h = r[2] if r[2] is None else Hash(r[2])
+        return File(r[0], r[1], r[3], r[4], hash=h, hashed=r[5], gone=r[6])
 
-        This method executes a SQL query to fetch the `id` and `path` of a directory
-        from the 'dir' table based on the provided ID or path. If both `id` and `path`
-        are provided, only the `id` is used for the query.
+    @staticmethod
+    def _rows_to_files(rows: list[tuple]) -> list[File]:
+        """Build a list of Files from rows in _SELECT column order."""
+        return [FileRepo._row_to_file(r) for r in rows]
 
-        Args:
-            id (Optional[int]): The ID of the directory to fetch.
-            path (Optional[str]): The path of the directory to fetch.
+    @staticmethod
+    def _file_to_params(f: File) -> tuple:
+        """Six insert bindings for f: dir_id, name, hash code, size, mtime, hashed"""
+        h = None if f.hash is None else f.hash.code
+        return (f.dir_id, f.name, h, f.size, f.mtime, f.hashed)
 
-        Returns:
-            Optional[Tuple[int, str]]: A tuple containing the `id` and `path` of the directory,
-            or None if no matching directory is found.
+    def _select_files(
+        self, conn: sql.Connection, where: str, params: tuple = ()
+    ) -> list[File]:
+        """Select live files WHERE where, bound from params, by dir_id and name."""
+        rows = conn.execute(self._SELECT.format(where), params).fetchall()
+        return FileRepo._rows_to_files(rows)
 
-        Raises:
-            TypeError: If neither `id` nor `path` is provided.
-        """
-        query = "SELECT id, path FROM dir WHERE "
-        if id is not None:
-            query += f"id = {id};"
-        elif path is not None:
-            query += f"path = '{path}';"
-        else:
-            raise TypeError("Must provide either 'id' or 'path' argument.")
+    def add(self, file: File) -> File:
+        """Upsert file on (dir_id, name), writing content and gone = NULL."""
+        q = """
+        INSERT INTO file (dir_id, name, hash, size, mtime, hashed)
+        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(dir_id, name)
+        DO UPDATE SET
+            hash = excluded.hash, size = excluded.size, mtime = excluded.mtime,
+            hashed = excluded.hashed, gone = NULL;"""
         with self.db.connect() as conn:
-            c = conn.cursor()
-            result = c.execute(query).fetchone()
-            return result
+            conn.execute(q, self._file_to_params(file))
+            where, params = "dir_id = ? AND name = ?", (file.dir_id, file.name)
+            files = self._select_files(conn, where, params)
+            assert len(files) == 1, f"add lost its own row: {params}"
+            return files[0]
 
-    def select_files_where_query(
-        self,
-        id: int | None = None,
-        dir_id: int | None = None,
-        name: str | None = None,
-        md5: str | None = None,
-        mtime: int | None = None,
-        updated: int | None = None,
-    ) -> str:
-        """Build a SELECT on the file table from the non-None arguments.
-
-        If id is given it is the only predicate, since id is unique.
-        Raises TypeError when every argument is None.
-        """
-        args = {
-            "id": id,
-            "dir_id": dir_id,
-            "name": name,
-            "md5": md5,
-            "mtime": mtime,
-            "updated": updated,
-        }
-        if all(val is None for val in args.values()):
-            raise TypeError("Must provide at least one WHERE predicate argument.")
-        q = "SELECT * FROM file WHERE "
-        if id is not None:
-            q += f"id = {id};"
-            return q
-        for arg, val in args.items():
-            if val is None:
-                continue
-            elif isinstance(val, str):
-                q += f"{arg} = '{val}' AND "
-            else:
-                q += f"{arg} = {val} AND "
-        q = q[:-5] + ";"
-        return q
-
-    ### Repo Action Methods ###
-    # TODO: Test that all but dir_id & id stays the same on return
-    # TODO: Give interface to DirRepo to get dir_id from path or dir_id
-    def add(self, files: list[File] | File) -> list[File]:
-        if not isinstance(files, list):
-            files = [files]
-        inserted_files = []
-        for file in files:
-            dir_id = file.dir_id
-            path = self.db.normalize_path(file.path)
-            parent = path.parent
-            with self.db.connect() as conn:
-                c = conn.cursor()
-                if dir_id is None:
-                    if parent == PP("."):  # Handle files in repo root
-                        dir_id = 0
-                    else:
-                        q_sel = "SELECT id from dir WHERE path = ?;"
-                        dir_id = conn.execute(q_sel, (str(parent),)).fetchone()
-                        if dir_id is None:
-                            raise ValueError(
-                                f"Attempting to insert file with no directory @{parent}"
-                            )
-                        dir_id = dir_id[0]
-                else:
-                    if dir_id != 0:
-                        q_sel = "SELECT path from dir WHERE id = ?;"
-                        parent = c.execute(q_sel, (dir_id,)).fetchone()
-                        if parent is None or len(parent) == 0:
-                            msg = f"Trying to insert file with no directory @{dir_id}"
-                            raise ValueError(msg)
-                        parent = self.db.normalize_path(parent[0])
-                        path = parent / path.name
-                    else:
-                        parent = PP(".")
-                        path = parent / path.name
-                updated = int(dt.now(UTC).timestamp())
-                vals = (
-                    dir_id,
-                    path.name,
-                    file.md5.hex if file.md5 is not None else None,
-                    file.size,
-                    int(file.mtime.timestamp()) if file.mtime is not None else None,
-                    updated,
-                )
-                q_ins = "INSERT INTO file (dir_id, name, md5, size, mtime, updated) "
-                q_ins += "VALUES (?, ?, ?, ?, ?, ?);"
-                c.execute(q_ins, vals)
-                id = c.lastrowid
-                if id is None:
-                    raise ValueError(f"Failed to insert file record of File {file}")
-                # Now collect all attrs from file & dir_id & id to return the new File object
-                path = self.db.denormalize_path(path)
-                inserted_files.append(
-                    File(
-                        path,
-                        id=id,
-                        dir_id=dir_id,
-                        md5=file.md5,
-                        size=file.size,
-                        mtime=file.mtime,
-                        updated=dt.fromtimestamp(updated, tz=UTC),
-                    )
-                )
-        return inserted_files
-
-    # TODO: WHen more mature, add get methods for specific FileRepo interactions
-    # TODO: Needs to query for dir_id and name based on a path filter
-    def get(self, **filters: Any | None) -> list[File]:
-        """
-        Retrieve files from the 'file' table based on various filtering criteria.
-
-        Args:
-            **filters: Arbitrary keyword arguments corresponding to the columns in the 'file' table.
-                        - NOTE: Every filter is an 'AND' condition with the others.
-                        - size__lt: Gets files with size less than value passed keyword.
-                        - md5__ne: Gets files that don't have the md5 hash value.
-                        - dir_id: Gets default '=' operator when querying for dir_id.
-
-        Returns:
-            List[File]: A list of File objects representing the rows from the 'file' table that match the filters.
-
-        Example:
-            files = repo.get(name='example_file.txt', mtime__gt=1234567890)
-            # This retrieves all files with name 'example_file.txt' and modification time greater than 1234567890.
-        """
-        query = (
-            "SELECT f.id, f.dir_id, f.name, f.md5, f.size, f.mtime, f.updated, d.path "
-        )
-        query += "FROM file f "
-        query += "LEFT JOIN dir d ON f.dir_id = d.id WHERE "
-        conditions = []
-        params = []
-        path = filters.pop("path", None)
-
-        # Path can be more useful to determine both f.name & d.path simultaneously
-        # However, if dir_id exists a conflict of which foreign key to use exists
-        if path is not None and "dir_id" not in filters:
-            if not isinstance(path, (str, PP)):
-                raise ValueError("Path filter must be a string or PurePath.")
-            # If no dir_id use path.parent to get d.path of joined table and name
-            path = self.db.normalize_path(path)
-            filters["path"] = str(path.parent)  # Since it's path of parent
-            filters["name"] = str(path.name)
-        # Do nothing if dir_id in filters since path is already popped
-
-        # MD5 could be a HashMD5 object, convert to hex string if so
-        if (md5 := filters.get("md5")) and isinstance(md5, HashMD5):
-            filters["md5"] = md5.hex
-            del md5
-
-        for key, value in filters.items():
-            append_param = True
-            if "__" in key:
-                column, operator = key.split("__")
-                column = f"f.{column}"
-                if operator == "gt":
-                    conditions.append(f"{column} > ?")
-                elif operator == "lt":
-                    conditions.append(f"{column} < ?")
-                elif operator == "ge":
-                    conditions.append(f"{column} >= ?")
-                elif operator == "le":
-                    conditions.append(f"{column} <= ?")
-                elif operator == "ne":
-                    conditions.append(f"{column} != ?")
-                elif operator == "null":
-                    append_param = False
-                    if value:
-                        conditions.append(f"{column} IS NULL")
-                    else:
-                        conditions.append(f"{column} IS NOT NULL")
-                else:
-                    raise ValueError(f"Unsupported operator: {operator}")
-            else:
-                conditions.append(f"f.{key} = ?")
-            if append_param:
-                params.append(value)
-        query += " AND ".join(conditions) + ";"
-        # Handle special case where path is the only selection in dir table
-        query = query.replace("f.path", "d.path")
-
-        query_all = (
-            "SELECT f.id, f.dir_id, f.name, f.md5, f.size, f.mtime, f.updated, d.path "
-        )
-        query_all += "FROM file f LEFT JOIN dir d ON f.dir_id = d.id;"
-
+    def get(self, dir_id: int, name: str) -> File | None:
+        """Return the live File at (dir_id, name), or None."""
         with self.db.connect() as conn:
-            c = conn.cursor()
-            if len(filters) == 0:
-                c.execute(query_all)
-            else:
-                c.execute(query, params)
-            rows = c.fetchall()
+            where, params = "dir_id = ? AND name = ?", (dir_id, name)
+            files = self._select_files(conn, where, params)
+            return None if len(files) <= 0 else files[0]
 
-        # Marshal all paths and do paraticular assignment where None is root paths
-        paths = [r[2] if r[7] is None else f"{r[7]}/{r[2]}" for r in rows]
+    def in_dir(self, dir_id: int) -> list[File]:
+        """Return live files directly in dir_id, ordered by name."""
+        with self.db.connect() as conn:
+            return self._select_files(conn, "dir_id = ?", (dir_id,))
 
-        files = [
-            File(
-                path=self.db.denormalize_path(paths[i]),
-                dir_id=row[1],
-                id=row[0],
-                md5=row[3],
-                size=row[4],
-                mtime=dt.fromtimestamp(row[5], tz=UTC) if row[5] is not None else None,
-                updated=dt.fromtimestamp(row[6], tz=UTC)
-                if row[6] is not None
-                else None,
-            )
-            for i, row in enumerate(rows)
-        ]
-        return files
+    def by_hash(self, hash: Hash) -> list[File]:
+        """Return live files whose hash is hash, ordered by dir_id then name."""
+        with self.db.connect() as conn:
+            return self._select_files(conn, "hash = ?", (hash.code,))
+
+    def mark_gone(self, dir_ids: list[int], started: int) -> None:
+        """Set gone to started on every live file in the listed dirs."""
+        ds = ", ".join("?" * len(dir_ids))
+        q = f"UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({ds});"
+        with self.db.connect() as conn:
+            conn.execute(q, (started, *dir_ids))
