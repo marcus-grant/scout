@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from scout.lib.manifest import Manifest
 from scout.lib.model.file import File
 from scout.lib.model.hash import Hash
 from scout.lib.repo.db_connector import DBConnector
@@ -71,7 +72,6 @@ def mk_db(root: Path, name: str = ".scout.db") -> DBConnector:
     return DBConnector(root / name)
 
 
-# TODO: Revisit if this actually gets used in more than its own test module and one actual test module
 def mk_file_model(
     dir_id: int = 0,
     name: str = "f",
@@ -91,3 +91,10 @@ def mk_file_model(
         hashed=hashed,
         gone=gone,
     )
+
+
+def mk_manifest(
+    root: Path, name: str = ".scout.db", comment: str | None = None
+) -> Manifest:
+    """Return a Manifest freshly init'd at root / name, rooted at root."""
+    return Manifest.init(root / name, root, comment=comment)

@@ -11,6 +11,7 @@ from pathlib import Path
 import factory
 import pytest
 
+from scout.lib.manifest import Manifest
 from scout.lib.repo.db_connector import DBConnector
 
 
@@ -24,3 +25,8 @@ def tree(tmp_path: Path) -> factory.Tree:
 def db(tmp_path: Path) -> DBConnector:
     """A DBConnector on a fresh manifest under tmp_path"""
     return factory.mk_db(tmp_path)
+
+
+@pytest.fixture
+def manifest(tmp_path: Path) -> Manifest:
+    return factory.mk_manifest(tmp_path)

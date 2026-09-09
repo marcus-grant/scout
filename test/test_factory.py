@@ -111,5 +111,20 @@ class TestMkFileModel:
     def test_overrides(self) -> None:
         """Positional and keyword overrides land on the named fields."""
         expect = File(42, "foo", 1234, 5678, Hash("A" * 24), 9012, 1)
-        got = mk_file_model(42, "foo", 1234, 5678, hash=expect.hash, hashed=9012, gone=1)
+        got = mk_file_model(
+            42, "foo", 1234, 5678, hash=expect.hash, hashed=9012, gone=1
+        )
         assert got == expect
+
+
+class TestMkManifest:
+    """mk_manifest inits a fresh manifest under tmp_path."""
+
+    def test_fresh_manifest_has_root_meta(self, tmp_path: Path) -> None:
+        """A raw sqlite3 query on root / name returns root from fs_meta."""
+        factory.mk_manifest(tmp_path, "foobar", "foobarbaz")
+        with sql.connect(tmp_path / "foobar") as conn:
+            q = """SELECT property, value FROM fs_meta
+                WHERE property IN ('comment', 'root') ORDER BY property;"""
+            expect = [("comment", "foobarbaz"), ("root", tmp_path.as_posix())]
+            assert conn.execute(q).fetchall() == expect

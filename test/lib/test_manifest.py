@@ -1,0 +1,89 @@
+# test/lib/test_manifest.py
+"""Pin Manifest, the composite over one .scout.db file.
+Author: Marcus
+Created: 2026-09-09
+License: AGPL-3.0-or-later
+"""
+
+import sqlite3 as sql
+from pathlib import Path
+from pathlib import PurePosixPath as PPP
+
+import pytest
+
+import scout.lib.error as Err
+from scout.lib.manifest import Manifest
+
+TABLES = {"fs_meta", "scan", "dir", "file"}
+
+
+class TestInit:
+    """Manifest.init creates a manifest file with every table and its meta."""
+
+    def test_creates_all_tables(self, tmp_path: Path) -> None:
+        """After init, sqlite_master lists fs_meta, scan, dir, and file."""
+        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
+        with sql.connect(db_path) as conn:
+            q = """SELECT name FROM sqlite_master 
+            WHERE type='table' AND name NOT LIKE 'sqlite_%'"""
+            assert {r[0] for r in conn.execute(q)} == TABLES
+
+    def test_writes_meta(self, tmp_path: Path) -> None:
+        """schema_version, hash_algo, root, and comment are readable raw."""
+        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path, comment="Disk 1")
+        with sql.connect(db_path) as conn:
+            q = "SELECT property, value FROM fs_meta ORDER BY property"
+            assert conn.execute(q).fetchall() == [
+                ("comment", "Disk 1"),
+                ("hash_algo", "b3c32"),
+                ("root", tmp_path.as_posix()),
+                ("schema_version", "1"),
+            ]
+
+    def test_seeds_root_dir(self, tmp_path: Path) -> None:
+        """The dir table holds (0, '.') after init."""
+        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
+        with sql.connect(db_path) as conn:
+            assert conn.execute("SELECT id, path FROM dir").fetchall() == [(0, ".")]
+
+    def test_refuses_existing_path(self, tmp_path: Path) -> None:
+        """init on a path that exists raises Err.ManifestExists with the path."""
+        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
+        with pytest.raises(Err.ManifestExists) as exc:
+            Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
+        assert exc.value.path == PPP(db_path)
+        assert db_path.as_posix() in str(exc.value)
+
+
+class TestOpen:
+    """Manifest.open returns a manifest whose repos share one db."""
+
+    def test_reads_what_init_wrote(self, manifest: Manifest) -> None:
+        """open on an init'd file exposes meta.root equal to the init root."""
+        result = Manifest.open(Path(manifest.db.path))
+        assert result.fs_meta.root == manifest.fs_meta.root
+
+    def test_repos_share_db(self, manifest: Manifest) -> None:
+        """meta, scans, dirs, and files hold the same DBConnector."""
+        man = Manifest.open(Path(manifest.db.path))
+        assert man.fs_meta.db is man.scans.db is man.dirs.db is man.files.db is man.db
+
+    @pytest.mark.parametrize("version", (0, 9999))
+    def test_rejects_wrong_schema_version(self, manifest: Manifest, version: int):
+        """A manifest whose schema_version differs raises Err.BadSchemaVersion."""
+        with sql.connect(db_path := manifest.db.path) as conn:
+            q = "UPDATE fs_meta SET value = ? WHERE property = 'schema_version';"
+            conn.execute(q, (version,))
+        match = f"schema_version {version}"
+        with pytest.raises(Err.BadSchemaVersion, match=match) as exc:
+            Manifest.open(Path(db_path))
+        assert exc.value.path == PPP(manifest.db.path.as_posix())
+
+    @pytest.mark.xfail(reason="DBConnector raises its own error until cut down")
+    def test_rejects_non_manifest(self, tmp_path: Path) -> None:
+        """A sqlite file without fs_meta raises Err.NotAManifest."""
+        bad = tmp_path / "bad.db"
+        sql.connect(bad).execute("CREATE TABLE t (a)")
+        with pytest.raises(Err.NotAManifest, match="fs_meta") as exc:
+            Manifest.open(bad)
+        assert exc.value.path == PPP(bad.as_posix())
