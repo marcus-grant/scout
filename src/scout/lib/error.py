@@ -67,3 +67,18 @@ class HashDomain(ScoutDomain):
 
 class BadHash(HashDomain):
     """A string that is not a certified-width b3c32 code."""
+
+
+class PathDomain(ScoutDomain):
+    """Errors about a path handed to the lib: shape or placement."""
+
+    path: PPP | None
+
+    def __init__(self, msg: str, path: PPP | None = None) -> None:
+        """Store the offending path, when known."""
+        self.path = path
+        super().__init__(msg)
+
+
+class NotUnderRoot(PathDomain):
+    """A path that is absolute or escapes root with .. cannot be stored."""

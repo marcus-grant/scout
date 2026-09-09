@@ -20,6 +20,8 @@ HIERARCHY: dict[type[Err.ScoutDomain], type[Err.ScoutDomain]] = {
     Err.ManifestExists: Err.ManifestDomain,
     Err.HashDomain: Err.ScoutDomain,
     Err.BadHash: Err.HashDomain,
+    Err.PathDomain: Err.ScoutDomain,
+    Err.NotUnderRoot: Err.PathDomain,
 }
 
 
@@ -99,3 +101,15 @@ class TestHashDomain:
         """code is None by default and stored when given, on every child."""
         assert cls("x").code is None
         assert cls("x", code="y").code == "y"
+
+
+class TestPathDomain:
+    """PathDomain carries the optional path its children inherit."""
+
+    @pytest.mark.parametrize(
+        "cls", [c for c, p in HIERARCHY.items() if p is Err.PathDomain]
+    )
+    def test_carries_optional_path(self, cls: type[Err.PathDomain]) -> None:
+        """path is None by default and stored when given, on every child."""
+        assert cls("x").path is None
+        assert cls("x", path=PPP("y")).path == PPP("y")
