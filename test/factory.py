@@ -13,7 +13,6 @@ from pathlib import PurePosixPath as PPP
 from scout.lib.manifest import Manifest
 from scout.lib.model.file import File
 from scout.lib.model.hash import Hash
-from scout.lib.repo.db_connector import DBConnector
 
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:
@@ -65,11 +64,6 @@ def mk_tree(
     for path in tree.files:
         mk_file(root, str(path), tree.files[path])
     return tree
-
-
-def mk_db(root: Path, name: str = ".scout.db") -> DBConnector:
-    """Return a DBConnector on a fresh manifest at root / name, rooted at root"""
-    return DBConnector(root / name)
 
 
 def mk_file_model(
