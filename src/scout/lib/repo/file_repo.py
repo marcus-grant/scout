@@ -25,10 +25,18 @@ class FileRepo:
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS file_hash ON file(hash);"""
 
-    _SELECT = (
-        "SELECT dir_id, name, hash, size, mtime, hashed, gone FROM file "
-        "WHERE gone IS NULL AND ({}) ORDER BY dir_id, name;"
-    )
+    _SELECT = """
+    SELECT dir_id, name, hash, size, mtime, hashed, gone FROM file
+    WHERE gone IS NULL AND ({}) ORDER BY dir_id, name;"""
+
+    _UPSERT = """
+    INSERT INTO file (dir_id, name, hash, size, mtime, hashed)
+    VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(dir_id, name)
+    DO UPDATE SET
+        hash = excluded.hash, size = excluded.size, mtime = excluded.mtime,
+        hashed = excluded.hashed, gone = NULL;"""
+
+    _UPDATE_GONE = "UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({});"
 
     def __init__(self, db: DBConnector) -> None:
         """Bind to the manifest db shares."""
@@ -58,13 +66,7 @@ class FileRepo:
 
     def add(self, file: File) -> File:
         """Upsert file on (dir_id, name), writing content and gone = NULL."""
-        q = """
-        INSERT INTO file (dir_id, name, hash, size, mtime, hashed)
-        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(dir_id, name)
-        DO UPDATE SET
-            hash = excluded.hash, size = excluded.size, mtime = excluded.mtime,
-            hashed = excluded.hashed, gone = NULL;"""
-        self.db.conn.execute(q, self._file_to_params(file))
+        self.db.conn.execute(self._UPSERT, self._file_to_params(file))
         where, params = "dir_id = ? AND name = ?", (file.dir_id, file.name)
         files = self._select_files(where, params)
         assert len(files) == 1, f"add lost its own row: {params}"
@@ -87,5 +89,4 @@ class FileRepo:
     def mark_gone(self, dir_ids: list[int], started: int) -> None:
         """Set gone to started on every live file in the listed dirs."""
         dids = ", ".join("?" * len(dir_ids))
-        q = f"UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({dids});"
-        self.db.conn.execute(q, (started, *dir_ids))
+        self.db.conn.execute(self._UPDATE_GONE.format(dids), (started, *dir_ids))

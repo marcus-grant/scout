@@ -21,9 +21,11 @@ class DirRepo:
         gone INTEGER REFERENCES scan(started)
     ); INSERT OR IGNORE INTO dir (id, path) VALUES (0, '.');"""
 
-    _SELECT = (
-        "SELECT id, path, gone FROM dir WHERE GONE IS NULL AND ({}) ORDER BY path;"
-    )
+    _SELECT = """SELECT id, path, gone FROM dir
+                    WHERE GONE IS NULL AND ({}) ORDER BY path;"""
+
+    _UPSERT = """INSERT INTO dir (path) VALUES (?)
+                    ON CONFLICT(path) DO UPDATE SET gone = NULL;"""
 
     _UPDATE_GONE = "UPDATE dir SET gone = ? WHERE {};"
 
@@ -72,12 +74,7 @@ class DirRepo:
         for p in (*reversed(path.parents), path):
             if p == PPP("."):
                 continue
-            _p = self._check(p)
-            self.db.conn.execute(
-                "INSERT INTO dir (path) VALUES (?) "
-                "ON CONFLICT(path) DO UPDATE SET gone = NULL;",
-                (_p,),
-            )
+            self.db.conn.execute(self._UPSERT, (self._check(p),))
         dirs = self._select_dirs(where="path = ?", params=(_path,))
         assert len(dirs) == 1, f"add lost its own row: {_path}"
         return dirs[0]
