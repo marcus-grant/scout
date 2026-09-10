@@ -215,12 +215,32 @@ Code conventions:
   `from pathlib import PurePosixPath as PPP`.
   `Path` exists only at the I/O boundary (scanner, `DBConnector`, CLI).
 - Errors: `import scout.lib.error as Err`.
-  Subclasses of `Err.ScoutError` carry no `Error` suffix unless they
-  are a domain divider meant to be subclassed.
-  The lib raises; the CLI catches at the subcommand boundary and maps
-  to message and exit code.
+  - One hierarchy rooted at `Err.ScoutDomain`;
+    - every class is constructible as `Cls("message")`.
+  - Names ending in `Domain` group errors and...
+    - may carry optional members their children inherit;
+    - concrete errors carry no `Error` suffix.
+  - `Err.ScoutUnknown.wrap` rewraps what Scout did not predict.
+  - The lib raises;
+    - `scout_command` catches at the subcommand and maps to message and exit code.
+- Tables:
+  - a `Repo`:
+    - owns one table,
+    - reads and writes,
+    - and holds its `SCHEMA` and every statement as class constants;
+    - `WHERE` fragments are literals in the class and values are always bound.
+  - A `View` reads across tables, never writes, and is named for what it returns.
+- Transactions:
+  - repos never commit.
+  - `DBConnector` holds one auto-commit connection;
+  - `with manifest:`
+    - is the only transaction boundary.
+- Timestamps in manifests are int64 nanoseconds since the epoch, UTC.
+  - One conversion on the way in;
+    - every comparison is an integer compare.
+  - `file.hashed` and every `gone` hold a `scan.started`.
 - Match neighboring files.
-  Verify a library is available before using it.
+  - Verify a library is available before using it.
 - PEP 8 and ruff defaults.
 - Every module opens with its repo-relative path as comment,
   - then a docstring:
