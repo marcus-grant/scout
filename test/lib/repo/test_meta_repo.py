@@ -6,8 +6,10 @@ License: AGPL-3.0-or-later
 """
 
 import sqlite3 as sql
+from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+import factory
 import pytest
 
 import scout.lib.error as Err
@@ -20,9 +22,9 @@ REQUIRED = [("root", PPP("/mnt/x")), ("schema_version", 42), ("hash_algo", "b3c3
 class TestMetaRepo:
     """MetaRepo reads and writes fs_meta through typed properties."""
 
-    def test_root_reads_what_init_wrote(self, manifest: Manifest) -> None:
+    def test_root_reads_what_init_wrote(self, tmp_path: Path) -> None:
         """root returns the PPP the fresh manifest was created with."""
-        assert manifest.fs_meta.root == PPP(manifest.db.root.as_posix())
+        assert factory.mk_manifest(tmp_path).fs_meta.root == PPP(tmp_path.as_posix())
 
     @pytest.mark.parametrize(("key", "value"), REQUIRED)
     def test_required_round_trip(

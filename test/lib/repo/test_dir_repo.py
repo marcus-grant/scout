@@ -43,7 +43,7 @@ class TestAdd:
         repo, path = manifest.dirs, PPP("a/b")
         a, b = repo.add(path), repo.add(path)
         assert a.id == b.id
-        with repo.db.connect() as conn:
+        with sql.connect(manifest.db.path) as conn:
             q = "SELECT count(*) FROM dir WHERE path = 'a/b';"
             assert conn.execute(q).fetchone() == (1,)
 

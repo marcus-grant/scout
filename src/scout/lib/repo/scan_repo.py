@@ -27,18 +27,15 @@ class ScanRepo:
         """Insert a row started now and return its started value."""
         started = time.time_ns()
         q = "INSERT INTO scan (started) VALUES (?);"
-        with self.db.connect() as conn:
-            conn.execute(q, (started,))
+        self.db.conn.execute(q, (started,))
         return started
 
     def finish(self, started: int, files_seen: int) -> None:
         """Set finished to now and files_seen on the row keyed by started."""
         q = "UPDATE scan SET finished = ?, files_seen = ? WHERE started = ?;"
-        with self.db.connect() as conn:
-            conn.execute(q, (time.time_ns(), files_seen, started))
+        self.db.conn.execute(q, (time.time_ns(), files_seen, started))
 
     def last_finished(self) -> int | None:
         """Return the newest started whose finished is set, or None."""
         q = "SELECT max(started) FROM scan WHERE finished IS NOT NULL"
-        with self.db.connect() as conn:
-            return conn.execute(q).fetchone()[0]
+        return self.db.conn.execute(q).fetchone()[0]

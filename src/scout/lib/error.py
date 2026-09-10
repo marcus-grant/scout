@@ -17,6 +17,7 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 
+### Scout Domain, Ancestor to all Scout Controlled Errors
 class ScoutDomain(Exception):
     """Root of every error scout.lib raises; the CLI catches at its boundary."""
 
@@ -32,6 +33,7 @@ class ScoutUnknown(ScoutDomain):
         return err
 
 
+### Manifest Domain
 class ManifestDomain(ScoutDomain):
     """Errors about one manifest file: finding, opening, or creating it."""
 
@@ -55,6 +57,15 @@ class ManifestExists(ManifestDomain):
     """A manifest is already present at the target path."""
 
 
+class NoManifest(ManifestDomain):
+    """No file at the manifest path."""
+
+
+class NestedTransaction(ManifestDomain):
+    """BEGIN was called while a transaction was already open."""
+
+
+### Hash Domain
 class HashDomain(ScoutDomain):
     """Errors about a hash code: its alphabet or its width."""
 
@@ -73,6 +84,7 @@ class UnpairedHash(HashDomain):
     """A hash without its hashed scan, or a hashed scan without a hash."""
 
 
+### Path Domain
 class PathDomain(ScoutDomain):
     """Errors about a path handed to the lib: shape or placement."""
 

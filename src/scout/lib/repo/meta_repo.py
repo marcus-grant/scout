@@ -20,23 +20,24 @@ class MetaRepo:
     value TEXT
     );"""
 
+    _SELECT = "SELECT value FROM fs_meta WHERE property = ?;"
+    _UPSERT = (
+        "INSERT INTO fs_meta (property, value) VALUES (?, ?) "
+        "ON CONFLICT(property) DO UPDATE SET value = excluded.value;"
+    )
+
     def __init__(self, db: DBConnector) -> None:
         """Bind to the manifest db shares."""
         self.db = db
 
     def _get(self, key: str) -> str | None:
         """Return the stored value for key, or None when there is no row."""
-        q = "SELECT value FROM fs_meta WHERE property = ?"
-        with self.db.connect() as conn:
-            row = conn.execute(q, (key,)).fetchone()
-            return None if row is None else row[0]
+        row = self.db.conn.execute(self._SELECT, (key,)).fetchone()
+        return None if row is None else row[0]
 
     def _set(self, key: str, value: str) -> None:
         """Upsert key to value."""
-        q = """INSERT INTO fs_meta (property, value) VALUES (?, ?)
-        ON CONFLICT(property) DO UPDATE SET value = excluded.value;"""
-        with self.db.connect() as conn:
-            conn.execute(q, (key, value))
+        self.db.conn.execute(self._UPSERT, (key, value))
 
     def _require(self, key: str) -> str:
         """Return the stored value for key or raise Err.NotAManifest."""

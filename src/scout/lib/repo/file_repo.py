@@ -5,8 +5,6 @@ Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
-import sqlite3 as sql
-
 from scout.lib.model.file import File
 from scout.lib.model.hash import Hash
 from scout.lib.repo.db_connector import DBConnector
@@ -53,11 +51,9 @@ class FileRepo:
         h = None if f.hash is None else f.hash.code
         return (f.dir_id, f.name, h, f.size, f.mtime, f.hashed)
 
-    def _select_files(
-        self, conn: sql.Connection, where: str, params: tuple = ()
-    ) -> list[File]:
+    def _select_files(self, where: str, params: tuple = ()) -> list[File]:
         """Select live files WHERE where, bound from params, by dir_id and name."""
-        rows = conn.execute(self._SELECT.format(where), params).fetchall()
+        rows = self.db.conn.execute(self._SELECT.format(where), params).fetchall()
         return FileRepo._rows_to_files(rows)
 
     def add(self, file: File) -> File:
@@ -68,33 +64,28 @@ class FileRepo:
         DO UPDATE SET
             hash = excluded.hash, size = excluded.size, mtime = excluded.mtime,
             hashed = excluded.hashed, gone = NULL;"""
-        with self.db.connect() as conn:
-            conn.execute(q, self._file_to_params(file))
-            where, params = "dir_id = ? AND name = ?", (file.dir_id, file.name)
-            files = self._select_files(conn, where, params)
-            assert len(files) == 1, f"add lost its own row: {params}"
-            return files[0]
+        self.db.conn.execute(q, self._file_to_params(file))
+        where, params = "dir_id = ? AND name = ?", (file.dir_id, file.name)
+        files = self._select_files(where, params)
+        assert len(files) == 1, f"add lost its own row: {params}"
+        return files[0]
 
     def get(self, dir_id: int, name: str) -> File | None:
         """Return the live File at (dir_id, name), or None."""
-        with self.db.connect() as conn:
-            where, params = "dir_id = ? AND name = ?", (dir_id, name)
-            files = self._select_files(conn, where, params)
-            return None if len(files) <= 0 else files[0]
+        where, params = "dir_id = ? AND name = ?", (dir_id, name)
+        files = self._select_files(where, params)
+        return None if len(files) <= 0 else files[0]
 
     def in_dir(self, dir_id: int) -> list[File]:
         """Return live files directly in dir_id, ordered by name."""
-        with self.db.connect() as conn:
-            return self._select_files(conn, "dir_id = ?", (dir_id,))
+        return self._select_files("dir_id = ?", (dir_id,))
 
     def by_hash(self, hash: Hash) -> list[File]:
         """Return live files whose hash is hash, ordered by dir_id then name."""
-        with self.db.connect() as conn:
-            return self._select_files(conn, "hash = ?", (hash.code,))
+        return self._select_files("hash = ?", (hash.code,))
 
     def mark_gone(self, dir_ids: list[int], started: int) -> None:
         """Set gone to started on every live file in the listed dirs."""
-        ds = ", ".join("?" * len(dir_ids))
-        q = f"UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({ds});"
-        with self.db.connect() as conn:
-            conn.execute(q, (started, *dir_ids))
+        dids = ", ".join("?" * len(dir_ids))
+        q = f"UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({dids});"
+        self.db.conn.execute(q, (started, *dir_ids))

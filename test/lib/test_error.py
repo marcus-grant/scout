@@ -18,6 +18,8 @@ HIERARCHY: dict[type[Err.ScoutDomain], type[Err.ScoutDomain]] = {
     Err.NotAManifest: Err.ManifestDomain,
     Err.BadSchemaVersion: Err.ManifestDomain,
     Err.ManifestExists: Err.ManifestDomain,
+    Err.NoManifest: Err.ManifestDomain,
+    Err.NestedTransaction: Err.ManifestDomain,
     Err.HashDomain: Err.ScoutDomain,
     Err.BadHash: Err.HashDomain,
     Err.UnpairedHash: Err.HashDomain,

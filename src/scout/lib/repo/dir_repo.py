@@ -5,7 +5,6 @@ Created: 2026-09-08
 License: AGPL-3.0-or-later
 """
 
-import sqlite3 as sql
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
@@ -62,36 +61,32 @@ class DirRepo:
         where, params = DirRepo._where_descendants(parent)
         return f"path = ? OR ({where})", (parent, *params)
 
-    def _select_dirs(
-        self, conn: sql.Connection, where: str, params: tuple = ()
-    ) -> list[Dir]:
+    def _select_dirs(self, where: str, params: tuple = ()) -> list[Dir]:
         """Run _SELECT with where & params: id, path, gone FROM dir, ordered by path."""
-        rows = conn.execute(self._SELECT.format(where), params).fetchall()
+        rows = self.db.conn.execute(self._SELECT.format(where), params).fetchall()
         return DirRepo._rows_to_dirs(rows)
 
     def add(self, path: PPP) -> Dir:
         """Upsert path as live and return its Dir; a gone row is revived."""
         _path = self._check(path)
-        with self.db.connect() as conn:
-            for p in (*reversed(path.parents), path):
-                if p == PPP("."):
-                    continue
-                _p = self._check(p)
-                conn.execute(
-                    "INSERT INTO dir (path) VALUES (?) "
-                    "ON CONFLICT(path) DO UPDATE SET gone = NULL;",
-                    (_p,),
-                )
-            dirs = self._select_dirs(conn, where="path = ?", params=(_path,))
-            assert len(dirs) == 1, f"add lost its own row: {_path}"
-            return dirs[0]
+        for p in (*reversed(path.parents), path):
+            if p == PPP("."):
+                continue
+            _p = self._check(p)
+            self.db.conn.execute(
+                "INSERT INTO dir (path) VALUES (?) "
+                "ON CONFLICT(path) DO UPDATE SET gone = NULL;",
+                (_p,),
+            )
+        dirs = self._select_dirs(where="path = ?", params=(_path,))
+        assert len(dirs) == 1, f"add lost its own row: {_path}"
+        return dirs[0]
 
     def get(self, path: PPP) -> Dir | None:
         """Return the live Dir at path, or None."""
         _path = DirRepo._check(path)
-        with self.db.connect() as conn:
-            dirs = self._select_dirs(conn, where="path = ?", params=(_path,))
-            return dirs[0] if dirs else None
+        dirs = self._select_dirs(where="path = ?", params=(_path,))
+        return dirs[0] if dirs else None
 
     def descendants(self, path: PPP) -> list[Dir]:
         """Return live dirs strictly under path, ordered by path."""
@@ -99,13 +94,11 @@ class DirRepo:
         where, params = "path >= ? AND path < ?", (f"{_path}/", f"{_path}0")
         if _path == ".":
             where, params = "id != 0", ()
-        with self.db.connect() as conn:
-            return self._select_dirs(conn, where, params)
+        return self._select_dirs(where, params)
 
     def mark_gone(self, path: PPP, started: int) -> None:
         """Set gone to started on path and every dir under it."""
         _path = self._check(path)
-        with self.db.connect() as conn:
-            where, params = DirRepo._where_descendants_or_parent(_path)
-            params = (started, *params)
-            conn.execute(self._UPDATE_GONE.format(where), params)
+        where, params = DirRepo._where_descendants_or_parent(_path)
+        params = (started, *params)
+        self.db.conn.execute(self._UPDATE_GONE.format(where), params)

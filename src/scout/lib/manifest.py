@@ -33,19 +33,17 @@ class Manifest:
         self.files = FileRepo(db)
 
     @staticmethod
-    def _create_tables(path: Path, root: Path) -> None:
+    def _create_tables(path: Path) -> None:
         """Create path and run every SCHEMA in REPOS; seeds root for DBConnector."""
         with sql.connect(path) as conn:
             for r in Manifest.REPOS:
                 conn.executescript(r.SCHEMA)
-            # TODO: This moves to _write_meta later
-            q = "INSERT INTO fs_meta (property, value) VALUES (?, ?);"
-            conn.execute(q, ("root", root.as_posix()))
 
-    def _write_meta(self, comment: str | None) -> None:
+    def _write_meta(self, root: Path, comment: str | None) -> None:
         """Write schema_version, hash_algo, root, and comment to fs_meta."""
         self.fs_meta.schema_version = self.SCHEMA_VERSION
         self.fs_meta.hash_algo = self.HASH_ALGO
+        self.fs_meta.root = PPP(root.as_posix())
         if comment is not None:
             self.fs_meta.comment = comment
 
@@ -55,9 +53,9 @@ class Manifest:
         if path.exists():
             msg = f"file already exists: {path}"
             raise Err.ManifestExists(msg, path=PPP(path.as_posix()))
-        Manifest._create_tables(path, root)
-        man = cls(DBConnector(path, root))
-        man._write_meta(comment)
+        Manifest._create_tables(path)
+        man = cls(DBConnector(path))
+        man._write_meta(root, comment)
         return man
 
     @classmethod

@@ -79,7 +79,6 @@ class TestOpen:
             Manifest.open(Path(db_path))
         assert exc.value.path == PPP(manifest.db.path.as_posix())
 
-    @pytest.mark.xfail(reason="DBConnector raises its own error until cut down")
     def test_rejects_non_manifest(self, tmp_path: Path) -> None:
         """A sqlite file without fs_meta raises Err.NotAManifest."""
         bad = tmp_path / "bad.db"
