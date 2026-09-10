@@ -5,9 +5,10 @@ Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
-import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
+import sqlite3 as sql
+from types import TracebackType
 
 import scout.lib.error as Err
 from scout.lib.repo.db_connector import DBConnector
@@ -15,6 +16,10 @@ from scout.lib.repo.dir_repo import DirRepo
 from scout.lib.repo.file_repo import FileRepo
 from scout.lib.repo.meta_repo import MetaRepo
 from scout.lib.repo.scan_repo import ScanRepo
+
+_ExcType = type[BaseException] | None
+_BaseExc = BaseException | None
+_TrcType = TracebackType | None
 
 
 class Manifest:
@@ -31,6 +36,20 @@ class Manifest:
         self.scans = ScanRepo(db)
         self.dirs = DirRepo(db)
         self.files = FileRepo(db)
+
+    def __enter__(self) -> "Manifest":
+        """Begin one transaction across every repo;
+        commit or roll back on exit."""
+        self.db.begin()
+        return self
+
+    def __exit__(self, exc_type: _ExcType, exc: _BaseExc, tb: _TrcType) -> None:
+        """Commit on a clean exit, rollback when an exception is passing through."""
+        _, tb = exc, tb  # to shut up LSPs about unused args, they're needed for callers
+        if exc_type is None:
+            self.db.commit()
+        else:
+            self.db.rollback()
 
     @staticmethod
     def _create_tables(path: Path) -> None:

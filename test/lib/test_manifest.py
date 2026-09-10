@@ -86,3 +86,23 @@ class TestOpen:
         with pytest.raises(Err.NotAManifest, match="fs_meta") as exc:
             Manifest.open(bad)
         assert exc.value.path == PPP(bad.as_posix())
+
+
+class TestTransaction:
+    """with manifest: groups repo calls; commit on exit, rollback on error."""
+
+    def test_commits_on_clean_exit(self, manifest: Manifest) -> None:
+        """A dir added inside the block is visible to a fresh connection after."""
+        with manifest:
+            manifest.dirs.add(PPP("a"))
+            q = "SELECT path FROM dir WHERE path = 'a'"
+            assert manifest.db.conn.execute(q).fetchone() == ("a",)
+
+    def test_rolls_back_on_exception(self, manifest: Manifest) -> None:
+        """A dir added before an exception in the block is gone after it."""
+        with pytest.raises(RuntimeError):
+            with manifest:
+                manifest.dirs.add(PPP("a"))
+                raise RuntimeError("boom")
+        q = "SELECT path FROM dir WHERE path = 'a'"
+        assert sql.connect(manifest.db.path).execute(q).fetchone() is None
