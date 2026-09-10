@@ -9,8 +9,8 @@ import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
-from assertion import assert_err_words
 import pytest
+from assertion import assert_err_words
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
@@ -98,9 +98,8 @@ class TestTransaction:
 
     def test_rolls_back_on_exception(self, manifest: Manifest) -> None:
         """A dir added before an exception in the block is gone after it."""
-        with pytest.raises(RuntimeError):
-            with manifest:
-                manifest.dirs.add(PPP("a"))
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), manifest:
+            manifest.dirs.add(PPP("a"))
+            raise RuntimeError("boom")
         q = "SELECT path FROM dir WHERE path = 'a'"
         assert sql.connect(manifest.db.path).execute(q).fetchone() is None

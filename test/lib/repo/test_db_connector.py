@@ -7,10 +7,9 @@ License: AGPL-3.0-or-later
 
 import sqlite3 as sql
 from pathlib import Path
-from pathlib import PurePosixPath as PPP
 
-from assertion import assert_err_words
 import pytest
+from assertion import assert_err_words
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
