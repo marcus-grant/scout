@@ -9,6 +9,7 @@ import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from assertion import assert_err_words
 import pytest
 
 import scout.lib.error as Err
@@ -51,8 +52,7 @@ class TestInit:
         Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
         with pytest.raises(Err.ManifestExists) as exc:
             Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
-        assert exc.value.path == PPP(db_path)
-        assert db_path.as_posix() in str(exc.value)
+        assert_err_words(exc, db_path, "exists")
 
 
 class TestOpen:
@@ -60,12 +60,12 @@ class TestOpen:
 
     def test_reads_what_init_wrote(self, manifest: Manifest) -> None:
         """open on an init'd file exposes meta.root equal to the init root."""
-        result = Manifest.open(Path(manifest.db.path))
+        result = Manifest.open(manifest.db.path)
         assert result.fs_meta.root == manifest.fs_meta.root
 
     def test_repos_share_db(self, manifest: Manifest) -> None:
         """meta, scans, dirs, and files hold the same DBConnector."""
-        man = Manifest.open(Path(manifest.db.path))
+        man = Manifest.open(manifest.db.path)
         assert man.fs_meta.db is man.scans.db is man.dirs.db is man.files.db is man.db
 
     @pytest.mark.parametrize("version", (0, 9999))
@@ -74,18 +74,16 @@ class TestOpen:
         with sql.connect(db_path := manifest.db.path) as conn:
             q = "UPDATE fs_meta SET value = ? WHERE property = 'schema_version';"
             conn.execute(q, (version,))
-        match = f"schema_version {version}"
-        with pytest.raises(Err.BadSchemaVersion, match=match) as exc:
-            Manifest.open(Path(db_path))
-        assert exc.value.path == PPP(manifest.db.path.as_posix())
+        with pytest.raises(Err.BadSchemaVersion) as exc:
+            Manifest.open(db_path)
+        assert_err_words(exc, manifest.db.path, "schema_version", str(version))
 
     def test_rejects_non_manifest(self, tmp_path: Path) -> None:
         """A sqlite file without fs_meta raises Err.NotAManifest."""
-        bad = tmp_path / "bad.db"
-        sql.connect(bad).execute("CREATE TABLE t (a)")
-        with pytest.raises(Err.NotAManifest, match="fs_meta") as exc:
+        sql.connect(bad := tmp_path / "bad.db").execute("CREATE TABLE t (a)")
+        with pytest.raises(Err.NotAManifest) as exc:
             Manifest.open(bad)
-        assert exc.value.path == PPP(bad.as_posix())
+        assert_err_words(exc, bad, "fs_meta", "table")
 
 
 class TestTransaction:

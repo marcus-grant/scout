@@ -82,6 +82,7 @@ class Manifest:
         """Open an existing manifest, refusing a wrong schema_version."""
         man = cls(DBConnector(path))
         if (version := man.fs_meta.schema_version) != cls.SCHEMA_VERSION:
-            msg = f"schema_version {version}, this build reads {cls.SCHEMA_VERSION}"
-            raise Err.BadSchemaVersion(msg, path=PPP(path.as_posix()))
+            msg = """schema_version {} at {}, this build reads {}"""
+            params = (version, path, cls.SCHEMA_VERSION)
+            raise Err.BadSchemaVersion(msg.format(*params), path=PPP(path.as_posix()))
         return man

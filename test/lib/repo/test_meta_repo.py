@@ -9,6 +9,7 @@ import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from assertion import assert_err_words
 import factory
 import pytest
 
@@ -49,8 +50,9 @@ class TestMetaRepo:
         """A required key with no row raises Err.NotAManifest."""
         with sql.connect(manifest.db.path) as conn:
             conn.execute("DELETE FROM fs_meta")
-        with pytest.raises(Err.NotAManifest):
+        with pytest.raises(Err.NotAManifest) as exc:
             _ = manifest.fs_meta.root
+        assert_err_words(exc, manifest.db.path, "root")
 
     def test_set_overwrites(self, manifest: Manifest) -> None:
         """Setting a key twice leaves one row holding the last value."""

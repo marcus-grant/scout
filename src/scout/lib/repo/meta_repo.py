@@ -43,7 +43,8 @@ class MetaRepo:
         """Return the stored value for key or raise Err.NotAManifest."""
         if (value := self._get(key)) is None:
             path = PPP(self.db.path.as_posix())
-            raise Err.NotAManifest(f"fs_meta has no {key} property", path=path)
+            msg = f"fs_meta table has no {key} property in {path}"
+            raise Err.NotAManifest(msg, path=path)
         return value
 
     @property

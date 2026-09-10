@@ -9,19 +9,12 @@ import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from assertion import assert_err_words
 import pytest
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
 from scout.lib.repo.db_connector import DBConnector
-
-
-def assert_err_words(exc: pytest.ExceptionInfo, path: Path, *words: str) -> None:
-    """The error carries path as PPP and its message mentions path and words."""
-    assert exc.value.path == PPP(path.as_posix())
-    text = str(exc.value).lower()
-    for word in (path.as_posix().lower(), *words):
-        assert word in text, f"{word!r} not in {text!r}"
 
 
 class TestInit:
