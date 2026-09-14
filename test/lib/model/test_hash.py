@@ -6,13 +6,12 @@ License: AGPL-3.0-or-later
 """
 
 import pytest
-from b3c32 import CROCKFORD32_ALPHABET, hash_b32, verify_conformance
-from b3c32.core import _CERTIFIED_BITS
+from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET, hash_b32, verify_conformance
 
 import scout.lib.error as Err
 from scout.lib.model.hash import Hash
 
-BITS = min(_CERTIFIED_BITS)
+BITS = min(CERTIFIED_BITS)
 CODE = hash_b32(b"scout", BITS)
 BAD_SYMBOL = next(c for c in "ILOU" if c not in CROCKFORD32_ALPHABET)
 

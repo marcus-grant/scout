@@ -7,8 +7,7 @@ License: AGPL-3.0-or-later
 
 from dataclasses import dataclass
 
-from b3c32 import CROCKFORD32_ALPHABET
-from b3c32.core import _CERTIFIED_BITS
+from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET
 
 import scout.lib.error as Err
 
@@ -24,7 +23,7 @@ class Hash:
         if any(c not in CROCKFORD32_ALPHABET for c in self.code):
             msg = f"not a Crockford Base32 code: {self.code}"
             raise Err.BadHash(msg, self.code)
-        if self.bits not in _CERTIFIED_BITS:
+        if self.bits not in CERTIFIED_BITS:
             msg = f"uncertified hash width {self.bits} bits: {self.code}"
             raise Err.BadHash(msg, self.code)
 
