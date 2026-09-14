@@ -4,10 +4,12 @@
 
 ### Crucial rules
 
-<!-- Placeholder: improve with CONTRIBUTE.md and QA.md exist. Draft candidates: -->
 - Strict lib/adapter split.
-  `lib/` emits typed records and never formats or prints.
-  Adapters (CLI only for now) handle input, output, and exit codes.
+  - `lib/` emits typed records and never formats or prints.
+  - Adapters (CLI only for now) handle input, output, and exit codes.
+- A verb reads records or hashes from stdin when given no other source.
+- A verb that cannot be a stage in a scout-to-scout pipeline is not done.
+  - **EXCEPT** ones with clear use in other `coreutil`-like tools *(grep or jq)*
 - Every operation follows coreutils conventions:
   - stdin/stdout, one record per line, meaningful exit codes.
   - Operations must compose with each other in pipelines.
@@ -25,11 +27,15 @@
   - *(scanner, `DBConnector`, CLI)*
   - and is converted on entry with:
     - `PPP(path.relative_to(root).as_posix())`.
-- The lib raises typed exceptions from one hierarchy rooted at
-  `ScoutError` (`lib/errors.py`) and never prints or exits. The CLI
-  catches at the subcommand boundary and maps each error to a message
-  and exit code. New failure modes get a new subclass in the same PR
-  that introduces them, never a bare `Exception` or a string check.
+- Errors, repos, transactions, and timestamps:
+  - follow the code conventions in `doc/CONTRIBUTE.md`;
+    - new failure modes,
+      - get a new `Err` subclass in the PR that introduces them.
+- Row ids are local to one manifest.
+  - They never appear in output or in cross-manifest comparison;
+    - those speak in paths and hashes only.
+- Timestamps are int64 nanoseconds;
+  - `gone` and `hashed` are the `scan.started` of the scan that observed them.
 
 ### Required reading
 
@@ -39,96 +45,26 @@
 
 ## Sequenced PRs to MVP
 
-### Schema
-
-- Factory
-  - Add `mk_manifest` to `test/factory.py`, taking a `Tree`, with its
-    fixture as the zero-arg call in `test/conftest.py`
-- Table ownership
-  - Each repo owns its DDL as a class constant: `DirRepo.SCHEMA`,
-    `FileRepo.SCHEMA`, `MetaRepo.SCHEMA`, `ScanRepo.SCHEMA`.
-  - Table creation moves out of repo `__init__`.
-- `Manifest` (new), the composite over one `.scout.db`
-  - Exposes `.meta`, `.dirs`, `.files`, `.scans`, sharing one
-    `DBConnector`.
-  - `Manifest.init(path, root, ...)`: creates the file, runs each repo's
-    `SCHEMA` in order, writes `schema_version` and `hash_algo=b3c32`
-    through `MetaRepo`. Holds `SCHEMA_VERSION`.
-  - `Manifest.open(path)`: opens and runs validation.
-  - Transaction boundary in one place: `with manifest:` commits or rolls
-    back across all repos.
-  - The CLI adapter imports only `Manifest`, never a repo.
-  - Migrations, when needed, go wherever makes sense then.
-- `MetaRepo` (new), owns `fs_meta`
-  - Typed getters and setters for `root`, `schema_version`, `hash_algo`,
-    `comment`, `fs_type`, `fs_uuid`, `fs_label`, `fs_model`, `hostname`.
-  - Nothing else writes `fs_meta` by hand.
-- `ScanRepo` (new), owns `scan(id, started, finished, files_seen)`
-  - One row per scan run. `finished` of the previous scan is what `gone`
-    is set to.
-- `DBConnector`
-  - Opens and validates only. Validation adds a `schema_version` check;
-    refuses unversioned or mismatched manifests with a clear message.
-  - `init_db` removed.
-- `dir` table
-  - Drop `dir_ancestor`. Nothing outside `DirRepo` reads it and ancestors
-    are already derived from the path string.
-  - `dir(id, path)` with the existing `UNIQUE(path)` index is sufficient.
-  - `get_ancestors`: `WHERE path IN (prefixes)`.
-  - `get_descendants`: range scan `path >= 'p/' AND path < 'p0'`.
-  - Interface and return types unchanged. No `parent_id` until a query
-    needs it.
-- `file` table: `file(id, dir_id, name, hash, size, mtime, hashed, gone)`
-  - `md5` renamed to `hash` (text, indexed); `fs_meta.hash_algo` says
-    what it is. `updated` dropped.
-  - `hashed`: when the hash was last computed. Drives the rehash margin.
-  - `gone`: null for live rows; otherwise the `finished` of the last scan
-    that saw the file. Set for rows a scan did not encounter; cleared by
-    the upsert when the path reappears. One row per path, always.
-  - Repo queries filter `gone IS NULL` by default.
-  - `UNIQUE(dir_id, name)`.
-  - Timestamps are integer epoch seconds; `mtime` is integer nanoseconds
-    as returned by `os.stat`.
-- Hash model
-  - `HashMD5` replaced by a b3c32-backed model in `lib/model/hash.py`.
-  - Width is derived from encoded length, not stored.
-- Tests
-  - Schema creation, version check both ways, `MetaRepo` and `ScanRepo`
-    round-trips, `DirRepo` ancestor and descendant queries, `gone` set
-    and cleared, hash model against b3c32.
-  - `test_dir_repo.py` loses its `dir_ancestor` tests with the table.
-- Errors
-  - `lib/error.py` with `ScoutDomain` and the first subclasses:
-    `ManifestDomain`, `NotAManifest`, `SchemaVersionMismatch`,
-    `ManifestExists`. `DBConnector` validation raises these.
-  - `ScoutUnknown` is a subclass of `ScoutDomain`.
-    - Handles uncaught exceptions we haven't predicted yet.
-    - CLI layer should always try and catch and print as much detail as possible
-    - Can be used to rewrap another non ScoutDomain error
-  - Later PRs add their own (`ScanDomain`, `HashDomain`, and so on).
-  - Make it convention to import `lib.error as Err`
-    - Select the error with that namespace.
-    - When you encounter errors the belong in a domain,
-      - Subclass those to an error class with `Domain` in its name.
-    - This reads cleaner as `except Err.NotAManifest:`
-      - ...than `except Err.NotAManifestError:`.
-      - And it keeps imports from exploding when a new subclass is added.
-      - Allows common handlings of domains with `except Err.ManifestDomain as e:`.
-
 ### Init port
 
 - Click
   - The argparse `cli/subcmd/init.py` was deleted on tst/test-foundation;
     read it with `git show main:cli/subcmd/init.py` when porting.
-    Its tests are written fresh; the salvaged `test_main.py` is gone.
-  - `scout` becomes a Click group in `adapter/cli/`; `init` is its first
-    subcommand. argparse removed.
-  - `target` defaults to cwd; `-r/--repo` is the full path to the DB file,
-    defaulting to `target / ".scout.db"`. Built with `Path`, not string
-    formatting.
+    Its tests are written fresh.
+  - `init` is the first subcommand on the `scout` group, built with
+    `scout_command`; shared options (`-r/--repo`) land here.
+  - `target` defaults to cwd; `-r/--repo` is the full path to the DB
+    file, defaulting to `target / ".scout.db"`. Built with `Path`.
   - New `--comment` for the human-readable disk description.
+- Argument checks, as `Err.PathDomain` children raised before
+  `Manifest.init`: the repo path's parent must exist and be a
+  directory; the target must be a directory.
+  - The boundary converter from `Path` to root-relative `PPP` lives
+    here; the salvaged `TestPathHelpers` cases (absolute to relative,
+    `..` rejected, `str` and path input alike) are its starting spec
 - What init writes (through `MetaRepo`)
-  - `schema_version`, `hash_algo`, `root`, `comment`.
+  - `schema_version`, `hash_algo`, `root`, `comment` come from
+    `Manifest.init`.
   - fs detail rows if readable, null otherwise. Each reader is a thin
     function (`/proc/mounts`, `/dev/disk/by-*`, `lsblk`, hostname) so
     tests can stub it. Linux only for now.
@@ -137,73 +73,98 @@
     `fs_meta` contents through sqlite3.
   - fs detail readers stubbed; one unit test per reader against canned
     input.
+- Salvage: `salvage/test/cli/subcmd/test_init.py` read and deleted;
+  `test_fs.py` is Scan's
 
-### Repo refactor
+### Scan
 
-- Factory
-  - Add `mk_file_entry` to `test/factory.py` with its fixture
-- `file_repo.py` is a mess: hoist logic into helpers or split it
-  across modules, and replace string-interpolated SQL with params
-- Connector injection
-  - `DirRepo`, `FileRepo`, `MetaRepo` accept a `DBConnector`; they no
-    longer take `path` and `root` or open their own connection.
-  - `Manifest` (see Schema) constructs all three over one connector.
-- Path types
-  - Models and repos hold `PurePosixPath`, never `PurePath` or `Path`.
-  - `os.path.*` calls in models and `DBConnector` replaced with `Path`
-    methods; `DBConnector` validation accepts `Path`.
-  - Conversion happens once at entry, in the scanner and CLI.
-- Row mappers
-  - `Dir.from_row` / `Dir.to_row`, `File.from_row` / `File.to_row`.
-  - Tested in isolation against plain tuples or `sqlite3.Row`.
-  - Repos reduce to SQL plus a mapper call; no column-order knowledge in
-    `get()` or `put()`.
-- `FileRepo.put()`
-  - `INSERT ... ON CONFLICT(dir_id, name) DO UPDATE`, `updated` set only
-    when a column actually changed. Row ids stay stable across reruns.
-  - Same upsert shape for `DirRepo.add()` on `path` if it does not already
-    behave that way.
-- Ids
-  - Row ids are local to one manifest. They never appear in output or in
-    cross-manifest comparison; those speak in paths and hashes only.
-- Tests
-  - Mapper round-trips, `put()` insert then update with stable id,
-    `Manifest` wiring end to end against a factory DB.
+Lib walker and hasher, the `scout scan` verb as its e2e, and the manual
+acceptance run, in one PR.
 
-### Scanner
-
-- Hashing
-  - Use the b3c32 path entry point with `on_progress` wired in from
-    the start; large files are the bulk of scan bytes, not outliers
-  - Skip the callback below a size threshold so small files take the
-    fast path
-  - b3c32 stays single-threaded; per-file threading is Scout's, later
-  - `lib/fs/dir_reader.py` is unreferenced; keep or delete here
-- `lib/scanner.py`: walk and stat only. Yields one record per file in DFS
-  path order (`dirs_sorted_dfs`), with `hash` computed only when the
-  caller asks for that file.
-- Records
-  - `FileEntry` dataclass: `PPP` path, `size`, `mtime` (ns), optional
-    `hash`.
+- Blocking dependency: `b3c32` 0.0.3, specified with its maintainer:
+  - `Hasher(bits)` with `update`, `digest`, `b32`; chunking-independent
+  - `hash_stream(f, bits, chunk_size=1 << 20)` and
+    `hash_path(path, bits)`; `OSError` propagates untouched
+  - `CERTIFIED_BITS` public; Scout's `Hash` imports `_CERTIFIED_BITS`
+    today and reds when it is renamed
+  - Scout never calls blake3 directly
+- `lib/scanner.py`: walk and stat only, DFS path order.
+  - Yields one record per file: `PPP` path, `size`, `mtime` ns; hash
+    computed only when the caller asks for that file
   - Unreadable files and dirs yield an error record (path, reason); the
-    walk never aborts.
-- Rehash decision belongs to the caller (`scan`, later `verify`), per
-  file, in this order: no row, or size/mtime differ, or `rehash_after`
-  policy is set and `hashed` is older than it.
-- `rehash_after` lives in `fs_meta`, default never.
-- Hashing
-  - b3c32 currently exposes `hash_b32(data: bytes, digest_len: int)`,
-    120 only. Whole-file bytes will not do for gigabyte files.
-  - Blocking dependency: b3c32 gains a streaming entry point (chunked
-    `update()` style, or a from-path helper) before this PR starts.
-    Scout does not work around it by calling blake3 directly.
-  - Spec first: loop in the co-maintainers of `depo` and `normpic`
-    alongside `b3c32` to agree a hard spec for the streaming interface,
-    since all three projects will implement against it.
-- Symlinks: not followed, not recorded. Ladder deferred to optional.
+    walk never aborts
+  - Symlinks: not followed, not recorded
+  - `lib/fs/dir_reader.py` is unreferenced; keep or delete here
+- Rehash decision belongs to the caller, per file, in this order: no
+  row, or size or mtime differ, or `rehash_after` is set and `hashed`
+  is older than it.
+  - `rehash_after` lives in `fs_meta`, default never
+  - `scan --rehash` forces every file
+- `scout scan [target] [-r repo] [--no-hash] [--comment TEXT]`
+  - `Manifest.open`; `--comment` updates `fs_meta.comment`; fs detail
+    rows refreshed each run through `MetaRepo`
+  - `--no-hash` does a stat-only pass; `hash` and `hashed` stay null
+- Run
+  - `scans.start()`, then walk in DFS order
+  - Per dir: `dirs.add`; per file: `files.get` by `(dir_id, name)`,
+    rehash decision, `files.add` with `hashed = started` when hashed
+  - Seen `(dir_id, name)` pairs go to a temp table; after the walk,
+    `gone = started` on live rows not in it, dirs through
+    `dirs.mark_gone` and files through `files.mark_gone`
+  - `scans.finish(started, files_seen)`
+  - `with manifest:` around every N files, N in the hundreds, so an
+    interrupted scan keeps its progress; how the next run treats an
+    unfinished `scan` row is decided during implementation
+- Output: one porcelain line per file as it is processed; that is the
+  MVP progress indicator.
+- Errors: `Err.ScanDomain` and its children for the failures met here;
+  scanner error records are rendered, not raised.
 - Tests
   - Factory trees under `tmp_path`: ordering, stat fields, error record
-    on an unreadable file, hash present only when requested.
+    on an unreadable file, hash present only when requested
+  - e2e: `scout init` then `scout scan` on a factory tree; assert
+    `file`, `dir`, and `scan` rows through sqlite3; rerun with one file
+    deleted, one modified, one added; assert `gone`, `hashed`, the new
+    row
+  - Unit: the rehash decision, the gone pass, batched commits
+- Acceptance run per `doc/QA.md` before sign-off
+
+### Stamp v0.1.0
+
+- Pin `lib`'s public interface in `test/lib/test_import.py`;
+  - the exported names, not just that modules import.
+- Acceptance run on a real disk:
+  - `init`
+  - `scan`
+  - checks from `doc/QA.md`
+  - observations stated in the PR
+- Install run:
+  - `uv tool install` from the GitHub repo on a clean machine;
+    - `scout --version` and `scout init` on a scratch directory
+- Version:
+  - `pyproject.toml` and `cli.VERSION` to `0.1.0`, one source
+- `CHANGELOG.md` created with the `v0.1.0` entry;
+  - CONTRIBUTE's "no CHANGELOG until MVP tags exist" line updated
+- Tag `v0.1.0` on `main`;
+  - MVP means `init`, `scan`, and raw `sqlite3` queries against the manifest
+- Pin `b3c32` to the release that ships the streaming API
+
+## Post-MVP Sequenced
+
+Once this starts clearing up, this becomes the main task/PR sequencer.
+Once we're out on MVP we're entering a more opportunistic cadence of development.
+Trying workflows at first with raw SQL and basic commands.
+Goal is to guage important workflows and find the best UX for this app.
+Eventually we'll be doing two things:
+
+- Using `PyO3` with rust modules that replace python ones
+  - Eventually reaching a full rust port.
+- Outlining a stable plan for `v1.0.0`.
+
+Once we're along on the above two;
+a cut in the plan should be made and freeze a path to `v1`.
+But once we're in the post MVP cadence turn this into the main task list.
+And before the `v1` plan emerges naturally.
 
 ### Renderer
 
@@ -231,56 +192,6 @@
   - A collecting fake `Renderer` used by subcommand tests to assert on
     records rather than on text.
 
-### Scan
-
-- `scout scan [target] [-r repo] [--no-hash] [--comment TEXT]`
-  - `Manifest.open` (raises if not a manifest or version mismatch).
-  - `--comment` updates `fs_meta.comment`; fs detail rows refreshed each
-    run through `MetaRepo`.
-  - Hashing is the default; `--no-hash` does a stat-only pass.
-- Run
-  - Open a `scan` row (`started`), then walk the scanner in DFS order.
-  - Per dir: `DirRepo` upsert.
-  - Per file: look up the row by `(dir_id, name)`, apply the rehash
-    decision from the Scanner section, hash if needed (`hashed` updated
-    when it is), `FileRepo.put()`, insert `(dir_id, name)` into a temp
-    table of seen paths, hand the record to the renderer.
-  - After the walk: set `gone` on live rows not in the temp table, using
-    the previous scan's `finished`; close the `scan` row (`finished`,
-    `files_seen`).
-  - Commit every N files (N configurable, default in the hundreds) so an
-    interrupted scan keeps its progress. How the next run treats an
-    unfinished `scan` row is decided during implementation; a message
-    and exit code may be enough.
-- Output: one porcelain line per file as it is processed. That is the
-  progress indicator for MVP.
-- Errors: `Err.ScanError` subclasses for the failure modes met here;
-  scanner error records are rendered, not raised.
-- Tests
-  - e2e: `scout init` then `scout scan` on a factory tree; assert `file`,
-    `dir`, and `scan` rows through sqlite3. Rerun with one file deleted,
-    one modified, one added; assert `gone`, `hashed`, and the new row.
-  - Unit: the rehash decision, the `gone` query, batched commits.
-
-### Public API
-
-- Pin `lib`'s public interface in `test/lib/test_import.py` once it
-  stops moving: the exported names, not just that modules import.
-
-## Unsequenced PRs before MVP
-
-Optional work, roughly ordered by how likely it is to be pulled into MVP.
-Nothing here is required for MVP. Items near the top may be promoted
-into the sequence once `scan` is in real use; items near the bottom are
-recorded so they are not forgotten and will move to a `ROADMAP.md` when
-this section outgrows the document.
-
-Every verb here is designed to pipe into the others. Each follows the
-coreutils shape: reads records or hashes from stdin when given no other
-source, writes one porcelain record per line to stdout, and uses the exit
-code to mean something. The intended workflows are pipelines of scout
-into scout, so a verb that cannot be a stage in one is not done.
-
 ### has
 
 - `scout has [-r repo] [< hashes]`: read hashes from stdin (one per line,
@@ -296,70 +207,11 @@ into scout, so a verb that cannot be a stage in one is not done.
 - `scout ls [-r repo] [prefix] [--gone]`: print live rows from the
   manifest, optionally under a path prefix (range scan on `dir.path`),
   optionally only gone rows.
+- First `View`:
+  - `PathView` joining `dir` and `file` into host-path rows;
+    - The `Repo`/`View` convention is in [CONTRIBUTE](CONTRIBUTE.md).
+    - Make sure we carefully exercise the convention here,
+      - for learning opportunities.
 - Stage role: the source. Produces the stream every other verb consumes.
   `scout ls old.db --gone | scout has nas.db` is the migration check;
   `scout ls old.db photos/ | scout has nas.db` is the per-directory one.
-
-### comm
-
-- `scout comm <a> <b>`: join two manifests on `hash`, report three
-  buckets: only in a, only in b, in both (with both paths).
-- Stage role: a source, and a shortcut for `ls a | has b` when both sides
-  are manifests. Content-level comparison; not `diff`, which is reserved
-  for path-exact tree comparison.
-
-### status
-
-- `scout status [target]`: `scan` without writing. Walk the disk, compare
-  stats to the manifest, report new, missing, changed. No hashing.
-- Stage role: a source of records for files that differ from the
-  manifest, so `scout status | scout has nas.db` answers "of what changed
-  here, what does the NAS already have".
-
-### dupes
-
-- `scout dupes [-r repo]`: group live rows by `hash`, print groups with
-  more than one member. One SQL statement plus the renderer; trivial
-  enough to add early.
-- Stage role: a source. Its output is a list of candidates for deletion
-  that `has` can check against another manifest before anything is
-  removed.
-
-### Undecided
-
-Needs more thought before any of these become tasks.
-
-- `verify`: rehash rows whose stats match and report hash mismatches
-  (bit rot). `md5sum -c` precedent.
-- `diff`: path-exact tree comparison between two manifests, coreutils
-  meaning. Low priority.
-- `prune [--older-than]`: delete gone rows past a cutoff. The only thing
-  that removes gone rows.
-- JSON and Rich renderers behind the existing interface.
-- Named filters (`--new`, `--missing`, `--changed`) once `status` exists.
-- Configuration stack: args, env, config file, `fs_meta`, in precedence
-  order, feeding `select_renderer` and policy values like
-  `rehash_after`.
-- Datasette adapter: metadata and canned queries over one or more
-  attached manifests.
-- Symlink ladder: model as records; resolve targets within the same
-  manifest; full handling.
-- `ctime` and `inode` columns for a stronger skip heuristic. Meaningful
-  on ext4/btrfs/xfs, unreliable or absent on exfat, fat, ntfs, apfs.
-- `note` column on `file` for human annotation of gone rows.
-- `parent_id` on `dir` if a direct-children query needs it.
-- DB abstraction one step past row mappers. Not an ORM. Two candidates:
-  derive `SCHEMA`, `to_row`, `from_row`, and select/insert column lists
-  from the dataclass fields so DDL and mappers cannot drift; and a small
-  filter builder turning `get(**filters)` kwargs into a `WHERE` clause
-  and params once for all repos. No sessions, identity maps, or lazy
-  loading. Decide after the repos have settled.
-- Prefix matching across hash widths (BLAKE3 XOF property) so wider
-  digests still match 120-bit manifests.
-- Extra hash columns (crc32, sha256), unindexed, for external
-  cross-referencing.
-- `dir.path` versus derived-from-hierarchy as source of truth. Currently
-  path is the only truth after `dir_ancestor` is dropped; revisit if a
-  hierarchy table returns.
-- Explore hand-rolled abstractions past the above as they become
-  interesting: lazy loading and caching first. Roadmap material.

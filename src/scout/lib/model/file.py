@@ -1,56 +1,30 @@
-from datetime import datetime as dt
-from pathlib import PurePath as PP
+# src/scout/lib/model/file.py
+"""File model: one row of the file table.
+Author: Marcus
+Created: 2026-09-09
+License: AGPL-3.0-or-later
+"""
 
-from scout.lib.model.hash import HashMD5
+from dataclasses import dataclass
+
+import scout.lib.error as Err
+from scout.lib.model.hash import Hash
 
 
+@dataclass(frozen=True)
 class File:
-    """
-    Represents a single file on the filesystem or recorded in the database.
-    """
+    """One file row; name is the entry under dir_id, never a path."""
 
-    def __init__(
-        self,
-        path: str | PP,
-        dir_id: int | None = None,
-        id: int | None = None,
-        size: int | None = None,
-        mtime: dt | None = None,  # Assuming dt is an alias for datetime
-        md5: HashMD5 | None = None,  # Assuming HashMD5 is defined elsewhere
-        updated: dt | None = None,
-    ):
-        # Initialize all other attributes
-        self.path = PP(path)
-        self.id = id
-        self.dir_id = dir_id
-        self.size = size
-        self.md5 = md5
-        self.mtime = mtime
-        self.updated = updated
+    dir_id: int
+    name: str
+    size: int
+    mtime: int
+    hash: Hash | None = None
+    hashed: int | None = None
+    gone: int | None = None
 
-    def __eq__(self, value: object, /) -> bool:
-        if not isinstance(value, File):
-            return NotImplemented
-        return (
-            self.path == value.path
-            and self.id == value.id
-            and self.dir_id == value.dir_id
-            and self.size == value.size
-            and self.md5 == value.md5
-            and self.mtime == value.mtime
-            and self.updated == value.updated
-        )
-
-    def __str__(self) -> str:
-        return f"File(path={self.path})"
-
-    def __repr__(self) -> str:
-        s = f"File(path={self.path}"
-        s += f", id={self.id}" if self.id is not None else ""
-        s += f", dir_id={self.dir_id}" if self.dir_id is not None else ""
-        s += f", size={self.size}" if self.size is not None else ""
-        s += f", md5={self.md5}" if self.md5 is not None else ""
-        s += f", mtime={self.mtime}" if self.mtime is not None else ""
-        s += f", updated={self.updated}" if self.updated is not None else ""
-        s += ")"
-        return s
+    def __post_init__(self) -> None:
+        """Raise Err.UnpairedHash unless hash and hashed are both set or both None."""
+        if (self.hash is None) != (self.hashed is None):
+            code = None if self.hash is None else self.hash.code
+            raise Err.UnpairedHash("hash and hashed must be set together", code=code)

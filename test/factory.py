@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+from scout.lib.manifest import Manifest
+from scout.lib.model.file import File
+from scout.lib.model.hash import Hash
+
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:
     """Write content to root/rel, creating parents, and return the path."""
@@ -60,3 +64,31 @@ def mk_tree(
     for path in tree.files:
         mk_file(root, str(path), tree.files[path])
     return tree
+
+
+def mk_file_model(
+    dir_id: int = 0,
+    name: str = "f",
+    size: int = 1,
+    mtime: int = 1,
+    hash: Hash | None = None,
+    hashed: int | None = None,
+    gone: int | None = None,
+) -> File:
+    """Return a File with small defaults; kw overrides hash, hashed, or gone."""
+    return File(
+        dir_id,
+        name,
+        size,
+        mtime,
+        hash=hash,
+        hashed=hashed,
+        gone=gone,
+    )
+
+
+def mk_manifest(
+    root: Path, name: str = ".scout.db", comment: str | None = None
+) -> Manifest:
+    """Return a Manifest freshly init'd at root / name, rooted at root."""
+    return Manifest.init(root / name, root, comment=comment)

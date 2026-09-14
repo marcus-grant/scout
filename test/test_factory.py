@@ -6,15 +6,20 @@ Created: 2026-09-04
 License: AGPL-3.0-or-later
 """
 
+import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import factory
 import pytest
 
+from scout.lib.model.file import File
+from scout.lib.model.hash import Hash
+
 mk_file = factory.mk_file
 mk_dir = factory.mk_dir
 mk_tree = factory.mk_tree
+mk_file_model = factory.mk_file_model
 
 
 class TestMkFile:
@@ -83,3 +88,32 @@ class TestMkTree:
         assert (tree := mk_tree(tmp_path, files={}, dirs=[])).files == {}
         assert tree.dirs == []
         assert list(tmp_path.iterdir()) == []
+
+
+class TestMkFileModel:
+    """mk_file_model builds a File from defaults and overrides."""
+
+    def test_defaults(self) -> None:
+        """No args yields File(0, "f", 1, 1) with hash, hashed, gone None."""
+        assert mk_file_model() == factory.File(0, "f", 1, 1)
+
+    def test_overrides(self) -> None:
+        """Positional and keyword overrides land on the named fields."""
+        expect = File(42, "foo", 1234, 5678, Hash("A" * 24), 9012, 1)
+        got = mk_file_model(
+            42, "foo", 1234, 5678, hash=expect.hash, hashed=9012, gone=1
+        )
+        assert got == expect
+
+
+class TestMkManifest:
+    """mk_manifest inits a fresh manifest under tmp_path."""
+
+    def test_fresh_manifest_has_root_meta(self, tmp_path: Path) -> None:
+        """A raw sqlite3 query on root / name returns root from fs_meta."""
+        factory.mk_manifest(tmp_path, "foobar", "foobarbaz")
+        with sql.connect(tmp_path / "foobar") as conn:
+            q = """SELECT property, value FROM fs_meta
+                WHERE property IN ('comment', 'root') ORDER BY property;"""
+            expect = [("comment", "foobarbaz"), ("root", tmp_path.as_posix())]
+            assert conn.execute(q).fetchall() == expect

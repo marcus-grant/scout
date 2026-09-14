@@ -8,11 +8,18 @@ License: AGPL-3.0-or-later
 
 from pathlib import Path
 
+import factory
 import pytest
-from factory import Tree, mk_tree
+
+from scout.lib.manifest import Manifest
 
 
 @pytest.fixture
-def tree(tmp_path: Path) -> Tree:
+def tree(tmp_path: Path) -> factory.Tree:
     """The default factory tree built under tmp_path."""
-    return mk_tree(tmp_path)
+    return factory.mk_tree(tmp_path)
+
+
+@pytest.fixture
+def manifest(tmp_path: Path) -> Manifest:
+    return factory.mk_manifest(tmp_path)
