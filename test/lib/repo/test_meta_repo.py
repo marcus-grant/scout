@@ -11,7 +11,7 @@ from pathlib import PurePosixPath as PPP
 
 import factory
 import pytest
-from assertion import assert_err_words
+from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
@@ -48,11 +48,12 @@ class TestMetaRepo:
 
     def test_required_absent_raises(self, manifest: Manifest) -> None:
         """A required key with no row raises Err.NotAManifest."""
+        path_posix = manifest.db.path.as_posix()
         with sql.connect(manifest.db.path) as conn:
             conn.execute("DELETE FROM meta")
         with pytest.raises(Err.NotAManifest) as exc:
             _ = manifest.meta.root
-        assert_err_words(exc, manifest.db.path, "root")
+        assert_err_fields(exc, path_posix, "root", path=PPP(path_posix))
 
     def test_set_overwrites(self, manifest: Manifest) -> None:
         """Setting a key twice leaves one row holding the last value."""

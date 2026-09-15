@@ -9,7 +9,7 @@ import sqlite3 as sql
 from pathlib import PurePosixPath as PPP
 
 import pytest
-from assertion import assert_err_words
+from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
@@ -61,7 +61,7 @@ class TestAdd:
         """Absolute paths and paths escaping root raise Err.NotUnderRoot."""
         with pytest.raises(Err.NotUnderRoot) as exc:
             manifest.dirs.add(bad)
-        assert_err_words(exc, bad, "not under root")
+        assert_err_fields(exc, bad.as_posix(), "not under root", path=bad)
 
 
 class TestGet:

@@ -10,7 +10,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import pytest
-from assertion import assert_err_words
+from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
@@ -49,19 +49,21 @@ class TestInit:
 
     def test_refuses_existing_path(self, tmp_path: Path) -> None:
         """init on a path that exists raises Err.ManifestExists with the path."""
-        db_path = tmp_path / "not-dir" / ".scout.db"
-        with pytest.raises(Err.RepoParentMissing) as exc:
+        db_posix = (db_path := tmp_path / ".scout.db").as_posix()
+        Manifest.init(db_path, tmp_path)
+        with pytest.raises(Err.ManifestExists) as exc:
             Manifest.init(db_path, tmp_path)
-        assert_err_words(exc, db_path.parent, "parent", "missing")
-        assert not db_path.parent.exists()
+        assert_err_fields(exc, db_posix, "exists", path=PPP(db_posix))
 
     def test_rejects_missing_repo_parent(self, tmp_path: Path) -> None:
         """A repo path whose parent is absent raises Err.RepoParentMissing
         naming the path, before any file is created."""
-        (db_path := tmp_path / ".scout.db").parent.rmdir()
+        parent_posix = (db_path := tmp_path / "not-dir" / ".scout.db").parent.as_posix()
         with pytest.raises(Err.RepoParentMissing) as exc:
             Manifest.init(db_path, tmp_path)
-        assert_err_words(exc, db_path.parent, "parent", "missing")
+        words = ("parent", "missing")
+        assert_err_fields(exc, parent_posix, *words, path=PPP(parent_posix))
+        assert not db_path.parent.exists()
 
     def test_rejects_file_target(self, tmp_path: Path) -> None:
         """A target that is a file raises Err.TargetNotDir naming it,
@@ -69,7 +71,8 @@ class TestInit:
         (bad := tmp_path / "foobar.bin").write_bytes(b"not-a-dir")
         with pytest.raises(Err.TargetNotDir) as exc:
             Manifest.init(tmp_path / ".scout.db", bad)
-        assert_err_words(exc, bad, "root", "not", "dir")
+        bad_posix, words = bad.as_posix(), ("root", "not", "dir")
+        assert_err_fields(exc, bad_posix, *words, path=PPP(bad_posix))
         assert not (tmp_path / ".scout.db").exists()
 
 
@@ -94,14 +97,16 @@ class TestOpen:
             conn.execute(q, (version,))
         with pytest.raises(Err.BadSchemaVersion) as exc:
             Manifest.open(db_path)
-        assert_err_words(exc, manifest.db.path, "schema_version", str(version))
+        words = ("schema_version", str(version), db_path.as_posix())
+        assert_err_fields(exc, *words, path=PPP(db_path.as_posix()))
 
     def test_rejects_non_manifest(self, tmp_path: Path) -> None:
         """A sqlite file without meta raises Err.NotAManifest."""
         sql.connect(bad := tmp_path / "bad.db").execute("CREATE TABLE t (a)")
         with pytest.raises(Err.NotAManifest) as exc:
             Manifest.open(bad)
-        assert_err_words(exc, bad, "meta", "table")
+        bad_posix = bad.as_posix()
+        assert_err_fields(exc, bad_posix, "meta", "table", path=PPP(bad_posix))
 
 
 class TestTransaction:
