@@ -25,6 +25,8 @@ HIERARCHY: dict[type[Err.ScoutDomain], type[Err.ScoutDomain]] = {
     Err.UnpairedHash: Err.HashDomain,
     Err.PathDomain: Err.ScoutDomain,
     Err.NotUnderRoot: Err.PathDomain,
+    Err.RepoParentMissing: Err.PathDomain,
+    Err.TargetNotDir: Err.PathDomain,
 }
 
 

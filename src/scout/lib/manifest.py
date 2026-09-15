@@ -64,9 +64,15 @@ class Manifest:
     @classmethod
     def init(cls, path: Path, root: Path, comment: str | None = None) -> "Manifest":
         """Create the file at path, run every SCHEMA, write meta, and open it."""
+        if not path.parent.is_dir():
+            msg = f"parent directory missing: {path.parent}"
+            raise Err.RepoParentMissing(msg, path=PPP(path.parent.as_posix()))
         if path.exists():
             msg = f"file already exists: {path}"
             raise Err.ManifestExists(msg, path=PPP(path.as_posix()))
+        if not root.is_dir():
+            msg = f'target "root" is not a directory: {root}'
+            raise Err.TargetNotDir(msg, path=PPP(root.as_posix()))
         Manifest._create_tables(path)
         man = cls(DBConnector(path))
         man._write_meta(root, comment)

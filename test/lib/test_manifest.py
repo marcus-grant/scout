@@ -49,10 +49,28 @@ class TestInit:
 
     def test_refuses_existing_path(self, tmp_path: Path) -> None:
         """init on a path that exists raises Err.ManifestExists with the path."""
-        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
-        with pytest.raises(Err.ManifestExists) as exc:
-            Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
-        assert_err_words(exc, db_path, "exists")
+        db_path = tmp_path / "not-dir" / ".scout.db"
+        with pytest.raises(Err.RepoParentMissing) as exc:
+            Manifest.init(db_path, tmp_path)
+        assert_err_words(exc, db_path.parent, "parent", "missing")
+        assert not db_path.parent.exists()
+
+    def test_rejects_missing_repo_parent(self, tmp_path: Path) -> None:
+        """A repo path whose parent is absent raises Err.RepoParentMissing
+        naming the path, before any file is created."""
+        (db_path := tmp_path / ".scout.db").parent.rmdir()
+        with pytest.raises(Err.RepoParentMissing) as exc:
+            Manifest.init(db_path, tmp_path)
+        assert_err_words(exc, db_path.parent, "parent", "missing")
+
+    def test_rejects_file_target(self, tmp_path: Path) -> None:
+        """A target that is a file raises Err.TargetNotDir naming it,
+        before any file is created."""
+        (bad := tmp_path / "foobar.bin").write_bytes(b"not-a-dir")
+        with pytest.raises(Err.TargetNotDir) as exc:
+            Manifest.init(tmp_path / ".scout.db", bad)
+        assert_err_words(exc, bad, "root", "not", "dir")
+        assert not (tmp_path / ".scout.db").exists()
 
 
 class TestOpen:

@@ -8,10 +8,10 @@ License: AGPL-3.0-or-later
 import sqlite3 as sql
 from pathlib import Path
 
+import factory
 import pytest
 from click.testing import CliRunner
 
-import factory
 from scout.cli import main
 
 
@@ -72,6 +72,6 @@ class TestInit:
         props = self._query_props_to_dict(db_path)
         assert result.exit_code == 0
         assert db_path.is_file()
-        for k in canned:
+        for k, v in canned.items():
             msg = f"property keyed '{k}' doesn't match arranged mock"
-            assert props[k] == canned[k], msg
+            assert props[k] == v, msg

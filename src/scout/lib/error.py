@@ -98,3 +98,11 @@ class PathDomain(ScoutDomain):
 
 class NotUnderRoot(PathDomain):
     """A path that is absolute or escapes root with .. cannot be stored."""
+
+
+class RepoParentMissing(PathDomain):
+    """The manifest path's parent directory does not exist or is not a directory."""
+
+
+class TargetNotDir(PathDomain):
+    """The init target exists but is not a directory."""
