@@ -33,9 +33,9 @@ class DBConnector:
             if f.read(16) != b"SQLite format 3\x00":  # SQLite3 magic bytes check
                 msg = f"not a SQLite file: {path}"
                 raise Err.NotAManifest(msg, path=PPP(path.as_posix()))
-        q = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'fs_meta'"
+        q = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'"
         if sql.connect(path, isolation_level=None).execute(q).fetchone() is None:
-            msg = f"no fs_meta table: {path}"
+            msg = f"no meta table: {path}"
             raise Err.NotAManifest(msg, path=PPP(path.as_posix()))
         return sql.connect(path, isolation_level=None)
 

@@ -38,13 +38,13 @@ class TestInit:
             DBConnector(bad)
         assert_err_words(exc, bad, "sqlite", "file")
 
-    def test_rejects_sqlite_without_fs_meta(self, tmp_path: Path) -> None:
-        """A SQLite file lacking fs_meta raises Err.NotAManifest with the path."""
+    def test_rejects_sqlite_without_meta(self, tmp_path: Path) -> None:
+        """A SQLite file lacking meta raises Err.NotAManifest with the path."""
         bad = tmp_path / "bad.db"
         sql.connect(bad).execute("CREATE TABLE foo (bar);").close()
         with pytest.raises(Err.NotAManifest) as exc:
             DBConnector(bad)
-        assert_err_words(exc, bad, "fs_meta", "table")
+        assert_err_words(exc, bad, "meta", "table")
 
 
 class TestTransaction:

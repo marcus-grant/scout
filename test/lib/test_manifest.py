@@ -15,14 +15,14 @@ from assertion import assert_err_words
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
 
-TABLES = {"fs_meta", "scan", "dir", "file"}
+TABLES = {"meta", "scan", "dir", "file"}
 
 
 class TestInit:
     """Manifest.init creates a manifest file with every table and its meta."""
 
     def test_creates_all_tables(self, tmp_path: Path) -> None:
-        """After init, sqlite_master lists fs_meta, scan, dir, and file."""
+        """After init, sqlite_master lists meta, scan, dir, and file."""
         Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path)
         with sql.connect(db_path) as conn:
             q = """SELECT name FROM sqlite_master 
@@ -33,7 +33,7 @@ class TestInit:
         """schema_version, hash_algo, root, and comment are readable raw."""
         Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path, comment="Disk 1")
         with sql.connect(db_path) as conn:
-            q = "SELECT property, value FROM fs_meta ORDER BY property"
+            q = "SELECT property, value FROM meta ORDER BY property"
             assert conn.execute(q).fetchall() == [
                 ("comment", "Disk 1"),
                 ("hash_algo", "b3c32"),
@@ -61,29 +61,29 @@ class TestOpen:
     def test_reads_what_init_wrote(self, manifest: Manifest) -> None:
         """open on an init'd file exposes meta.root equal to the init root."""
         result = Manifest.open(manifest.db.path)
-        assert result.fs_meta.root == manifest.fs_meta.root
+        assert result.meta.root == manifest.meta.root
 
     def test_repos_share_db(self, manifest: Manifest) -> None:
         """meta, scans, dirs, and files hold the same DBConnector."""
         man = Manifest.open(manifest.db.path)
-        assert man.fs_meta.db is man.scans.db is man.dirs.db is man.files.db is man.db
+        assert man.meta.db is man.scans.db is man.dirs.db is man.files.db is man.db
 
     @pytest.mark.parametrize("version", (0, 9999))
     def test_rejects_wrong_schema_version(self, manifest: Manifest, version: int):
         """A manifest whose schema_version differs raises Err.BadSchemaVersion."""
         with sql.connect(db_path := manifest.db.path) as conn:
-            q = "UPDATE fs_meta SET value = ? WHERE property = 'schema_version';"
+            q = "UPDATE meta SET value = ? WHERE property = 'schema_version';"
             conn.execute(q, (version,))
         with pytest.raises(Err.BadSchemaVersion) as exc:
             Manifest.open(db_path)
         assert_err_words(exc, manifest.db.path, "schema_version", str(version))
 
     def test_rejects_non_manifest(self, tmp_path: Path) -> None:
-        """A sqlite file without fs_meta raises Err.NotAManifest."""
+        """A sqlite file without meta raises Err.NotAManifest."""
         sql.connect(bad := tmp_path / "bad.db").execute("CREATE TABLE t (a)")
         with pytest.raises(Err.NotAManifest) as exc:
             Manifest.open(bad)
-        assert_err_words(exc, bad, "fs_meta", "table")
+        assert_err_words(exc, bad, "meta", "table")
 
 
 class TestTransaction:

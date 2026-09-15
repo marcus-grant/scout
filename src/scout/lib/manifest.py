@@ -28,7 +28,7 @@ class Manifest:
     def __init__(self, db: DBConnector) -> None:
         """Build the four repos over db."""
         self.db = db
-        self.fs_meta = MetaRepo(db)
+        self.meta = MetaRepo(db)
         self.scans = ScanRepo(db)
         self.dirs = DirRepo(db)
         self.files = FileRepo(db)
@@ -54,12 +54,12 @@ class Manifest:
                 conn.executescript(r.SCHEMA)
 
     def _write_meta(self, root: Path, comment: str | None) -> None:
-        """Write schema_version, hash_algo, root, and comment to fs_meta."""
-        self.fs_meta.schema_version = self.SCHEMA_VERSION
-        self.fs_meta.hash_algo = self.HASH_ALGO
-        self.fs_meta.root = PPP(root.as_posix())
+        """Write schema_version, hash_algo, root, and comment to meta."""
+        self.meta.schema_version = self.SCHEMA_VERSION
+        self.meta.hash_algo = self.HASH_ALGO
+        self.meta.root = PPP(root.as_posix())
         if comment is not None:
-            self.fs_meta.comment = comment
+            self.meta.comment = comment
 
     @classmethod
     def init(cls, path: Path, root: Path, comment: str | None = None) -> "Manifest":
@@ -76,7 +76,7 @@ class Manifest:
     def open(cls, path: Path) -> "Manifest":
         """Open an existing manifest, refusing a wrong schema_version."""
         man = cls(DBConnector(path))
-        if (version := man.fs_meta.schema_version) != cls.SCHEMA_VERSION:
+        if (version := man.meta.schema_version) != cls.SCHEMA_VERSION:
             msg = """schema_version {} at {}, this build reads {}"""
             params = (version, path, cls.SCHEMA_VERSION)
             raise Err.BadSchemaVersion(msg.format(*params), path=PPP(path.as_posix()))
