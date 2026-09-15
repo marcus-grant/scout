@@ -71,8 +71,8 @@ class Manifest:
             msg = f"file already exists: {path}"
             raise Err.ManifestExists(msg, path=PPP(path.as_posix()))
         if not root.is_dir():
-            msg = f'target "root" is not a directory: {root}'
-            raise Err.TargetNotDir(msg, path=PPP(root.as_posix()))
+            msg = f'target "{(role := "root")}" is not a directory: {root}'
+            raise Err.TargetNotDir(msg, path=PPP(root.as_posix()), role=role)
         Manifest._create_tables(path)
         man = cls(DBConnector(path))
         man._write_meta(root, comment)

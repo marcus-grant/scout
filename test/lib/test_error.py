@@ -118,3 +118,8 @@ class TestPathDomain:
         """path is None by default and stored when given, on every child."""
         assert cls("x").path is None
         assert cls("x", path=PPP("y")).path == PPP("y")
+
+    def test_target_not_dir_carries_optional_role(self) -> None:
+        """role is None by default and stored when given."""
+        assert Err.TargetNotDir("x").role is None
+        assert Err.TargetNotDir("x", role="y").role == "y"

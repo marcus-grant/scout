@@ -72,7 +72,7 @@ class TestInit:
         with pytest.raises(Err.TargetNotDir) as exc:
             Manifest.init(tmp_path / ".scout.db", bad)
         bad_posix, words = bad.as_posix(), ("root", "not", "dir")
-        assert_err_fields(exc, bad_posix, *words, path=PPP(bad_posix))
+        assert_err_fields(exc, bad_posix, *words, path=PPP(bad_posix), role="root")
         assert not (tmp_path / ".scout.db").exists()
 
 
