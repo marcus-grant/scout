@@ -117,3 +117,11 @@ class TestMkManifest:
                 WHERE property IN ('comment', 'root') ORDER BY property;"""
             expect = [("comment", "foobarbaz"), ("root", tmp_path.as_posix())]
             assert conn.execute(q).fetchall() == expect
+
+    def test_fresh_manifest_has_no_detail_rows(self, tmp_path: Path) -> None:
+        """Factory manifests carry no fs detail rows, on any host."""
+        factory.mk_manifest(tmp_path)
+        with sql.connect(tmp_path / ".scout.db") as conn:
+            q = """SELECT count(*) FROM meta WHERE property IN
+                ('fs_type', 'fs_uuid', 'fs_label', 'fs_model', 'hostname');"""
+            assert conn.execute(q).fetchone()[0] == 0

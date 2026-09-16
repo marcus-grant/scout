@@ -91,4 +91,4 @@ def mk_manifest(
     root: Path, name: str = ".scout.db", comment: str | None = None
 ) -> Manifest:
     """Return a Manifest freshly init'd at root / name, rooted at root."""
-    return Manifest.init(root / name, root, comment=comment)
+    return Manifest.init(root / name, root, comment=comment, detail={})

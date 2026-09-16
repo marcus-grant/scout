@@ -18,6 +18,17 @@ from scout.lib.manifest import Manifest
 TABLES = {"meta", "scan", "dir", "file"}
 
 
+def _mk_detail(**overrides: str | None) -> dict[str, str | None]:
+    """Return a full detail dict with canned values; overrides replace them."""
+    return {
+        "fs_type": "btrfs",
+        "fs_uuid": "1234-5678",
+        "fs_label": "mydisk",
+        "fs_model": "samsung",
+        "hostname": "boblocal",
+    } | overrides
+
+
 class TestInit:
     """Manifest.init creates a manifest file with every table and its meta."""
 
@@ -31,7 +42,8 @@ class TestInit:
 
     def test_writes_meta(self, tmp_path: Path) -> None:
         """schema_version, hash_algo, root, and comment are readable raw."""
-        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path, comment="Disk 1")
+        db_path = tmp_path / ".scout.db"
+        Manifest.init(db_path, tmp_path, comment="Disk 1", detail={})
         with sql.connect(db_path) as conn:
             q = "SELECT property, value FROM meta ORDER BY property"
             assert conn.execute(q).fetchall() == [
@@ -40,6 +52,23 @@ class TestInit:
                 ("root", tmp_path.as_posix()),
                 ("schema_version", "1"),
             ]
+
+    def test_writes_detail_rows_from_readers(self, tmp_path: Path) -> None:
+        """Entries in detail land as meta rows through init."""
+        db_path, detail = tmp_path / ".scout.db", _mk_detail()
+        Manifest.init(db_path, tmp_path, detail=detail)
+        with sql.connect(db_path) as conn:
+            rows = dict(conn.execute("SELECT property, value FROM meta"))
+        assert all(rows[k] == v for k, v in detail.items())
+
+    def test_omits_none_entries_in_detail(self, tmp_path: Path) -> None:
+        """A None detail entry writes no row at all; others still write."""
+        detail = _mk_detail(fs_type=None, fs_uuid=None, fs_label=None, fs_model=None)
+        Manifest.init((db_path := tmp_path / ".scout.db"), tmp_path, detail=detail)
+        with sql.connect(db_path) as conn:
+            rows = dict(conn.execute("SELECT property, value FROM meta"))
+        assert rows["hostname"] == "boblocal"
+        assert all(k not in rows for k, v in detail.items() if v is None)
 
     def test_seeds_root_dir(self, tmp_path: Path) -> None:
         """The dir table holds (0, '.') after init."""
