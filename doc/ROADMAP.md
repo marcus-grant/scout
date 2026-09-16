@@ -21,6 +21,30 @@ planned.
 
 ## Unscheduled
 
+### root
+
+- `scout root [repo] [new-root]`:
+  - bare prints the stored root;
+    - with an argument rewrites it,
+    - hostname-style get and set.
+- Covers out-of-tree manifests and removable drives.
+  - Also drives that remount at a new path:
+    - plain `mv` moves the file,
+    - `scout root` re-targets it.
+- Distinguish "manifest moved, same tree" from "root re-targeted at a
+  different tree"; the second invalidates stored relative paths.
+
+### ignore
+
+- Ignore patterns for scan:
+  - likely one `ignore` table with its repo;
+    - patterns applied by the scanner at walk time.
+- Needs a pattern language decision;
+  - *(gitignore syntax or globs)* and management verbs;
+    - interaction with `gone` when patterns change.
+- Scan already skips its own repo file without this;
+  - that is hard-coded, not a pattern.
+
 ### comm
 
 - `scout comm <a> <b>`: join two manifests on `hash`, report three
@@ -57,11 +81,6 @@ Needs more thought before any of these become tasks.
   - path-exact tree comparison between two manifests
   - coreutils meaning.
   - Low priority.
-- `fs_meta` -> `meta` rename:
-  - `fs_meta` is awkward, it's functionally the manifest meta.
-  - So any other not strictly FS related thing lives alongside.
-  - Remember this might trigger SCHEMA_VERSION bump.
-    - That means you must implement migration infrastructure before.
 - `prune [--older-than]`:
   - delete gone rows past a cutoff.
   - The only thing that removes gone rows.
@@ -70,7 +89,7 @@ Needs more thought before any of these become tasks.
 - Datasette adapter:
   - metadata and canned queries over one or more attached manifests.
 - Configuration stack:
-  - args, env, config file, `fs_meta`
+  - args, env, config file, `meta` table
     - in precedence order
   - feeding `select_renderer` and policy values like `rehash_after`.
 - Symlink ladder:
