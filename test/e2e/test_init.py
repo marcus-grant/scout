@@ -15,7 +15,6 @@ from click.testing import CliRunner
 from scout.cli import main
 
 
-@pytest.mark.skip(reason="Init port in progress")
 @pytest.mark.e2e
 class TestInit:
     """scout init creates a manifest whose meta describes the target."""
@@ -61,8 +60,8 @@ class TestInit:
             "hostname": "testhost",
         }
         for name, value in canned.items():
-            mod_str = f"scout.lib.fs_detail.{name}"
-            monkeypatch.setattr(mod_str, lambda value=value: value)
+            mod_str = f"scout.lib.fs.meta.{name}"
+            monkeypatch.setattr(mod_str, lambda *_, value=value: value)
         tree, db_path = factory.mk_tree(tmp_path), tmp_path / ".scout.db"
 
         # Act on the command
@@ -70,6 +69,7 @@ class TestInit:
 
         # Assert, starting by pulling out 'props' from raw table
         props = self._query_props_to_dict(db_path)
+        print(result.output, result.exception)
         assert result.exit_code == 0
         assert db_path.is_file()
         for k, v in canned.items():
