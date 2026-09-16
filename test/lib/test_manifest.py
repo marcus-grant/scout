@@ -104,6 +104,16 @@ class TestInit:
         assert_err_fields(exc, bad_posix, *words, path=PPP(bad_posix), role="root")
         assert not (tmp_path / ".scout.db").exists()
 
+    def test_relative_root_stored_resolved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A relative root lands in meta as its resolved absolute path."""
+        monkeypatch.chdir(tmp_path)
+        Manifest.init(tmp_path / ".scout.db", Path("."), detail={})
+        with sql.connect(tmp_path / ".scout.db") as conn:
+            q = "SELECT value FROM meta WHERE property = 'root'"
+            assert conn.execute(q).fetchone()[0] == tmp_path.resolve().as_posix()
+
 
 class TestOpen:
     """Manifest.open returns a manifest whose repos share one db."""

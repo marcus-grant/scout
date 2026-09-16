@@ -89,6 +89,7 @@ class Manifest:
         detail: Mapping[str, str | None] | None = None,
     ) -> "Manifest":
         """Create the file at path, run every SCHEMA, write meta, and open it."""
+        root = root.resolve()  # Root needs resolution first
         cls._validate_init(path, root)
         Manifest._create_tables(path)
         man = cls(DBConnector(path))

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from scout.cli.event import InitDone
-from scout.cli.render import Output, porcelain
+from scout.cli.render import porcelain
 
 
 class TestPorcelainInitDone:

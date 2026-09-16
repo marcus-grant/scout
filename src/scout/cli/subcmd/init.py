@@ -26,15 +26,16 @@ def run_init(
 ) -> None:
     """Create a manifest for target and emit one InitDone."""
     # Normalize inputs
+    target = target.resolve()
     repo = repo if repo is not None else target / ".scout.db"
     detail = detail if detail is not None else fs_meta.read_all(target)
     missing = tuple(k for k, v in detail.items() if not v)
 
-    # Run library function associasated with init subcommand
+    # Run library function associated with init subcommand
     Manifest.init(repo, target, comment=comment, detail=detail)
 
     # Collect emitted events for prints, logging, and testing
-    emit(events.InitDone(repo, target.resolve(), missing=missing))
+    emit(events.InitDone(repo, target, missing=missing))
 
 
 def _echo(event: events.Event) -> None:

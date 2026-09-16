@@ -52,6 +52,17 @@ class TestRunInit:
         run_init(Path("."), None, None, emitted.append, detail={})
         assert isinstance(init_event := emitted[0], events.InitDone)
         assert init_event.root == tmp_path.resolve()
+        assert init_event.repo == tmp_path.resolve() / ".scout.db"
+
+    def test_readers_receive_resolved_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """detail None resolution hands read_all the resolved target."""
+        seen: list[Path] = []
+        monkeypatch.setattr(fs_meta, "read_all", lambda t: (seen.append(t), {})[1])
+        monkeypatch.chdir(tmp_path)
+        run_init(Path("."), None, None, lambda _: None)
+        assert seen == [tmp_path.resolve()]
 
     def test_detail_none_reads_system(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
