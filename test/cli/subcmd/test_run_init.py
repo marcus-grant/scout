@@ -13,6 +13,7 @@ from click.testing import CliRunner
 import scout.cli.event as events
 from scout.cli import main
 from scout.cli.subcmd.init import run_init
+from scout.lib.fs import meta as fs_meta
 
 
 class TestRunInit:
@@ -51,6 +52,17 @@ class TestRunInit:
         run_init(Path("."), None, None, emitted.append, detail={})
         assert isinstance(init_event := emitted[0], events.InitDone)
         assert init_event.root == tmp_path.resolve()
+
+    def test_detail_none_reads_system(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """detail None resolves through fs.meta.read_all, not an empty dict."""
+        canned: dict[str, str | None] = {"fs_type": "btrfs", "fs_uuid": None}
+        monkeypatch.setattr(fs_meta, "read_all", lambda *_: canned)
+        emitted: list[events.Event] = []
+        run_init(tmp_path, None, None, emitted.append)
+        assert isinstance(done_event := emitted[0], events.InitDone)
+        assert done_event.missing == ("fs_uuid",)
 
 
 class TestInitCommand:
