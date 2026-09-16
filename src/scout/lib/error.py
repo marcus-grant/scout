@@ -98,3 +98,20 @@ class PathDomain(ScoutDomain):
 
 class NotUnderRoot(PathDomain):
     """A path that is absolute or escapes root with .. cannot be stored."""
+
+
+class RepoParentMissing(PathDomain):
+    """The manifest path's parent directory does not exist or is not a directory."""
+
+
+class TargetNotDir(PathDomain):
+    """The init target exists but is not a directory."""
+
+    role: str | None = None
+
+    def __init__(
+        self, msg: str, path: PPP | None = None, role: str | None = None
+    ) -> None:
+        """Store the offending path and its role, when known."""
+        self.role = role
+        super().__init__(msg, path)

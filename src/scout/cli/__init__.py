@@ -23,3 +23,9 @@ CONTEXT_SETTINGS = {
 @click.version_option(VERSION, "-v", "--version", message=VERSION_STR)
 def main() -> None:
     """Root command group; subcommands register on it in cli/subcmd/."""
+
+
+# Add commands with imports below click main
+from scout.cli.subcmd.init import init
+
+main.add_command(init)

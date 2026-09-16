@@ -15,7 +15,7 @@
   - Operations must compose with each other in pipelines.
 - Rich is imported only inside the Rich renderer.
   - Porcelain and JSON output must never contain terminal decoration.
-- The manifest schema is versioned via `fs_meta.schema_version`.
+- The manifest schema is versioned via `meta.schema_version`.
   - Schema changes bump the version; unversioned or mismatched manifests are refused.
 - One branch per PR.
   No direct commits to `main`.
@@ -36,6 +36,14 @@
     - those speak in paths and hashes only.
 - Timestamps are int64 nanoseconds;
   - `gone` and `hashed` are the `scan.started` of the scan that observed them.
+- Verbs emit typed events; renderers turn them into output.
+  - One frozen `Event` dataclass per fact, `<Verb><Event>`, fields
+    are lib types, never pre-formatted strings.
+  - A renderer is one callable, event in, `Output` out: `out` and
+    `err` line tuples the subcommand echoes.
+  - Click callbacks are thin wiring over `run_<verb>` handlers
+    taking an `emit` callable; tests collect events, not text.
+  - Failures raise through `scout_command`, never events.
 
 ### Required reading
 
@@ -44,37 +52,6 @@
 - `README.md` (optional)
 
 ## Sequenced PRs to MVP
-
-### Init port
-
-- Click
-  - The argparse `cli/subcmd/init.py` was deleted on tst/test-foundation;
-    read it with `git show main:cli/subcmd/init.py` when porting.
-    Its tests are written fresh.
-  - `init` is the first subcommand on the `scout` group, built with
-    `scout_command`; shared options (`-r/--repo`) land here.
-  - `target` defaults to cwd; `-r/--repo` is the full path to the DB
-    file, defaulting to `target / ".scout.db"`. Built with `Path`.
-  - New `--comment` for the human-readable disk description.
-- Argument checks, as `Err.PathDomain` children raised before
-  `Manifest.init`: the repo path's parent must exist and be a
-  directory; the target must be a directory.
-  - The boundary converter from `Path` to root-relative `PPP` lives
-    here; the salvaged `TestPathHelpers` cases (absolute to relative,
-    `..` rejected, `str` and path input alike) are its starting spec
-- What init writes (through `MetaRepo`)
-  - `schema_version`, `hash_algo`, `root`, `comment` come from
-    `Manifest.init`.
-  - fs detail rows if readable, null otherwise. Each reader is a thin
-    function (`/proc/mounts`, `/dev/disk/by-*`, `lsblk`, hostname) so
-    tests can stub it. Linux only for now.
-- Tests
-  - e2e: `scout init` via `CliRunner` against a factory tree; assert
-    `fs_meta` contents through sqlite3.
-  - fs detail readers stubbed; one unit test per reader against canned
-    input.
-- Salvage: `salvage/test/cli/subcmd/test_init.py` read and deleted;
-  `test_fs.py` is Scan's
 
 ### Scan
 
@@ -98,12 +75,14 @@ acceptance run, in one PR.
 - Rehash decision belongs to the caller, per file, in this order: no
   row, or size or mtime differ, or `rehash_after` is set and `hashed`
   is older than it.
-  - `rehash_after` lives in `fs_meta`, default never
+  - `rehash_after` lives in `meta`, default never
   - `scan --rehash` forces every file
-- `scout scan [target] [-r repo] [--no-hash] [--comment TEXT]`
-  - `Manifest.open`; `--comment` updates `fs_meta.comment`; fs detail
+- `scout scan [repo] [--no-hash] [--comment TEXT]`
+  - `Manifest.open`; `--comment` updates `meta.comment`; fs detail
     rows refreshed each run through `MetaRepo`
   - `--no-hash` does a stat-only pass; `hash` and `hashed` stay null
+  - The `repo` positional is optional and defaults to `./.scout.db`
+  - No more info needed because an initialized repo gives the root to walk.
 - Run
   - `scans.start()`, then walk in DFS order
   - Per dir: `dirs.add`; per file: `files.get` by `(dir_id, name)`,
@@ -176,7 +155,7 @@ And before the `v1` plan emerges naturally.
 - Selection
   - One function, `select_renderer(config) -> Renderer`, is the only
     place a renderer is chosen. For MVP `config` is the parsed CLI args.
-    Later the configuration stack (args, env, config file, `fs_meta`, in
+    Later the configuration stack (args, env, config file, `meta`, in
     precedence order) produces the same `config` and nothing downstream
     changes.
   - Shared Click options (`--porcelain` for now; `--json`, `-v` later)

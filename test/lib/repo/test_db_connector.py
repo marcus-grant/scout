@@ -7,9 +7,10 @@ License: AGPL-3.0-or-later
 
 import sqlite3 as sql
 from pathlib import Path
+from pathlib import PurePosixPath as PPP
 
 import pytest
-from assertion import assert_err_words
+from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
@@ -27,24 +28,26 @@ class TestInit:
 
     def test_rejects_missing_path(self, tmp_path: Path) -> None:
         """A path with no file raises Err.NoManifest with the path."""
+        missing_ppp = PPP(missing := tmp_path / "missing.db")
         with pytest.raises(Err.NoManifest) as exc:
-            DBConnector(missing := tmp_path / "missing.db")
-        assert_err_words(exc, missing, "manifest", "file")  # type: ignore
+            DBConnector(missing)
+        assert_err_fields(exc, "manifest", "file", missing.as_posix(), path=missing_ppp)
 
     def test_rejects_non_sqlite_file(self, tmp_path: Path) -> None:
         """A file that is not SQLite raises Err.NotAManifest with the path."""
         (bad := tmp_path / "bad.db").write_bytes(b"foobar")
+        bad_posix = bad.as_posix()
         with pytest.raises(Err.NotAManifest) as exc:
             DBConnector(bad)
-        assert_err_words(exc, bad, "sqlite", "file")
+        assert_err_fields(exc, bad_posix, "sqlite", "file", path=PPP(bad_posix))
 
-    def test_rejects_sqlite_without_fs_meta(self, tmp_path: Path) -> None:
-        """A SQLite file lacking fs_meta raises Err.NotAManifest with the path."""
-        bad = tmp_path / "bad.db"
+    def test_rejects_sqlite_without_meta(self, tmp_path: Path) -> None:
+        """A SQLite file lacking meta raises Err.NotAManifest with the path."""
+        bad_posix = (bad := tmp_path / "bad.db").as_posix()
         sql.connect(bad).execute("CREATE TABLE foo (bar);").close()
         with pytest.raises(Err.NotAManifest) as exc:
             DBConnector(bad)
-        assert_err_words(exc, bad, "fs_meta", "table")
+        assert_err_fields(exc, bad_posix, "meta", "table", path=PPP(bad_posix))
 
 
 class TestTransaction:
@@ -77,7 +80,7 @@ class TestTransaction:
 
     def test_nested_begin_raises(self, manifest: Manifest) -> None:
         """begin while a transaction is open raises Err.NestedTransaction."""
-        db = self._arrange(manifest)
+        db_path = (db := self._arrange(manifest)).path.as_posix()
         with pytest.raises(Err.NestedTransaction) as exc:
             db.begin()
-        assert_err_words(exc, db.path, "transaction", "already")
+        assert_err_fields(exc, db_path, "transaction", "already", path=PPP(db_path))

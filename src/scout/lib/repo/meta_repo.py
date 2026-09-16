@@ -1,10 +1,11 @@
 # src/scout/lib/repo/meta_repo.py
-"""MetaRepo: typed getters and setters over the fs_meta table.
+"""MetaRepo: typed getters and setters over the meta table.
 Author: Marcus
 Created: 2026-09-08
 License: AGPL-3.0-or-later
 """
 
+from collections.abc import Mapping
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
@@ -12,17 +13,17 @@ from scout.lib.repo.db_connector import DBConnector
 
 
 class MetaRepo:
-    """Owns fs_meta; nothing else reads or writes it by hand."""
+    """Owns meta; nothing else reads or writes it by hand."""
 
     SCHEMA = """
-    CREATE TABLE IF NOT EXISTS fs_meta (
+    CREATE TABLE IF NOT EXISTS meta (
     property TEXT PRIMARY KEY,
     value TEXT
     );"""
 
-    _SELECT = "SELECT value FROM fs_meta WHERE property = ?;"
+    _SELECT = "SELECT value FROM meta WHERE property = ?;"
     _UPSERT = (
-        "INSERT INTO fs_meta (property, value) VALUES (?, ?) "
+        "INSERT INTO meta (property, value) VALUES (?, ?) "
         "ON CONFLICT(property) DO UPDATE SET value = excluded.value;"
     )
 
@@ -43,7 +44,7 @@ class MetaRepo:
         """Return the stored value for key or raise Err.NotAManifest."""
         if (value := self._get(key)) is None:
             path = PPP(self.db.path.as_posix())
-            msg = f"fs_meta table has no {key} property in {path}"
+            msg = f"meta table has no {key} property in {path}"
             raise Err.NotAManifest(msg, path=path)
         return value
 
@@ -136,3 +137,16 @@ class MetaRepo:
     def hostname(self, value: str) -> None:
         """Store hostname."""
         self._set("hostname", value)
+
+    def write_fs_detail(self, detail: Mapping[str, str | None]) -> None:
+        """Write each truthy entry through its property; skip the rest."""
+        if v := detail.get("fs_type"):
+            self.fs_type = v
+        if v := detail.get("fs_uuid"):
+            self.fs_uuid = v
+        if v := detail.get("fs_label"):
+            self.fs_label = v
+        if v := detail.get("fs_model"):
+            self.fs_model = v
+        if v := detail.get("hostname"):
+            self.hostname = v

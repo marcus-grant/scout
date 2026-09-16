@@ -6,11 +6,13 @@ License: AGPL-3.0-or-later
 """
 
 import sqlite3 as sql
+from collections.abc import Mapping
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 from typing import Self
 
 import scout.lib.error as Err
+from scout.lib.fs import meta as fs_meta
 from scout.lib.repo.db_connector import DBConnector
 from scout.lib.repo.dir_repo import DirRepo
 from scout.lib.repo.file_repo import FileRepo
@@ -28,7 +30,7 @@ class Manifest:
     def __init__(self, db: DBConnector) -> None:
         """Build the four repos over db."""
         self.db = db
-        self.fs_meta = MetaRepo(db)
+        self.meta = MetaRepo(db)
         self.scans = ScanRepo(db)
         self.dirs = DirRepo(db)
         self.files = FileRepo(db)
@@ -53,30 +55,53 @@ class Manifest:
             for r in Manifest.REPOS:
                 conn.executescript(r.SCHEMA)
 
-    def _write_meta(self, root: Path, comment: str | None) -> None:
-        """Write schema_version, hash_algo, root, and comment to fs_meta."""
-        self.fs_meta.schema_version = self.SCHEMA_VERSION
-        self.fs_meta.hash_algo = self.HASH_ALGO
-        self.fs_meta.root = PPP(root.as_posix())
-        if comment is not None:
-            self.fs_meta.comment = comment
-
-    @classmethod
-    def init(cls, path: Path, root: Path, comment: str | None = None) -> "Manifest":
-        """Create the file at path, run every SCHEMA, write meta, and open it."""
+    @staticmethod
+    def _validate_init(path: Path, root: Path) -> None:
+        """Raise Err.RepoParentMissing, Err.ManifestExists, or Err.TargetNotDir.
+        if class init method path and root args are invalid"""
+        if not path.parent.is_dir():
+            msg = f"parent directory missing: {path.parent}"
+            raise Err.RepoParentMissing(msg, path=PPP(path.parent.as_posix()))
         if path.exists():
             msg = f"file already exists: {path}"
             raise Err.ManifestExists(msg, path=PPP(path.as_posix()))
+        if not root.is_dir():
+            msg = f'target "{(role := "root")}" is not a directory: {root}'
+            raise Err.TargetNotDir(msg, path=PPP(root.as_posix()), role=role)
+
+    def _write_meta(
+        self, root: Path, comment: str | None, detail: Mapping[str, str | None] = {}
+    ) -> None:
+        """Write schema_version, hash_algo, root, and comment to meta."""
+        self.meta.schema_version = self.SCHEMA_VERSION
+        self.meta.hash_algo = self.HASH_ALGO
+        self.meta.root = PPP(root.as_posix())
+        if comment is not None:
+            self.meta.comment = comment
+        self.meta.write_fs_detail(detail)
+
+    @classmethod
+    def init(
+        cls,
+        path: Path,
+        root: Path,
+        comment: str | None = None,
+        detail: Mapping[str, str | None] | None = None,
+    ) -> "Manifest":
+        """Create the file at path, run every SCHEMA, write meta, and open it."""
+        root = root.resolve()  # Root needs resolution first
+        cls._validate_init(path, root)
         Manifest._create_tables(path)
         man = cls(DBConnector(path))
-        man._write_meta(root, comment)
+        detail = detail if detail is not None else fs_meta.read_all(root)
+        man._write_meta(root, comment, detail)
         return man
 
     @classmethod
     def open(cls, path: Path) -> "Manifest":
         """Open an existing manifest, refusing a wrong schema_version."""
         man = cls(DBConnector(path))
-        if (version := man.fs_meta.schema_version) != cls.SCHEMA_VERSION:
+        if (version := man.meta.schema_version) != cls.SCHEMA_VERSION:
             msg = """schema_version {} at {}, this build reads {}"""
             params = (version, path, cls.SCHEMA_VERSION)
             raise Err.BadSchemaVersion(msg.format(*params), path=PPP(path.as_posix()))
