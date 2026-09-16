@@ -105,3 +105,14 @@ def hostname(get: Callable[[], str] = socket.gethostname) -> str | None:
         return get()
     except OSError:
         return None
+
+
+def read_all(target: Path) -> dict[str, str | None]:
+    """Return every reader's answer for target, keyed by meta property."""
+    return {
+        "fs_type": fs_type(target),
+        "fs_uuid": fs_uuid(target),
+        "fs_label": fs_label(target),
+        "fs_model": fs_model(target),
+        "hostname": hostname(),
+    }

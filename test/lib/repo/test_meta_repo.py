@@ -63,3 +63,17 @@ class TestMetaRepo:
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT count(*) FROM meta WHERE property = 'comment'"
             assert conn.execute(q).fetchone() == (1,)
+
+    def test_write_fs_detail_writes_only_values(self, manifest: Manifest) -> None:
+        """Non-None entries land as rows; None entries write no row."""
+        detail: dict[str, str | None] = {
+            "fs_type": "btrfs",
+            "fs_uuid": None,
+            "hostname": "boblocal",
+        }
+        manifest.meta.write_fs_detail(detail)
+        with sql.connect(manifest.db.path) as conn:
+            rows = dict(conn.execute("SELECT property, value FROM meta"))
+        assert rows["fs_type"] == "btrfs"
+        assert rows["hostname"] == "boblocal"
+        assert "fs_uuid" not in rows

@@ -7,6 +7,8 @@ License: AGPL-3.0-or-later
 
 from pathlib import Path
 
+import pytest
+
 from scout.lib.fs import meta
 
 
@@ -120,17 +122,11 @@ class TestByDirName:
 class TestFsUuid:
     """fs_uuid names the by-uuid symlink resolving to the target's device."""
 
-    def test_absent_dir_is_none(self, tmp_path: Path) -> None:
-        """A missing dir yields None, never a raise."""
-        _, mounts = mk_dev_mounts(tmp_path)
-        bad = tmp_path / "no-such-dir"
-        assert meta.by_dir_name(Path("/x"), mounts=mounts, by_dir=bad) is None
-
-    def test_no_matching_entry_is_none(self, tmp_path: Path) -> None:
-        """A dir with no entry resolving to the device yields None."""
-        _, mounts = mk_dev_mounts(tmp_path)
-        by_dir = mk_by_dir(tmp_path, "ffff-0000", tmp_path / "other-dev")
-        assert meta.by_dir_name(Path("/x"), mounts=mounts, by_dir=by_dir) is None
+    def test_reads_uuid_of_targets_device(self, tmp_path: Path) -> None:
+        """The entry name in the by-uuid dir comes back as the uuid."""
+        dev, mounts = mk_dev_mounts(tmp_path)
+        by_uuid = mk_by_dir(tmp_path, uuid := "abcd-1234", dev)
+        assert meta.fs_uuid(Path("/x"), mounts=mounts, by_uuid=by_uuid) == uuid
 
 
 class TestFsLabel:
@@ -176,3 +172,22 @@ class TestHostname:
     def test_raising_reader_is_none(self) -> None:
         """An OSError from the reader yields None, never a raise."""
         assert meta.hostname(get=self._raise_boom) is None
+
+
+class TestReadAll:
+    """read_all packages every reader's answer for a target, None included."""
+
+    def test_collects_all_five(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Each reader's answer lands under its own name; None stays None."""
+        canned: dict[str, str | None] = {
+            "fs_type": "btrfs",
+            "fs_uuid": "1234-5678",
+            "fs_label": None,
+            "fs_model": "samsung",
+            "hostname": "boblocal",
+        }
+        for k, v in canned.items():
+            monkeypatch.setattr(meta, k, lambda *_, v=v: v)
+        assert meta.read_all(tmp_path) == canned

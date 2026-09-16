@@ -5,6 +5,7 @@ Created: 2026-09-08
 License: AGPL-3.0-or-later
 """
 
+from collections.abc import Mapping
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
@@ -136,3 +137,16 @@ class MetaRepo:
     def hostname(self, value: str) -> None:
         """Store hostname."""
         self._set("hostname", value)
+
+    def write_fs_detail(self, detail: Mapping[str, str | None]) -> None:
+        """Write each truthy entry through its property; skip the rest."""
+        if v := detail.get("fs_type"):
+            self.fs_type = v
+        if v := detail.get("fs_uuid"):
+            self.fs_uuid = v
+        if v := detail.get("fs_label"):
+            self.fs_label = v
+        if v := detail.get("fs_model"):
+            self.fs_model = v
+        if v := detail.get("hostname"):
+            self.hostname = v
