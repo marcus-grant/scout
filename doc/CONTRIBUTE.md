@@ -79,13 +79,6 @@ A plan whose cycles all land in one function has the wrong units;
 decompose first.
 A parameter that exists only to branch behavior is a missing type.
 
-### Salvage
-
-`salvage/test/` holds the pre-MVP test suite, uncollected.
-Every PR states, for the modules it touches, what it moved back, what it
-rewrote and deleted, and what it left.
-This rule ends at MVP, when `salvage/` is empty and deleted.
-
 ## Test-driven development
 
 Test-driven development is the default for any change that alters

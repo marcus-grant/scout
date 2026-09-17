@@ -32,7 +32,6 @@ packages = ["src/scout"]
 
 [tool.ruff]
 line-length = 88
-extend-exclude = ["salvage"]
 
 [tool.pyright]
 include = ["src", "test"]

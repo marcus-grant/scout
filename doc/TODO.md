@@ -71,7 +71,6 @@ acceptance run, in one PR.
   - Unreadable files and dirs yield an error record (path, reason); the
     walk never aborts
   - Symlinks: not followed, not recorded
-  - `lib/fs/dir_reader.py` is unreferenced; keep or delete here
 - Rehash decision belongs to the caller, per file, in this order: no
   row, or size or mtime differ, or `rehash_after` is set and `hashed`
   is older than it.
