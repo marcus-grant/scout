@@ -115,3 +115,25 @@ class TargetNotDir(PathDomain):
         """Store the offending path and its role, when known."""
         self.role = role
         super().__init__(msg, path)
+
+
+### Scan Domain
+
+
+class ScanDomain(ScoutDomain):
+    """Errors met while walking or reading a tree; the scanner yields, never raises."""
+
+    path: PPP | None = None
+    errno: int | None = None
+
+    def __init__(
+        self, msg: str, path: PPP | None = None, errno: int | None = None
+    ) -> None:
+        """Store the offending path and the OS errno, when known."""
+        self.path = path
+        self.errno = errno
+        super().__init__(msg)
+
+
+class Unreadable(ScanDomain):
+    """A file or directory that could not be stated or read."""
