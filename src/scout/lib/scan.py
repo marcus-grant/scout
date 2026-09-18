@@ -13,10 +13,11 @@ from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, Listing
+from scout.lib.fs.walk import FileStat, Listing, walk
 from scout.lib.manifest import Manifest
 from scout.lib.model.file import File
 from scout.lib.model.hash import DEFAULT_BITS
+from scout.lib.util import to_rel
 
 
 class Outcome(Enum):
@@ -191,3 +192,79 @@ class _Batch:
         """Commit whatever is pending and leave no transaction open."""
         self.count = 0
         self.manifest.__exit__(None, None, None)
+
+
+def scan(
+    manifest: Manifest,
+    *,
+    hash: bool = True,
+    force: bool = False,
+    bits: int = DEFAULT_BITS,
+    batch_size: int = 500,
+    on_progress: Callable[[int], None] | None = None,
+) -> Iterator[Scanned | Gone | Err.Unreadable | Summary]:
+    """Walk manifest's root and bring every row current, yielding records
+    as they happen and one Summary last.
+    started comes from scans.start(); rows commit every batch_size files.
+    The manifest's own file is excluded from the walk.
+    A listing whose own directory was unreadable is reported and skipped:
+    nothing under it is written or marked gone.
+    After the walk, each live dir not walked and not under an unreadable
+    dir is marked gone with its subtree; then scans.finish."""
+    root = Path(manifest.meta.root)
+    try:
+        exclude = frozenset({to_rel(manifest.db.path, root)})
+    except Err.NotUnderRoot:
+        exclude = frozenset()
+    started = manifest.scans.start()
+    counts = {Outcome.ADDED: 0, Outcome.UPDATED: 0, Outcome.MATCHED: 0}
+    errors = gone = 0
+    batch = _Batch(manifest, batch_size)
+    batch.open()
+    walked: set[PPP] = set()
+    unreadable: set[PPP] = set()
+    for listing in walk(root, exclude):
+        walked.add(listing.path)
+        if any(e.path == listing.path for e in listing.errors):
+            unreadable.add(listing.path)
+            errors += len(listing.errors)
+            yield from listing.errors
+            continue
+        records_iter = _scan_dir(
+            manifest,
+            root,
+            listing,
+            started,
+            hash=hash,
+            force=force,
+            bits=bits,
+            on_progress=on_progress,
+        )
+        for record in records_iter:
+            if isinstance(record, Scanned):
+                counts[record.outcome] += 1
+                batch.tick()
+            elif isinstance(record, Gone):
+                gone += 1
+            else:
+                errors += 1
+            yield record
+    for d in manifest.dirs.descendants(PPP(".")):
+        under_unreadable = any(u == d.path or u in d.path.parents for u in unreadable)
+        if d.path in walked or under_unreadable:
+            continue
+        for record in _mark_dir_gone(manifest, d.path, started):
+            gone += 1
+            yield record
+    files_seen = sum(counts.values())
+    finished = manifest.scans.finish(started, files_seen)
+    batch.close()
+    yield Summary(
+        started,
+        finished,
+        counts[Outcome.ADDED],
+        counts[Outcome.UPDATED],
+        counts[Outcome.MATCHED],
+        errors,
+        gone,
+    )

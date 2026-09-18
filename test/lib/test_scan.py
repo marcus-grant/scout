@@ -6,7 +6,10 @@ License: AGPL-3.0-or-later
 """
 
 import errno
+import os
+import shutil
 import sqlite3 as sql
+from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import factory
@@ -14,6 +17,7 @@ import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
+from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
 from scout.lib.model.hash import DEFAULT_BITS, Hash
@@ -21,11 +25,13 @@ from scout.lib.scan import (
     Gone,
     Outcome,
     Scanned,
+    Summary,
     _Batch,
     _mark_dir_gone,
     _scan_dir,
     _scan_file,
     decide,
+    scan,
 )
 
 # Alias for factory:
@@ -274,3 +280,98 @@ class TestMarkDirGone:
             files = dict(conn.execute("SELECT name, gone FROM file;").fetchall())
         assert (dirs["b"], dirs["b/c"], dirs["."]) == (7, 7, None)
         assert (files["x"], files["y"], files["a"]) == (7, 7, None)
+
+
+class TestScan:
+    """scan on the default tree under the manifest fixture: wiring only."""
+
+    def test_first_scan_counts_and_order(self, tree: Tree, manifest: Manifest) -> None:
+        """Four Scanned in DFS path order, all ADDED; no Gone; no row for
+        .scout.db; Summary added 4, others 0, finished >= started; the
+        scan row has that finished and files_seen 4."""
+        records = list(scan(manifest))
+        summary = records[-1]
+        scanned = [r for r in records if isinstance(r, Scanned)]
+
+        assert isinstance(summary, Summary)
+        assert [r.path for r in scanned] == sorted(tree.files)
+        assert all(r.outcome == ADDED for r in scanned)
+        assert not any(isinstance(r, Gone) for r in records)
+        assert manifest.files.get(0, ".scout.db") is None
+        counts = (summary.added, summary.updated, summary.matched)
+        assert (counts, summary.errors, summary.gone) == ((4, 0, 0), 0, 0)
+        assert summary.finished >= summary.started
+        with sql.connect(manifest.db.path) as conn:
+            q = "SELECT finished, files_seen FROM scan WHERE started = ?;"
+            row = conn.execute(q, (summary.started,)).fetchone()
+        assert row == (summary.finished, 4)
+
+    def test_rescan_after_rmtree_marks_subtree_gone(
+        self, tree: Tree, manifest: Manifest
+    ) -> None:
+        """Scan, remove b, scan again: Gone paths are exactly b/b1.txt,
+        b/b2.txt, b/c/empty.txt, b/c, b; Summary gone 5, matched 1."""
+        list(scan(manifest))
+        shutil.rmtree(tree.root / "b")
+
+        records = list(scan(manifest))
+
+        summary = records[-1]
+        assert isinstance(summary, Summary)
+        expected = {
+            PPP(p) for p in ("b/b1.txt", "b/b2.txt", "b/c/empty.txt", "b/c", "b")
+        }
+        assert {r.path for r in records if isinstance(r, Gone)} == expected
+        assert (summary.gone, summary.matched) == (5, 1)
+
+    def test_unreadable_dir_keeps_its_rows(
+        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Scan, then os.scandir monkeypatched to fail on b: one Unreadable
+        for b, no Gone, and the rows for b, b/c, and their files keep gone
+        None."""
+        list(scan(manifest))
+        real = os.scandir
+
+        def fake(path):
+            if Path(path) == tree.root / "b":
+                raise PermissionError(errno.EACCES, "Permission denied")
+            return real(path)
+
+        monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
+
+        records = list(scan(manifest))
+
+        unreadable = [r for r in records if isinstance(r, Err.Unreadable)]
+        assert [u.path for u in unreadable] == [PPP("b")]
+        assert not any(isinstance(r, Gone) for r in records)
+        with sql.connect(manifest.db.path) as conn:
+            gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
+            gone_files = conn.execute(
+                "SELECT count(*) FROM file WHERE gone IS NOT NULL;"
+            )
+            assert (gone_dirs.fetchone()[0], gone_files.fetchone()[0]) == (0, 0)
+
+    def test_abort_keeps_committed_batches(
+        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """batch_size 2, hash_file raising RuntimeError on its third call:
+        scan raises; a second connection sees two file rows; the scan row
+        has finished None."""
+        real, calls = hash_file, [0]
+
+        def flaky(*args, **kwargs):
+            calls[0] += 1
+            if calls[0] == 3:
+                raise RuntimeError("boom")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr("scout.lib.scan.hash_file", flaky)
+
+        with pytest.raises(RuntimeError):
+            list(scan(manifest, batch_size=2))
+
+        with sql.connect(manifest.db.path) as conn:
+            files = conn.execute("SELECT count(*) FROM file;").fetchone()[0]
+            finished = conn.execute("SELECT finished FROM scan;").fetchone()[0]
+        assert (files, finished) == (2, None)
