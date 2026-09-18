@@ -38,6 +38,9 @@ class FileRepo:
 
     _UPDATE_GONE = "UPDATE file set gone = ? WHERE gone IS NULL AND dir_id IN ({});"
 
+    _UPDATE_GONE_ONE = """UPDATE file set gone = ?
+                            WHERE (dir_id = ? AND name = ? AND gone IS NULL);"""
+
     def __init__(self, db: DBConnector) -> None:
         """Bind to the manifest db shares."""
         self.db = db
@@ -90,3 +93,7 @@ class FileRepo:
         """Set gone to started on every live file in the listed dirs."""
         dids = ", ".join("?" * len(dir_ids))
         self.db.conn.execute(self._UPDATE_GONE.format(dids), (started, *dir_ids))
+
+    def mark_gone_one(self, dir_id: int, name: str, started: int) -> None:
+        """Set gone to started on the live file at (dir_id, name), if any."""
+        self.db.conn.execute(self._UPDATE_GONE_ONE, (started, dir_id, name))

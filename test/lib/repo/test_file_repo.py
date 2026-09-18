@@ -115,3 +115,24 @@ class TestMarkGone:
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
             assert conn.execute(q).fetchall() == [(0, None), (d.id, 9), (e.id, 9)]
+
+
+class TestMarkGoneOne:
+    """mark_gone_one sets gone on exactly one live file by dir_id and name."""
+
+    def test_marks_only_that_row(self, manifest: Manifest) -> None:
+        """Of two files in one dir and one in root, only the named file in
+        the named dir gets gone; the other two stay None."""
+        d = manifest.dirs.add(PPP("d"))
+        manifest.files.add(mk_file_model(dir_id=0, name="root-file"))
+        manifest.files.add(mk_file_model(dir_id=d.id, name="d-file"))
+        manifest.files.add(mk_file_model(dir_id=d.id, name="d-gone"))
+
+        manifest.files.mark_gone_one(d.id, "d-gone", 42)
+        with sql.connect(manifest.db.path) as conn:
+            q = "SELECT dir_id, name, gone FROM file;"
+            file_row_map = {r[1]: r for r in conn.execute(q).fetchall()}
+
+        assert file_row_map["root-file"] == (0, "root-file", None)
+        assert file_row_map["d-file"] == (d.id, "d-file", None)
+        assert file_row_map["d-gone"] == (d.id, "d-gone", 42)
