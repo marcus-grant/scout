@@ -5,7 +5,7 @@ Created: 2026-09-18
 License: AGPL-3.0-or-later
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -13,7 +13,7 @@ from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat
+from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
 from scout.lib.model.file import File
 from scout.lib.model.hash import DEFAULT_BITS
@@ -52,6 +52,13 @@ class Scanned:
     path: PPP
     file: File
     outcome: Outcome
+
+
+@dataclass(frozen=True)
+class Gone:
+    """One row marked gone this scan: its root-relative path."""
+
+    path: PPP
 
 
 @dataclass(frozen=True)
@@ -109,3 +116,41 @@ def _scan_file(
     file = manifest.files.add(File(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
 
     return Scanned(dir_rel / stat.name, file, outcome)
+
+
+def _scan_dir(
+    manifest: Manifest,
+    root: Path,
+    listing: Listing,
+    started: int,
+    *,
+    hash: bool = True,
+    force: bool = False,
+    bits: int = DEFAULT_BITS,
+    on_progress: Callable[[int], None] | None = None,
+) -> Iterator[Scanned | Gone | Err.Unreadable]:
+    """Bring one walked directory's rows current, yielding as it goes.
+    dirs.add(listing.path) first; then one _scan_file per FileStat in
+    listing order; then every live file row in this dir whose name is not
+    in the listing is marked gone with started and yielded as Gone; last,
+    each Unreadable the listing carried."""
+    d = manifest.dirs.add(listing.path)
+    for st in listing.files:
+        yield _scan_file(
+            manifest,
+            d.id,
+            listing.path,
+            root / listing.path,
+            st,
+            started,
+            hash=hash,
+            force=force,
+            bits=bits,
+            on_progress=on_progress,
+        )
+    seen = {st.name for st in listing.files}
+    for row in manifest.files.in_dir(d.id):
+        if row.name not in seen:
+            manifest.files.mark_gone_one(d.id, row.name, started)
+            yield Gone(listing.path / row.name)
+    yield from listing.errors

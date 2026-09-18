@@ -6,6 +6,7 @@ License: AGPL-3.0-or-later
 """
 
 import errno
+import sqlite3 as sql
 from pathlib import PurePosixPath as PPP
 
 import factory
@@ -13,10 +14,10 @@ import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
-from scout.lib.fs.walk import FileStat
+from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
 from scout.lib.model.hash import DEFAULT_BITS, Hash
-from scout.lib.scan import Outcome, Scanned, _scan_file, decide
+from scout.lib.scan import Gone, Outcome, Scanned, _scan_dir, _scan_file, decide
 
 # Alias for factory:
 # Creates default file with override kwargs:
@@ -75,7 +76,7 @@ Tree = factory.Tree
 def _fstat(tree: Tree, rel: str) -> FileStat:
     """FileStat of tree.root / rel as the walker would report it."""
     st = (tree.root / rel).stat()
-    return FileStat(rel, st.st_size, st.st_mtime_ns)
+    return FileStat(PPP(rel).name, st.st_size, st.st_mtime_ns)
 
 
 class TestScanFile:
@@ -162,3 +163,49 @@ class TestScanFile:
         assert isinstance(act, Err.Unreadable)
         assert act.errno == errno.EACCES
         assert manifest.files.get(0, "a.txt") is None
+
+
+class TestScanDir:
+    """_scan_dir on one Listing of the default tree."""
+
+    def test_adds_dir_and_files_in_order(self, tree: Tree, manifest: Manifest) -> None:
+        """The listing for b: dirs.get(b) exists after; two Scanned records
+        ADDED, paths b/b1.txt then b/b2.txt; no Gone, no Unreadable."""
+        fst_b1, fst_b2 = _fstat(tree, "b/b1.txt"), _fstat(tree, "b/b2.txt")
+        listing = Listing(PPP("b"), (fst_b1, fst_b2), ())
+
+        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+
+        assert manifest.dirs.get(PPP("b")) is not None
+        assert [type(r) for r in records] == [Scanned, Scanned]
+        assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
+        assert all(r.outcome == ADDED for r in records if isinstance(r, Scanned))
+
+    def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
+        """A stored row b/old.txt not in the listing: one Gone with path
+        b/old.txt after the Scanned records; the row's gone is started."""
+        d = manifest.dirs.add(PPP("b"))
+        manifest.files.add(mk_fmodel(dir_id=d.id, name="old.txt"))
+        fst_b1, fst_b2 = _fstat(tree, "b/b1.txt"), _fstat(tree, "b/b2.txt")
+        listing = Listing(PPP("b"), (fst_b1, fst_b2), ())
+
+        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+
+        assert len(records) == 3
+        assert records[-1] == Gone(PPP("b/old.txt"))
+        with sql.connect(manifest.db.path) as conn:
+            q = "SELECT gone FROM file WHERE name = 'old.txt';"
+            assert conn.execute(q).fetchone() == (7,)
+
+    def test_listing_errors_are_yielded_last(
+        self, tree: Tree, manifest: Manifest
+    ) -> None:
+        """A Listing for b/c with no files and one Unreadable: dirs.get(b/c)
+        exists, the one record yielded is that Unreadable."""
+        unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
+        listing = Listing(PPP("b/c"), (), (unreadable,))
+
+        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+
+        assert manifest.dirs.get(PPP("b/c")) is not None
+        assert records == [unreadable]
