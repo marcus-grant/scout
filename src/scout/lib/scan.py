@@ -5,10 +5,18 @@ Created: 2026-09-18
 License: AGPL-3.0-or-later
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from pathlib import PurePosixPath as PPP
 
+import scout.lib.error as Err
+from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat
+from scout.lib.manifest import Manifest
 from scout.lib.model.file import File
+from scout.lib.model.hash import DEFAULT_BITS
 
 
 class Outcome(Enum):
@@ -20,13 +28,84 @@ class Outcome(Enum):
     MATCHED = "matched"
 
 
-def decide(row: File | None, stat: FileStat, *, force: bool = False) -> Outcome:
+def decide(
+    row: File | None, stat: FileStat, *, force: bool = False, hash: bool = False
+) -> Outcome:
     """ADDED when row is None; UPDATED when force is set or row.size or
     row.mtime differ from stat; MATCHED when size and mtime both agree."""
     if row is None:
         return Outcome.ADDED
     if (row.size != stat.size) or (row.mtime != stat.mtime):
         return Outcome.UPDATED
+    if hash and row.hash is None:
+        return Outcome.UPDATED
     if force:
         return Outcome.UPDATED
     return Outcome.MATCHED
+
+
+@dataclass(frozen=True)
+class Scanned:
+    """One file as the scan left it: its root-relative path, its row, and
+    what the scan did to that row."""
+
+    path: PPP
+    file: File
+    outcome: Outcome
+
+
+@dataclass(frozen=True)
+class Summary:
+    """What one scan did in total: its window and the count per outcome,
+    plus the errors met and the rows marked gone."""
+
+    started: int
+    finished: int
+    added: int
+    updated: int
+    matched: int
+    errors: int
+    gone: int
+
+
+def _mark_dir_gone(manifest: Manifest, path: PPP, started: int) -> int:
+    """Mark path and every live dir under it gone, and every live file in
+    them; return the number of rows marked."""
+    ...  # noqa
+
+
+def _scan_file(
+    manifest: Manifest,
+    dir_id: int,
+    dir_rel: PPP,
+    dir_abs: Path,
+    stat: FileStat,
+    started: int,
+    *,
+    hash: bool = True,
+    force: bool = False,
+    bits: int = DEFAULT_BITS,
+    on_progress: Callable[[int], None] | None = None,
+) -> Scanned | Err.Unreadable:
+    """Bring one file's row up to date and say what was done.
+    Fetch the live row at (dir_id, stat.name); decide against stat.
+    MATCHED: write nothing and return the row as found.
+    ADDED or UPDATED with hash: hash_file(dir_abs / stat.name), write the
+    row with that hash and hashed = started.
+    ADDED or UPDATED without hash: write the row with hash and hashed null.
+    An Unreadable from hash_file is returned and nothing is written."""
+    row = manifest.files.get(dir_id, stat.name)
+    outcome = decide(row, stat, force=force)
+    if outcome is Outcome.MATCHED:
+        assert row is not None, "MATCHED implies a row"
+        return Scanned(dir_rel / stat.name, row, outcome)
+
+    h, hashed = None, None
+    if hash:
+        h = hash_file(dir_abs / stat.name, bits, on_progress=on_progress)
+        if isinstance(h, Err.Unreadable):
+            return h
+        hashed = started
+    file = manifest.files.add(File(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
+
+    return Scanned(dir_rel / stat.name, file, outcome)
