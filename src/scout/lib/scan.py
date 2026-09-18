@@ -154,3 +154,30 @@ def _scan_dir(
             manifest.files.mark_gone_one(d.id, row.name, started)
             yield Gone(listing.path / row.name)
     yield from listing.errors
+
+
+class _Batch:
+    """Commit the manifest every size rows so an interrupted scan keeps
+    its progress; scan calls tick once per row written."""
+
+    def __init__(self, manifest: Manifest, size: int) -> None:
+        """Hold the manifest and the batch size; no transaction is open yet."""
+        self.manifest = manifest
+        self.size = size
+
+    def open(self) -> None:
+        """Begin a transaction on the manifest and zero the counter."""
+        self.count = 0
+        self.manifest.__enter__()
+
+    def tick(self) -> None:
+        """Count one row; at size, commit, reopen, and zero the counter."""
+        self.count += 1
+        if self.count >= self.size:
+            self.close()
+            self.open()
+
+    def close(self) -> None:
+        """Commit whatever is pending and leave no transaction open."""
+        self.count = 0
+        self.manifest.__exit__(None, None, None)

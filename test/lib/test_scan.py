@@ -17,7 +17,7 @@ import scout.lib.error as Err
 from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
 from scout.lib.model.hash import DEFAULT_BITS, Hash
-from scout.lib.scan import Gone, Outcome, Scanned, _scan_dir, _scan_file, decide
+from scout.lib.scan import Gone, Outcome, Scanned, _Batch, _scan_dir, _scan_file, decide
 
 # Alias for factory:
 # Creates default file with override kwargs:
@@ -209,3 +209,36 @@ class TestScanDir:
 
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [unreadable]
+
+
+class TestBatch:
+    """_Batch commits the manifest only on size boundaries and on close."""
+
+    def _count(self, manifest: Manifest) -> int:
+        """File rows visible to a second connection, committed ones only."""
+        with sql.connect(manifest.db.path) as conn:
+            return conn.execute("SELECT count(*) FROM file;").fetchone()[0]
+
+    def test_commits_on_size_boundary(self, manifest: Manifest) -> None:
+        """size 2: after one add and tick a second sqlite3 connection sees
+        no file rows; after the second add and tick it sees two."""
+        batch = _Batch(manifest, 2)
+        batch.open()
+        manifest.files.add(mk_fmodel(name="one"))
+        batch.tick()
+        assert self._count(manifest) == 0
+        manifest.files.add(mk_fmodel(name="two"))
+        batch.tick()
+        assert self._count(manifest) == 2
+        batch.close()
+
+    def test_close_commits_the_tail(self, manifest: Manifest) -> None:
+        """size 5: one add and tick, then close; a second connection sees
+        the row."""
+        batch = _Batch(manifest, 5)
+        batch.open()
+        manifest.files.add(mk_fmodel(name="one"))
+        batch.tick()
+        assert self._count(manifest) == 0
+        batch.close()
+        assert self._count(manifest) == 1
