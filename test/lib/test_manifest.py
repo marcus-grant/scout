@@ -9,6 +9,7 @@ import sqlite3 as sql
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
+import factory
 import pytest
 from assertion import assert_err_fields
 
@@ -146,6 +147,14 @@ class TestOpen:
             Manifest.open(bad)
         bad_posix = bad.as_posix()
         assert_err_fields(exc, bad_posix, "meta", "table", path=PPP(bad_posix))
+
+    def test_open_accepts_the_root_directory(self, tmp_path: Path) -> None:
+        """After mk_manifest(tmp_path), Manifest.open(tmp_path) opens
+        tmp_path/.scout.db and its meta.root is tmp_path."""
+        factory.mk_manifest(tmp_path)
+        opened = Manifest.open(tmp_path)
+        assert opened.db.path == tmp_path / ".scout.db"
+        assert Path(opened.meta.root) == tmp_path.resolve()
 
 
 class TestTransaction:

@@ -23,6 +23,7 @@ from scout.lib.repo.scan_repo import ScanRepo
 class Manifest:
     """One .scout.db: meta, scans, dirs, and files over a shared connector."""
 
+    DEFAULT_NAME = ".scout.db"
     SCHEMA_VERSION = 1
     HASH_ALGO = "b3c32"
     REPOS = (MetaRepo, ScanRepo, DirRepo, FileRepo)  # In order of which must init first
@@ -100,6 +101,8 @@ class Manifest:
     @classmethod
     def open(cls, path: Path) -> "Manifest":
         """Open an existing manifest, refusing a wrong schema_version."""
+        if path.is_dir():
+            path = path / cls.DEFAULT_NAME
         man = cls(DBConnector(path))
         if (version := man.meta.schema_version) != cls.SCHEMA_VERSION:
             msg = """schema_version {} at {}, this build reads {}"""

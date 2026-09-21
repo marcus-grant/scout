@@ -27,7 +27,7 @@ def run_init(
     """Create a manifest for target and emit one InitDone."""
     # Normalize inputs
     target = target.resolve()
-    repo = repo if repo is not None else target / ".scout.db"
+    repo = repo if repo is not None else target / Manifest.DEFAULT_NAME
     detail = detail if detail is not None else fs_meta.read_all(target)
     missing = tuple(k for k, v in detail.items() if not v)
 
