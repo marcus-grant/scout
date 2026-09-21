@@ -122,7 +122,7 @@ def _scan_file(
     if hash:
         h = hash_file(dir_abs / stat.name, bits, on_progress=on_progress)
         if isinstance(h, Err.Unreadable):
-            return h
+            return Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
         hashed = started
     file = manifest.files.add(File(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
 

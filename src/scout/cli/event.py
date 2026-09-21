@@ -29,15 +29,6 @@ class InitDone(Event):
 
 
 @dataclass(frozen=True)
-class ScanStarted(Event):
-    """A scan began: which manifest, which root, when."""
-
-    repo: Path
-    root: Path
-    started: int
-
-
-@dataclass(frozen=True)
 class ScanFile(Event):
     """One file processed: its root-relative path, its row, its outcome."""
 

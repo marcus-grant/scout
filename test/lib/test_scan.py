@@ -173,10 +173,11 @@ class TestScanFile:
         unreadable = Err.Unreadable("Permission denied", path=PPP("a.txt"), errno=13)
         monkeypatch.setattr("scout.lib.scan.hash_file", lambda *_a, **_k: unreadable)
 
-        act = _scan_file(manifest, 0, PPP("."), tree.root, fst, started=7)
+        act = _scan_file(manifest, 0, PPP("b"), tree.root, fst, started=7)
 
         assert isinstance(act, Err.Unreadable)
         assert act.errno == errno.EACCES
+        assert act.path == PPP("b/a.txt")
         assert manifest.files.get(0, "a.txt") is None
 
 

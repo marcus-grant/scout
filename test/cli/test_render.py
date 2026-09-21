@@ -64,12 +64,6 @@ class TestPorcelainInitDone:
 class TestPorcelainScan:
     """Exact porcelain lines for the five scan events, pinned once each."""
 
-    def test_started_prints_nothing(self) -> None:
-        """ScanStarted renders to empty out and err."""
-        evt = events.ScanStarted(Path("/data/.scout.db"), Path("/data"), started=7)
-
-        assert porcelain(evt) == Output()
-
     def test_file_line(self) -> None:
         """ScanFile(b/x.txt, any File, ADDED) renders out ("added b/x.txt",)."""
         evt = events.ScanFile(PPP("b/x.txt"), factory.mk_file_model(), Outcome.ADDED)

@@ -33,6 +33,8 @@ def scout_command(*args: Any, **kw: Any) -> _CMD_DECO:
             except Err.ScoutDomain as e:
                 click.echo(f"{NAME}: {e}", err=True)
                 raise SystemExit(1)
+            except click.ClickException:
+                raise
             except Exception as e:  # noqa: BLE001 everything unknown is rewrapped
                 _report_unknown(Err.ScoutUnknown.wrap(e))
                 raise SystemExit(EX_SOFTWARE)

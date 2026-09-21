@@ -17,8 +17,6 @@ from click.testing import CliRunner
 
 from scout.cli import main
 
-SKIP = "scan verb not yet implemented"
-
 FILE_ROWS = (
     "SELECT d.path, f.name, f.hash, f.hashed, f.gone, f.size "
     "FROM file AS f JOIN dir AS d ON f.dir_id = d.id;"
@@ -59,7 +57,6 @@ def _scan(root: Path, *flags: str) -> tuple[int, int, int]:
 class TestScan:
     """scout init then scout scan records a factory tree and its changes."""
 
-    @pytest.mark.skip(reason=SKIP)
     def test_first_scan_records_tree(self, tmp_path: Path) -> None:
         """One file row per factory file with hash and hashed set, one dir
         row per directory including the empty one, no row for .scout.db,
@@ -86,7 +83,6 @@ class TestScan:
             assert hashed == started
             assert gone is None
 
-    @pytest.mark.skip(reason=SKIP)
     def test_rescan_records_changes(self, tmp_path: Path) -> None:
         """Delete one file, lengthen one, add one, scan again: the deleted
         row has gone set to the second started, the lengthened row has a
@@ -113,7 +109,6 @@ class TestScan:
         for path in set(tree.files) - {deleted, changed}:
             assert second[path] == first[path]
 
-    @pytest.mark.skip(reason=SKIP)
     def test_no_hash_rescan_clears_changed_hash(self, tmp_path: Path) -> None:
         """Lengthen one file and scan with --no-hash: that row has null hash
         and null hashed and the new size; every other row keeps its hash."""

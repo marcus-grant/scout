@@ -7,6 +7,8 @@ License: AGPL-3.0-or-later
 
 from dataclasses import dataclass
 
+import click
+
 import scout.cli.event as events
 
 
@@ -23,11 +25,6 @@ def _init_done(event: events.InitDone) -> Output:
     success = f"Initialized scout manifest {event.repo} for {event.root}"
     missing = (f"could not read {m}" for m in event.missing)
     return Output(out=(success,), err=tuple(missing))
-
-
-def _scan_started(event: events.ScanStarted) -> Output:
-    """Porcelain prints nothing when a scan starts."""
-    return Output()
 
 
 def _scan_file(event: events.ScanFile) -> Output:
@@ -63,8 +60,6 @@ def porcelain(event: events.Event) -> Output:
     match event:
         case events.InitDone():
             return _init_done(event)
-        case events.ScanStarted():
-            return _scan_started(event)
         case events.ScanFile():
             return _scan_file(event)
         case events.ScanGone():
@@ -74,3 +69,12 @@ def porcelain(event: events.Event) -> Output:
         case events.ScanFinished():
             return _scan_finished(event)
     raise TypeError(f"porcelain renderer has no handler for event: {type(event)}")
+
+
+def echo_porcelain(event: events.Event) -> None:
+    """Render event with porcelain and echo out and err lines."""
+    output = porcelain(event)
+    for line in output.out:
+        click.echo(line)
+    for line in output.err:
+        click.echo(line, err=True)
