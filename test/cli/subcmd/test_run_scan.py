@@ -98,6 +98,18 @@ class TestRunScan:
         errors = [e for e in seen if isinstance(e, events.ScanError)]
         assert [e.path for e in errors] == [PPP("b")]
 
+    def test_relative_path_excludes_own_manifest(
+        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With cwd at the root and path ".", no ScanFile names .scout.db."""
+        monkeypatch.chdir(tree.root)
+        seen: list[events.Event] = []
+
+        run_scan(Path("."), seen.append, detail={})
+
+        paths = [e.path for e in seen if isinstance(e, events.ScanFile)]
+        assert PPP(".scout.db") not in paths
+
 
 class TestScanCommand:
     """The scan command through CliRunner on an initialized default tree."""

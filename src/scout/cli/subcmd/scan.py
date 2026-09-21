@@ -38,6 +38,7 @@ def run_scan(
     Unreadable to ScanError, Summary to ScanFinished.
     Detail replaces fs_meta.read_all(root) when given, for tests."""
     # Open and update manifest with fs meta details
+    path = path.resolve()
     manifest = Manifest.open(path)
     root = Path(manifest.meta.root)
     detail = detail if detail is not None else fs_meta.read_all(root)
