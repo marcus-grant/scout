@@ -35,7 +35,7 @@ class TestRunScan:
     def test_emits_one_event_per_record(self, tree: Tree, manifest: Manifest) -> None:
         """Four ScanFile in DFS order then one ScanFinished with added 4;
         no ScanGone, no ScanError."""
-        seen: list[events.Event] = []
+        seen: list[events.CliEvent] = []
 
         run_scan(manifest.db.path, seen.append, detail={})  # {} turns off fs meta
 
@@ -61,7 +61,7 @@ class TestRunScan:
 
     def test_no_hash_reaches_the_rows(self, tree: Tree, manifest: Manifest) -> None:
         """hash False: every ScanFile has file.hash None."""
-        seen: list[events.Event] = []
+        seen: list[events.CliEvent] = []
 
         run_scan(manifest.db.path, seen.append, hash=False, detail={})
 
@@ -71,7 +71,7 @@ class TestRunScan:
 
     def test_gone_maps_to_scan_gone(self, tree: Tree, manifest: Manifest) -> None:
         """Run, delete a.txt, run again: seen holds ScanGone(a.txt)."""
-        seen: list[events.Event] = []
+        seen: list[events.CliEvent] = []
         run_scan(manifest.db.path, lambda _: None, detail={})
         (tree.root / "a.txt").unlink()
 
@@ -83,7 +83,7 @@ class TestRunScan:
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """os.scandir failing on b: seen holds one ScanError whose path is b."""
-        seen: list[events.Event] = []
+        seen: list[events.CliEvent] = []
         real = os.scandir
 
         def fake(p):
@@ -103,7 +103,7 @@ class TestRunScan:
     ) -> None:
         """With cwd at the root and path ".", no ScanFile names .scout.db."""
         monkeypatch.chdir(tree.root)
-        seen: list[events.Event] = []
+        seen: list[events.CliEvent] = []
 
         run_scan(Path("."), seen.append, detail={})
 

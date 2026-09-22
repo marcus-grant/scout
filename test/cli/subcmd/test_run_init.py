@@ -21,7 +21,7 @@ class TestRunInit:
 
     def test_creates_manifest_and_emits_done(self, tmp_path: Path) -> None:
         """The db file exists after; the event carries repo, root, missing."""
-        emitted: list[events.Event] = []
+        emitted: list[events.CliEvent] = []
         run_init(tmp_path, None, None, emitted.append, detail={})
         assert (tmp_path / ".scout.db").is_file()
         assert emitted == [
@@ -30,14 +30,14 @@ class TestRunInit:
 
     def test_defaults_repo_beside_target(self, tmp_path: Path) -> None:
         """No repo argument means target/.scout.db."""
-        emitted: list[events.Event] = []
+        emitted: list[events.CliEvent] = []
         run_init(tmp_path, None, None, emitted.append, detail={})
         assert isinstance(init_event := emitted[0], events.InitDone)
         assert init_event.repo == tmp_path / ".scout.db"
 
     def test_missing_names_unread_details(self, tmp_path: Path) -> None:
         """Keys preset and falsy land in missing; absent keys are unmentioned."""
-        emitted: list[events.Event] = []
+        emitted: list[events.CliEvent] = []
         detail = {"fs_type": "ext4", "hostname": "boblocal", "fs_uuid": None}
         run_init(tmp_path, None, None, emitted.append, detail=detail)
         assert isinstance(init_event := emitted[0], events.InitDone)
@@ -48,7 +48,7 @@ class TestRunInit:
     ) -> None:
         """A relative target lands absolute in the manifest and the event."""
         monkeypatch.chdir(tmp_path)
-        emitted: list[events.Event] = []
+        emitted: list[events.CliEvent] = []
         run_init(Path("."), None, None, emitted.append, detail={})
         assert isinstance(init_event := emitted[0], events.InitDone)
         assert init_event.root == tmp_path.resolve()
@@ -70,7 +70,7 @@ class TestRunInit:
         """detail None resolves through fs.meta.read_all, not an empty dict."""
         canned: dict[str, str | None] = {"fs_type": "btrfs", "fs_uuid": None}
         monkeypatch.setattr(fs_meta, "read_all", lambda *_: canned)
-        emitted: list[events.Event] = []
+        emitted: list[events.CliEvent] = []
         run_init(tmp_path, None, None, emitted.append)
         assert isinstance(done_event := emitted[0], events.InitDone)
         assert done_event.missing == ("fs_uuid",)

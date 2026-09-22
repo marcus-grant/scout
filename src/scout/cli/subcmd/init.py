@@ -21,7 +21,7 @@ def run_init(
     target: Path,
     repo: Path | None,
     comment: str | None,
-    emit: Callable[[events.Event], None],
+    emit: Callable[[events.CliEvent], None],
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
     """Create a manifest for target and emit one InitDone."""

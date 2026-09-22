@@ -25,7 +25,7 @@ from scout.lib.scan import scan as lib_scan
 
 def run_scan(
     path: Path,
-    emit: Callable[[events.Event], None],
+    emit: Callable[[events.CliEvent], None],
     *,
     hash: bool = True,
     force: bool = False,
@@ -68,13 +68,13 @@ def run_scan(
                 )
 
 
-def _emitter(verbose: bool, progress: bool) -> Callable[[events.Event], None]:
+def _emitter(verbose: bool, progress: bool) -> Callable[[events.CliEvent], None]:
     """Build the emit for the command: echo every event through porcelain,
     except ScanFile which is echoed only when verbose; when progress is set,
     also write one 'N files' line to stderr per ScanFile and ScanGone."""
     done = 0
 
-    def emit(event: events.Event) -> None:
+    def emit(event: events.CliEvent) -> None:
         nonlocal done
         if progress and isinstance(event, (events.ScanFile, events.ScanGone)):
             done += 1
