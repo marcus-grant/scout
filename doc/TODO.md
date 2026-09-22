@@ -87,32 +87,6 @@ introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order; each was
 signed off point-by-point on 2026-09-22.
 
-### e2e
-
-First in the sequence: the five restructure PRs must change nothing
-e2e-observable, and this strengthened suite is the proof they run
-under.
-
-- CliRunner stays, as an explicit exception to true end-to-end:
-  - subprocessing the entry point is too slow for a suite run
-    constantly this early; Click's own testing of CliRunner is the
-    trusted substitute.
-- Separate stream capture (`result.stderr` vs stdout; on older
-  Click, `mix_stderr=False`):
-  - pin the pipeline contract — porcelain records on stdout,
-    errors and decoration on stderr;
-  - real-tty behavior stays out of e2e: progress unit tests
-    monkeypatch `isatty`; e2e exercises the non-tty path natively.
-- Assert what the user sees, not just db state:
-  - porcelain stdout lines and exit codes per scenario;
-  - keep the raw-`sqlite3` row assertions — they are half the
-    contract by design.
-- Coverage additions: deleted subtree (the sweep path), `--rehash`;
-  - `init` invocations assert success instead of ignoring results.
-- Readability: name the row tuples; no magic indices.
-- `scan-cli` later extends this suite with what only exists after
-  it: progress behavior, `-p`, the `-r`/`--repo` override.
-
 ### models
 
 - `lib/models.py`, one flat module replacing `lib/model/`
@@ -155,6 +129,10 @@ under.
 ### manifest-services
 
 - Composition rule: **Manifest composes, never implements**:
+  - Consider if manifest should be a package in lib root
+    - That way mainfest.Manifest is importable as single class
+    - Its services are clearly split out from other services in lib
+    - Although I think an argument could be made services in root of lib, discuss
   - single-table concern → repo; cross-repo updates → a service
     *(Fowler's Service Layer in the strict sense; naming rules in
     CONTRIBUTE)*, composed like a fifth repo.
@@ -187,6 +165,8 @@ under.
   roundtrip boundary).
 
 ### scan-restructure
+
+>**NOTE**: This task is likely too big for one PR, plan a split if needed
 
 - `ScanEvent` base family, mirroring `cli.event`:
   - `FileScanned(path, record, change)`, `RecordGone(path)`,
@@ -242,6 +222,7 @@ under.
 ### scan-cli
 
 CLI architecture settled 2026-09-22 (discussion round two):
+>**NOTE**: This task is likely too big for one PR, plan a split if needed
 
 - Module map, one role per module:
   - `cli/event.py` — the `CliEvent` family only;
