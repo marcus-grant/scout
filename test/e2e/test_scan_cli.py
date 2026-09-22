@@ -7,6 +7,7 @@ Revised: [2026-09-22]
 License: AGPL-3.0-or-later
 """
 
+import shutil
 import sqlite3 as sql
 import time
 from pathlib import Path
@@ -160,3 +161,78 @@ class TestScan:
         assert second[changed].size == len(content)
         for path in set(tree.files) - {changed}:
             assert second[path].hash == first[path].hash
+
+    def test_rescan_records_changes(self, tree: Tree) -> None:
+        """Delete the b subtree, lengthen a.txt, add new.txt, scan again:
+        stdout is one gone line per swept file then per swept dir, files
+        before dirs, then the summary line with added 1 updated 1 matched 0
+        gone 5; the three swept file rows and both swept dir rows have gone
+        set to the second started, a.txt has a new hash and hashed equal to
+        the second started, new.txt has hashed equal to the second started,
+        and d is untouched."""
+        db = tree.root / ".scout.db"
+        _init(tree.root)
+        _scan(tree.root)
+        first = _files(db)
+        swept_files = {p for p in tree.files if p.parts[0] == "b"}
+        swept_dirs = {"b", "b/c"}
+        changed, added = PPP("a.txt"), PPP("new.txt")
+        shutil.rmtree(tree.root / "b")
+        factory.mk_file(tree.root, str(changed), tree.files[changed] + b"-more")
+        factory.mk_file(tree.root, str(added), b"new")
+
+        run = _scan(tree.root)
+
+        assert len(run.out) == 6
+        assert set(run.out[:3]) == {f"gone {p}" for p in swept_files}
+        assert set(run.out[3:5]) == {f"gone {d}" for d in swept_dirs}
+        assert run.out[5] == "added 1 updated 1 matched 0 gone 5 errors 0"
+        assert run.err == ()
+        second, dirs = _files(db), _dirs(db)
+        started = _scans(db)[1].started
+        for path in swept_files:
+            assert second[path].gone == started
+        for path in swept_dirs:
+            assert dirs[path] == started
+        assert dirs["d"] is None
+        assert second[changed].hash != first[changed].hash
+        assert second[changed].hashed == started
+        assert second[added].hashed == started
+        assert second[added].gone is None
+
+    def test_unchanged_rescan_then_rehash(self, tree: Tree) -> None:
+        """Scan twice with nothing touched: the second stdout is the summary
+        line alone with matched 4, stderr is empty, every file row is
+        identical to the first. Scan a third time with --rehash --progress:
+        stdout is the summary line alone with updated 4, stderr is not
+        empty, every hash is unchanged, every hashed is the third started."""
+        db = tree.root / ".scout.db"
+        _init(tree.root)
+        _scan(tree.root)
+        first = _files(db)
+        matched = "added 0 updated 0 matched 4 gone 0 errors 0"
+
+        second_run = _scan(tree.root)
+
+        assert second_run.out == (matched,)
+        assert second_run.err == ()
+        assert _files(db) == first
+
+        third_run = _scan(tree.root, "--rehash", "--progress")
+
+        assert third_run.out == ("added 0 updated 4 matched 0 gone 0 errors 0",)
+        assert third_run.err != ()
+        third = _files(db)
+        started = _scans(db)[2].started
+        for path in tree.files:
+            assert third[path].hash == first[path].hash
+            assert third[path].hashed == started
+
+    def test_scan_without_manifest_fails(self, tree: Tree) -> None:
+        """Scan a tree never initialized: nonzero exit, empty stdout, one
+        line on stderr."""
+        result = CliRunner().invoke(main, ["scan", str(tree.root)])
+
+        assert result.exit_code != 0
+        assert result.stdout == ""
+        assert len(result.stderr.splitlines()) == 1
