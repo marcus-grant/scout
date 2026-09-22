@@ -13,7 +13,7 @@ from pathlib import PurePosixPath as PPP
 import factory
 import pytest
 
-from scout.lib.models import File, Hash
+from scout.lib.models import FileRecord, Hash
 
 mk_file = factory.mk_file
 mk_dir = factory.mk_dir
@@ -90,15 +90,15 @@ class TestMkTree:
 
 
 class TestMkFileModel:
-    """mk_file_model builds a File from defaults and overrides."""
+    """mk_file_model builds a FileRecord from defaults and overrides."""
 
     def test_defaults(self) -> None:
-        """No args yields File(0, "f", 1, 1) with hash, hashed, gone None."""
-        assert mk_file_model() == factory.File(0, "f", 1, 1)
+        """No args yields FileRecord(0, "f", 1, 1) with hash, hashed, gone None."""
+        assert mk_file_model() == factory.FileRecord(0, "f", 1, 1)
 
     def test_overrides(self) -> None:
         """Positional and keyword overrides land on the named fields."""
-        expect = File(42, "foo", 1234, 5678, Hash("A" * 24), 9012, 1)
+        expect = FileRecord(42, "foo", 1234, 5678, Hash("A" * 24), 9012, 1)
         got = mk_file_model(
             42, "foo", 1234, 5678, hash=expect.hash, hashed=9012, gone=1
         )

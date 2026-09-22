@@ -12,11 +12,11 @@ from pathlib import PurePosixPath as PPP
 from factory import mk_file_model
 
 from scout.lib.manifest import Manifest
-from scout.lib.models import File, Hash
+from scout.lib.models import FileRecord, Hash
 from scout.lib.repo.file_repo import FileRepo
 
 
-def as_row(f: File) -> tuple:
+def as_row(f: FileRecord) -> tuple:
     """The raw file row for f: hash as its code text, in column order."""
     code = None if f.hash is None else f.hash.code
     return (f.dir_id, f.name, code, f.size, f.mtime, f.hashed, f.gone)
@@ -33,10 +33,10 @@ class TestSchema:
 
 
 class TestAdd:
-    """add upserts a File on (dir_id, name) and returns it live."""
+    """add upserts a FileRecord on (dir_id, name) and returns it live."""
 
     def test_returns_live_file(self, manifest: Manifest) -> None:
-        """The File returned equals the one given with gone None."""
+        """The FileRecord returned equals the one given with gone None."""
         fm = mk_file_model(hash=Hash("A" * 24), hashed=7)
         assert manifest.files.add(fm) == fm
         with sql.connect(manifest.db.path) as conn:
@@ -61,10 +61,10 @@ class TestAdd:
 
 
 class TestGet:
-    """get returns the live File at (dir_id, name), or None."""
+    """get returns the live FileRecord at (dir_id, name), or None."""
 
     def test_returns_added(self, manifest: Manifest) -> None:
-        """get returns the File add returned, and Nonefor an unknown name."""
+        """get returns the FileRecord add returned, and Nonefor an unknown name."""
         fm, repo = mk_file_model(), manifest.files
         assert repo.add(fm) == repo.get(fm.dir_id, fm.name)
 

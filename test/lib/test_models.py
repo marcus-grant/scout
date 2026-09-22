@@ -1,5 +1,5 @@
 # test/lib/test_models.py
-"""Pin the model types: Hash validation, Dir and File construction, and the
+"""Pin the model types: Hash validation, Dir and FileRecord construction, and the
 hash and hashed pairing invariant.
 Author: Marcus
 Created: 2026-09-23
@@ -13,7 +13,7 @@ import pytest
 from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET, hash_b32, verify_conformance
 
 import scout.lib.error as Err
-from scout.lib.models import Dir, File, Hash
+from scout.lib.models import Dir, FileRecord, Hash
 
 BITS = min(CERTIFIED_BITS)
 CODE = hash_b32(b"scout", BITS)
@@ -74,26 +74,26 @@ class TestDir:
 
 
 class TestFile:
-    """File mirrors one file row keyed by (dir_id, name)."""
+    """FileRecord mirrors one file row keyed by (dir_id, name)."""
 
     def test_defaults_to_unhashed_and_live(self) -> None:
-        """File(dir_id, name, size, mtime) has hash, hashed, and gone None."""
-        f = File(1, "foo", 42, 2**30)
+        """FileRecord(dir_id, name, size, mtime) has hash, hashed, and gone None."""
+        f = FileRecord(1, "foo", 42, 2**30)
         assert all(getattr(f, attr) is None for attr in ("hash", "hashed", "gone"))
 
     def test_equal_by_fields(self) -> None:
-        """Two File built from the same args are equal."""
+        """Two FileRecord built from the same args are equal."""
         args = (1, "foo", 42, 2**30)
         kw = {"hash": Hash("A" * 24), "hashed": (2**30) + 1}
-        assert File(*args, **kw) == File(*args, **kw)
+        assert FileRecord(*args, **kw) == FileRecord(*args, **kw)
 
     def test_frozen(self) -> None:
         """Assigning a field raises FrozenInstanceError."""
         with pytest.raises(FrozenInstanceError):
-            File(1, "foo", 42, 2**30).hash = Hash("A" * 24)  # type: ignore
+            FileRecord(1, "foo", 42, 2**30).hash = Hash("A" * 24)  # type: ignore
 
     @pytest.mark.parametrize("kw", [{"hash": Hash("A" * 24)}, {"hashed": 7}])
     def test_rejects_hash_without_hashed(self, kw: dict) -> None:
         """hash and hashed must both be set or both be None."""
         with pytest.raises(Err.UnpairedHash):
-            File(1, "foo", 42, 2**30, **kw)
+            FileRecord(1, "foo", 42, 2**30, **kw)

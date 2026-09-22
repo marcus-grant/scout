@@ -36,7 +36,7 @@ from scout.lib.scan import (
 
 # Alias for factory:
 # Creates default file with override kwargs:
-# File(dir_id=0, name="f", size=1, mtime=1, hash=None, hashed=None, gone=None)
+# FileRecord(dir_id=0, name="f", size=1, mtime=1, hash=None, hashed=None, gone=None)
 mk_fmodel = factory.mk_file_model
 
 
@@ -113,7 +113,7 @@ class TestScanFile:
         assert manifest.files.get(0, "a.txt") == result.file
 
     def test_matching_row_is_left_alone(self, tree: Tree, manifest: Manifest) -> None:
-        """A row equal to a.txt's stat: MATCHED, the returned File is the
+        """A row equal to a.txt's stat: MATCHED, the returned FileRecord is the
         stored one, hashed unchanged."""
         h = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
         fst = _fstat(tree, "a.txt")
@@ -231,7 +231,7 @@ class TestBatch:
     """_Batch commits the manifest only on size boundaries and on close."""
 
     def _count(self, manifest: Manifest) -> int:
-        """File rows visible to a second connection, committed ones only."""
+        """FileRecord rows visible to a second connection, committed ones only."""
         with sql.connect(manifest.db.path) as conn:
             return conn.execute("SELECT count(*) FROM file;").fetchone()[0]
 

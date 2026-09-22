@@ -11,7 +11,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 from scout.lib.manifest import Manifest
-from scout.lib.models import File, Hash
+from scout.lib.models import FileRecord, Hash
 
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:
@@ -73,9 +73,9 @@ def mk_file_model(
     hash: Hash | None = None,
     hashed: int | None = None,
     gone: int | None = None,
-) -> File:
-    """Return a File with small defaults; kw overrides hash, hashed, or gone."""
-    return File(
+) -> FileRecord:
+    """Return a FileRecord with small defaults; kw overrides hash, hashed, or gone."""
+    return FileRecord(
         dir_id,
         name,
         size,

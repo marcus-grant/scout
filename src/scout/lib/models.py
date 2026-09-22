@@ -51,7 +51,7 @@ class Dir:
 
 
 @dataclass(frozen=True)
-class File:
+class FileRecord:
     """One file row; name is the entry under dir_id, never a path."""
 
     dir_id: int

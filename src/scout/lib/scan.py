@@ -15,7 +15,7 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing, walk
 from scout.lib.manifest import Manifest
-from scout.lib.models import DEFAULT_BITS, File
+from scout.lib.models import DEFAULT_BITS, FileRecord
 from scout.lib.util import to_rel
 
 
@@ -29,7 +29,7 @@ class Outcome(Enum):
 
 
 def decide(
-    row: File | None, stat: FileStat, *, force: bool = False, hash: bool = False
+    row: FileRecord | None, stat: FileStat, *, force: bool = False, hash: bool = False
 ) -> Outcome:
     """ADDED when row is None; UPDATED when force is set or row.size or
     row.mtime differ from stat; MATCHED when size and mtime both agree."""
@@ -50,7 +50,7 @@ class Scanned:
     what the scan did to that row."""
 
     path: PPP
-    file: File
+    file: FileRecord
     outcome: Outcome
 
 
@@ -123,7 +123,7 @@ def _scan_file(
         if isinstance(h, Err.Unreadable):
             return Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
         hashed = started
-    file = manifest.files.add(File(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
+    file = manifest.files.add(FileRecord(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
 
     return Scanned(dir_rel / stat.name, file, outcome)
 

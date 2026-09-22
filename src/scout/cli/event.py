@@ -10,7 +10,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.models import File
+from scout.lib.models import FileRecord
 from scout.lib.scan import Outcome
 
 
@@ -33,7 +33,7 @@ class ScanFile(Event):
     """One file processed: its root-relative path, its row, its outcome."""
 
     path: PPP
-    file: File
+    file: FileRecord
     outcome: Outcome
 
 
