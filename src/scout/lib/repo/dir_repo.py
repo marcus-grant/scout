@@ -8,7 +8,7 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.models import Dir
+from scout.lib.models import DirRecord
 from scout.lib.repo.db_connector import DBConnector
 
 
@@ -41,13 +41,13 @@ class DirRepo:
         return str(path)
 
     @staticmethod
-    def _row_to_dir(row: tuple[int, str, int | None]) -> Dir:
-        """Build a Dir from one (id, path, gone) row."""
-        return Dir(id=row[0], path=PPP(row[1]), gone=row[2])
+    def _row_to_dir(row: tuple[int, str, int | None]) -> DirRecord:
+        """Build a DirRecord from one (id, path, gone) row."""
+        return DirRecord(id=row[0], path=PPP(row[1]), gone=row[2])
 
     @staticmethod
-    def _rows_to_dirs(rows: list[tuple[int, str, int | None]]) -> list[Dir]:
-        """Map a list of dir rows (id, path, gone) to a list of Dir."""
+    def _rows_to_dirs(rows: list[tuple[int, str, int | None]]) -> list[DirRecord]:
+        """Map a list of dir rows (id, path, gone) to a list of DirRecord."""
         return [DirRepo._row_to_dir(r) for r in rows]
 
     @staticmethod
@@ -63,13 +63,13 @@ class DirRepo:
         where, params = DirRepo._where_descendants(parent)
         return f"path = ? OR ({where})", (parent, *params)
 
-    def _select_dirs(self, where: str, params: tuple = ()) -> list[Dir]:
+    def _select_dirs(self, where: str, params: tuple = ()) -> list[DirRecord]:
         """Run _SELECT with where & params: id, path, gone FROM dir, ordered by path."""
         rows = self.db.conn.execute(self._SELECT.format(where), params).fetchall()
         return DirRepo._rows_to_dirs(rows)
 
-    def add(self, path: PPP) -> Dir:
-        """Upsert path as live and return its Dir; a gone row is revived."""
+    def add(self, path: PPP) -> DirRecord:
+        """Upsert path as live and return its DirRecord; a gone row is revived."""
         _path = self._check(path)
         for p in (*reversed(path.parents), path):
             if p == PPP("."):
@@ -79,13 +79,13 @@ class DirRepo:
         assert len(dirs) == 1, f"add lost its own row: {_path}"
         return dirs[0]
 
-    def get(self, path: PPP) -> Dir | None:
-        """Return the live Dir at path, or None."""
+    def get(self, path: PPP) -> DirRecord | None:
+        """Return the live DirRecord at path, or None."""
         _path = DirRepo._check(path)
         dirs = self._select_dirs(where="path = ?", params=(_path,))
         return dirs[0] if dirs else None
 
-    def descendants(self, path: PPP) -> list[Dir]:
+    def descendants(self, path: PPP) -> list[DirRecord]:
         """Return live dirs strictly under path, ordered by path."""
         _path = self._check(path)
         where, params = "path >= ? AND path < ?", (f"{_path}/", f"{_path}0")

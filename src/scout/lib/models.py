@@ -42,7 +42,7 @@ class Hash:
 
 
 @dataclass(frozen=True)
-class Dir:
+class DirRecord:
     """A directory the manifest knows; path is relative to root."""
 
     id: int

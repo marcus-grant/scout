@@ -1,5 +1,5 @@
 # test/lib/test_models.py
-"""Pin the model types: Hash validation, Dir and FileRecord construction, and the
+"""Pin the model types: Hash validation, DirRecord and FileRecord construction, and the
 hash and hashed pairing invariant.
 Author: Marcus
 Created: 2026-09-23
@@ -13,7 +13,7 @@ import pytest
 from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET, hash_b32, verify_conformance
 
 import scout.lib.error as Err
-from scout.lib.models import Dir, FileRecord, Hash
+from scout.lib.models import DirRecord, FileRecord, Hash
 
 BITS = min(CERTIFIED_BITS)
 CODE = hash_b32(b"scout", BITS)
@@ -55,20 +55,20 @@ class TestHash:
 
 
 class TestDir:
-    """Dir mirrors one dir row: id, path relative to root, gone."""
+    """DirRecord mirrors one dir row: id, path relative to root, gone."""
 
     def test_gone_defaults_to_none(self) -> None:
-        """Dir(id, path) is live: gone is None."""
-        assert Dir(7, PPP("a/b")).gone is None
+        """DirRecord(id, path) is live: gone is None."""
+        assert DirRecord(7, PPP("a/b")).gone is None
 
     def test_equal_by_fields(self) -> None:
-        """Two Dir with the same id, path, and gone are equal."""
+        """Two DirRecord with the same id, path, and gone are equal."""
         args = (7, PPP("a/b"), 42)
-        assert Dir(*args) == Dir(*args)
+        assert DirRecord(*args) == DirRecord(*args)
 
     def test_frozen(self) -> None:
         """Assigning a field raises FrozenInstanceError."""
-        dir = Dir(7, PPP("a/b"))
+        dir = DirRecord(7, PPP("a/b"))
         with pytest.raises(FrozenInstanceError):
             dir.gone = 42  # type: ignore
 
