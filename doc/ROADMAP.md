@@ -63,7 +63,7 @@ planned.
 
 ### dupes
 
-- `scout dupes [-r repo]`: group live rows by `hash`, print groups with
+- `scout dupes [manifest]`: group live rows by `hash`, print groups with
   more than one member. One SQL statement plus the renderer; trivial
   enough to add early.
 - Stage role: a source. Its output is a list of candidates for deletion
@@ -89,32 +89,40 @@ planned.
 
 - A possible table: one row per file per scan with its outcome, and
   `UNREADABLE` as a state, which the file table cannot hold.
-- Weigh it before building: Scout is a claim about the last scan, not a
-  history; `gone`, `hashed`, and the `scan` rows may be all the history
-  wanted.
+- Weighed and declined 2026-09-22: history stays `gone` and `hashed`
+  (scan-FK timestamps); unreachability is reported in the event
+  stream (`AccessLost`), never recorded. Revisit only if dogfooding
+  demands it.
 
 ### verb-architecture
 
-- Decide, with `status` in hand, the shape of verbs that reconcile a
-  manifest against disk.
-  - The read-compare-apply split: `decide` is pure, `_scan_file` both
-    decides and writes; the second verb shows whether that holds.
-  - Cross-table writes: `_mark_dir_gone` lives in `lib/scan.py`; a
-    named kind (`Op`, the write mirror of `View`, holding no SQL and
-    composing repo calls) is the candidate home once a second exists.
-  - The parameter threading through `_scan_file` and `_scan_dir` wants
-    an options object or a scan context.
-  - `scan` still holds setup, the counting loop, and the gone sweep;
-    a tally and a sweep helper are the next cuts.
-  - `decide`, `Outcome`, `walk`, and `hash_file` are shared readers and
-    lift out of `lib/scan.py` when `status` uses them.
+- Decided 2026-09-22 without waiting for `status`; sequenced in
+  `doc/TODO.md` under the restructure sections.
+  - `Op` became the service (`Subtree`, composed by `Manifest`;
+    naming rules in CONTRIBUTE); the options object is
+    `ScanOptions`; the tally and sweep cuts are `ScanTally` and
+    `_sweep_unwalked`; `RecordChange.classify` lifted to
+    `lib/models.py` ahead of a second consumer.
 
 ### progress
 
-- Rich renderer: the resetting stderr line for files done and bytes of
-  the current file; porcelain keeps its plain lines.
-- b3c32: a defined error contract for path and stream failures, or
-  confirmation that `OSError` pass-through is the contract.
+- Sequenced 2026-09-22: the status-line object is in `doc/TODO.md`
+  (`scan-cli`); Rich later replaces it behind the same `log`/`status`
+  seams.
+- Still here: b3c32's defined error contract for path and stream
+  failures, or confirmation that `OSError` pass-through is the
+  contract.
+- Pre-scan tally / `expected` totals for X-of-N progress: db estimate
+  (`~N`, free) or exact pre-walk behind a flag; deferred until
+  dogfooding asks.
+
+### resume
+
+- `--resume`, if ever wanted: derivable entirely from existing schema —
+  records whose `hashed` FKs to the newest unfinished scan row are
+  provably done; build an exclude set, optionally widened by scan age.
+  No new columns. Only if the `MATCHED`-skip rerun proves too slow on
+  stat-heavy trees.
 
 ### Undecided
 

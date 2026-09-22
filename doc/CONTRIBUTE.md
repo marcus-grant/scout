@@ -214,8 +214,14 @@ Code conventions:
     - may carry optional members their children inherit;
     - concrete errors carry no `Error` suffix.
   - `Err.ScoutUnknown.wrap` rewraps what Scout did not predict.
-  - The lib raises;
-    - `scout_command` catches at the subcommand and maps to message and exit code.
+  - Raised closest to where the concern lies;
+    - excepted at the highest boundary best placed to resolve them.
+    - Usually that is an adapter boundary (the CLI, a plugin),
+      but not always.
+    - Sometimes it is in the lib, which resolves them into values
+      in a verb's event stream (`Unreadable`).
+    - `scout_command` catches at the subcommand and maps to
+      message and exit code.
 - Tables:
   - a `Repo`:
     - owns one table,
@@ -223,11 +229,22 @@ Code conventions:
     - and holds its `SCHEMA` and every statement as class constants;
     - `WHERE` fragments are literals in the class and values are always bound.
   - A `View` reads across tables, never writes, and is named for what it returns.
+  - A service updates across repos: one concern's writes that no
+    single repo can own without branching its responsibilities;
+    - the term is Fowler's Service Layer in the strict sense only.
+    - Named by its concern alone (`Subtree`, as `manifest.subtree`).
+    - `Manifest` composes services and never implements one.
+    - A service may read along the way, but a read-only concern is
+      a `View`, and one table's logic stays in that table's repo.
+    - What fits neither repo, `View`, nor service lives in a lib
+      root module or `util.py` until a better-named pattern
+      emerges; never as a loosely named service.
 - Transactions:
-  - repos never commit.
+  - committing is `Manifest`'s act alone;
+    - repos, services, and verbs never commit.
   - `DBConnector` holds one auto-commit connection;
-  - `with manifest:`
-    - is the only transaction boundary.
+  - `with manifest:` and `with manifest.commit_every(n):`
+    - are the only transaction boundaries.
 - Timestamps in manifests are int64 nanoseconds since the epoch, UTC.
   - One conversion on the way in;
     - every comparison is an integer compare.

@@ -34,16 +34,44 @@
 - Row ids are local to one manifest.
   - They never appear in output or in cross-manifest comparison;
     - those speak in paths and hashes only.
-- Timestamps are int64 nanoseconds;
-  - `gone` and `hashed` are the `scan.started` of the scan that observed them.
 - Verbs emit typed events; renderers turn them into output.
-  - One frozen `Event` dataclass per fact, `<Verb><Event>`, fields
-    are lib types, never pre-formatted strings.
-  - A renderer is one callable, event in, `Output` out: `out` and
-    `err` line tuples the subcommand echoes.
+  - One frozen `CliEvent` dataclass per fact, fields lib types,
+    never pre-formatted strings.
+  - A renderer is one callable: event in, `Output` line tuples out.
   - Click callbacks are thin wiring over `run_<verb>` handlers
     taking an `emit` callable; tests collect events, not text.
-  - Failures raise through `scout_command`, never events.
+  - Error placement follows CONTRIBUTE's error rules.
+
+### Restructure conventions (signed off 2026-09-22)
+
+Staging: each restructure PR's doc commit moves its lines from here
+into `doc/architecture.md`; this block empties as the sequence lands.
+
+- Vocabulary ledger:
+  - **stat** = live fs truth; **record** = the manifest's last claim;
+  - **event** = a fact a verb emits, layer-prefixed
+    (`ScanEvent` lib-side, `CliEvent` render-side);
+  - **tally** = progress counting for display; **summary** = the
+    run's contract counts, persisted and yielded.
+- Naming:
+  - producer-prefixed product types (`WalkedDir`, `ScanEvent`);
+  - past tense for completed observations and happenings
+    (`WalkedDir`, `FileScanned`, `AccessLost`);
+  - `Err.*` names conditions (`Unreadable`), its own family style;
+  - event grammars per layer: cli `<Verb><Fact>` (`ScanFile`),
+    lib subject + past participle (`FileScanned`).
+- The manifest is the primary operand of every verb: first
+  positional, default `"."`; `Manifest.open` owns interpretation;
+  `-r`/`--repo` as override while dogfooding judges both modes.
+- Error placement and the repo / `View` / service taxonomy:
+  moved to `doc/CONTRIBUTE.md` (2026-09-22), no longer staged here.
+- Promotion on second independent consumer, for types and functions;
+  - one taken exception: `RecordChange` moved to models with `check`
+    merely named, to avoid verb-imports-verb.
+- History stays `gone` and `hashed`; unreadable subtrees leave no db
+  trace — report loudly (`AccessLost`), record nothing.
+- Verbs differ at their policy and assembly; they share observation
+  atoms (`fs/`), vocabulary (`models.py`), and manifest services.
 
 ### Required reading
 
@@ -52,6 +80,228 @@
 - `README.md` (optional)
 
 ## Sequenced PRs to MVP
+
+MVP means dogfood-ready: `init`, `scan`, and raw `sqlite3` queries,
+where scan survives terabyte-scale runs and the code can be
+introspected when dogfooding surfaces problems.
+The restructure sections below come first, in order; each was
+signed off point-by-point on 2026-09-22.
+
+### e2e
+
+First in the sequence: the five restructure PRs must change nothing
+e2e-observable, and this strengthened suite is the proof they run
+under.
+
+- CliRunner stays, as an explicit exception to true end-to-end:
+  - subprocessing the entry point is too slow for a suite run
+    constantly this early; Click's own testing of CliRunner is the
+    trusted substitute.
+- Separate stream capture (`result.stderr` vs stdout; on older
+  Click, `mix_stderr=False`):
+  - pin the pipeline contract — porcelain records on stdout,
+    errors and decoration on stderr;
+  - real-tty behavior stays out of e2e: progress unit tests
+    monkeypatch `isatty`; e2e exercises the non-tty path natively.
+- Assert what the user sees, not just db state:
+  - porcelain stdout lines and exit codes per scenario;
+  - keep the raw-`sqlite3` row assertions — they are half the
+    contract by design.
+- Coverage additions: deleted subtree (the sweep path), `--rehash`;
+  - `init` invocations assert success instead of ignoring results.
+- Readability: name the row tuples; no magic indices.
+- `scan-cli` later extends this suite with what only exists after
+  it: progress behavior, `-p`, the `-r`/`--repo` override.
+
+### models
+
+- `lib/models.py`, one flat module replacing `lib/model/`
+  - *(house style: `lib/error.py`)*;
+  - section order: observation, record, value.
+- `FileStat` moves in from `fs/walk.py`; walk imports it from models.
+- `File` → `FileRecord`, `Dir` → `DirRecord`:
+  - `FileRecord` embeds `stat: FileStat`;
+    - the type now encodes observation / identity / history;
+  - no schema change; only `FileRepo`'s mappers nest and unnest.
+- `RecordChange` replaces `Outcome`; `decide` dissolves:
+  - members `ADDED`, `UPDATED`, `MATCHED`, new `VERIFIED`;
+    - `MATCHED` claims stat agreement only (confident);
+    - `VERIFIED` is hash-confirmed equal (certain);
+  - `RecordChange.classify(record, stat)` classmethod, pure:
+    - no `force`/`hash` params; that policy moves to scan's
+      `_should_hash`, killing the dead branch by dissolution.
+- `cli/event.py`: `Event` → `CliEvent` (small sibling PR or rider).
+- Doc commit near the end: create `doc/architecture.md` — the layer
+  map, the vocabulary ledger, the promotion rule; moved out of the
+  conventions block below, which stages until each PR relocates its
+  lines.
+
+### walk
+
+- `Listing` → `WalkedDir`:
+  - past tense: a completed observation, immutable because the
+    moment it describes is over.
+- `walk` yields `WalkedDir | Err.Unreadable`:
+  - dir-level failure is the error itself, no sentinel listing;
+  - `WalkedDir.errors` narrows to per-entry stat failures.
+- Guard the per-entry block in `_read_dir`:
+  - `OSError` on one entry appends `Err.Unreadable(rel/name)` to the
+    step's errors and continues; one racing file no longer kills the
+    run *(minor hardening for cold media, not a design driver)*.
+- `_read_dir`'s truncated docstring completed.
+- Doc commit: `doc/architecture.md` gains the fs contract — the
+  yield union, failure-as-value vs raise.
+
+### manifest-services
+
+- Composition rule: **Manifest composes, never implements**:
+  - single-table concern → repo; cross-repo updates → a service
+    *(Fowler's Service Layer in the strict sense; naming rules in
+    CONTRIBUTE)*, composed like a fifth repo.
+- `Subtree(dirs, files)` as `manifest.subtree` (named by concern
+  alone, no suffix):
+  - `mark_gone(path, started)`: the body of scan's `_mark_dir_gone`,
+    returning plain paths, files before dir;
+  - `live_counts(path)`: the read backing `AccessLost` — read-only,
+    so `View` territory under the strict rule; placement (small
+    subtree view vs an along-the-way read on `Subtree`) decided in
+    this PR;
+  - services run inside whatever transaction is open; committing is
+    `Manifest`'s act alone.
+- Repos stay executors first, SQL-fragment owners second
+  - *(`_where_descendants` style)*;
+  - a service may go set-based single-statement when roundtrips
+    matter; the service is the roundtrip boundary.
+- `Manifest.open` owns the whole path policy:
+  - gains `path.resolve()` mirroring `init`; dir → `DEFAULT_NAME`
+    stays; adapters never resolve paths themselves.
+- `CommitBatcher` via `manifest.commit_every(n)`:
+  - a real context manager; bounds work lost to interruption;
+  - ticks on writes only, never on `MATCHED`;
+  - no resume feature: rerunning scan is cheap by construction
+    (`MATCHED` skips the hash); unfinished scan rows stay as they
+    are and mean nothing special.
+- Doc commit: `doc/architecture.md` gains the
+  Repository / Unit of Work / Service Layer trio, the composition
+  rule, and the service rules (transaction participation, the
+  roundtrip boundary).
+
+### scan-restructure
+
+- `ScanEvent` base family, mirroring `cli.event`:
+  - `FileScanned(path, record, change)`, `RecordGone(path)`,
+    `AccessLost(path, dirs, files)`, `ReadFailed(path, error)`;
+  - each subclass docstring states meaning and expected handling;
+  - `Summary` stays outside as the terminal yield;
+  - `AccessLost` is derived reporting: emitted beside `ReadFailed`
+    when prior live records exist under an unreadable dir;
+    the db is never written for unreachability.
+- `ScanOptions`, frozen, flat:
+  - `hash`, `rehash`, `bits`, `batch_size`, `on_progress`;
+    - `rehash` renames lib's `force`: two tiers of one policy
+      (`hash` = hash new/changed; `rehash` = hash even MATCHED);
+      same word-family as the future `rehash_after` budget;
+      dogfooding may revisit the name;
+  - field defaults are the program-defaults layer of the future
+    config fold (`dataclasses.replace` per source, partial layers);
+  - context options (which manifest, streams) are adapter-side and
+    never reach the verb.
+- `_should_hash(change, record, opts)`:
+  - the one expensive decision (whole-file read on slow media),
+    isolated, exhaustively unit-testable.
+- `_scan_file`/`_scan_dir` → `_reconcile_file`/`_reconcile_dir`:
+  - assemblies stay private to scan; verbs share atoms, never
+    assemblies;
+  - the hash-and-write step inside `_reconcile_file` stays a
+    separable function *(future home: a service component, when a
+    hash-fill verb arrives)*.
+- `_reconcile_tree`: the routing loop:
+  - coverage sets `covered` and `unreadable`; dispatch to
+    `_reconcile_dir` / `_handle_unreadable`; sweep last;
+  - `_handle_unreadable` yields `ReadFailed`, derives `AccessLost`
+    via `manifest.subtree.live_counts`, writes nothing;
+  - `_sweep_unwalked`: candidates via repo SQL (path-prefix, not
+    Python `parents` loops), marks via `manifest.subtree.mark_gone`,
+    yields `RecordGone`.
+- `ScanTally`, public, injectable: `scan(manifest, opts, tally=None)`:
+  - `see(event)` before each yield, so the live instance is exactly
+    current through the last yielded event;
+  - `summary(started, finished)` freezes it into `Summary`;
+  - one instance per run, shared with the adapter by injection.
+- `scan()` recomposed: session bracket
+  (`scans.start`/`finish`), `with manifest.commit_every(...)`,
+  tally + tick + relay loop, terminal `Summary`; no other logic.
+- The fs-detail refresh (`fs_meta.read_all` +
+  `meta.write_fs_detail`) moves from `run_scan` into `scan()`'s
+  session opening — it is part of the verb, not adapter work;
+  `run_scan`'s `detail=` test param dies with it.
+- Doc commit: `doc/architecture.md` gains verb anatomy
+  (atoms / policy / assembly), the event-family pattern, and the
+  options shape with its config-fold constraint.
+
+### scan-cli
+
+CLI architecture settled 2026-09-22 (discussion round two):
+
+- Module map, one role per module:
+  - `cli/event.py` — the `CliEvent` family only;
+  - `cli/render/` — a package now: `porcelain.py`, shared `Output`
+    (later the `Renderer` protocol and `select_renderer` from the
+    Renderer section below); future `rich.py`, `json.py` siblings;
+  - `cli/emit.py` — the emitter object: a pure router between the
+    renderer and the progress sinks (verbosity policy lives here;
+    no counting, no terminal mechanics);
+  - `cli/progress.py` — the status-line object, the only module
+    that knows what a carriage return is;
+  - `subcmd/*` — flag parsing and wiring only.
+- Event naming: two grammars, no renames —
+  - cli events are `<Verb><Fact>` (`ScanFile`, `ScanGone`);
+  - lib events are subject + past participle (`FileScanned`);
+  - the translate layer reads as a visible grammar shift.
+- The manifest is THE primary operand:
+  - first positional on every verb, default `"."`;
+  - all interpretation in `Manifest.open` (resolve, dir →
+    `.scout.db`); positional meaning never depends on disk content;
+  - eliding it with later operands means typing `.`
+    (`scout ls . doc/finance`) — accepted friction;
+  - `-r`/`--repo` kept as an explicit override to dogfood both
+    modes; flag wins when both are given (most intentional wins),
+    disagreement gets a stderr note; loser removed on evidence;
+  - verb operands follow: `init [manifest] [root]` (root defaults
+    to the manifest's dir); finer operand patterns left to
+    dogfooding.
+- Flags: `--rehash` → `rehash`, `--no-hash` → `not hash`
+  (identity mapping after the rename).
+- `-v`/`--verbose` and `-p`/`--progress` are different concerns:
+  - verbose = stdout content policy (emitter routing): whether
+    per-file events become porcelain records downstream tools see;
+    automation may want it;
+  - progress = stderr human feedback (the progress sink): never
+    data, gone when stderr is not a tty; automation never wants it;
+  - independent and freely composed; humans often want both.
+- Single-letter args pair with a long alias where no collision:
+  `-v`/`--verbose`, `-p`/`--progress`.
+- Translate layer updated to the `ScanEvent` family;
+  `outcome` → `change` at the `ScanFile` mapping;
+  `run_scan` shrinks to open manifest → wire emitter → iterate.
+- One status-line object owning stderr under `--progress`:
+  - `log(line)` erases, writes, redraws; `status(...)` redraws at
+    most every 500 ms;
+  - spinner and byte count latency-gated: the first b3c32 callback
+    (`interval_ms=1000`) is itself the evidence of a slow file;
+    the file's completion event ends slow-file mode;
+  - final erase, no redraw, before the summary renders: nothing
+    carriage-returned survives into the log;
+  - not a tty: plain interval-throttled lines, no CR, no spinner;
+  - the CLI reads the injected `ScanTally` live for its numbers;
+    `expected` totals (db estimate `~N`, or an exact pre-scan count
+    behind a flag) are display-side and deferred until dogfooding
+    asks;
+  - porcelain rule stands: renderers produce lines; this object is
+    the terminal handling around them; Rich later replaces it
+    behind the same `log`/`status` seams.
+- Doc commit: `doc/architecture.md` gains the adapter architecture,
+  as settled by this PR's preceding discussion round.
 
 ### Stamp v0.1.0
 
@@ -118,7 +368,7 @@ And before the `v1` plan emerges naturally.
 
 ### has
 
-- `scout has [-r repo] [< hashes]`: read hashes from stdin (one per line,
+- `scout has [manifest] [< hashes]`: read hashes from stdin (one per line,
   or porcelain records whose hash column is used), one query via a temp
   table join, print found/missing per hash with the path where found.
   Non-zero exit if any are missing, like `md5sum -c`.
@@ -128,7 +378,7 @@ And before the `v1` plan emerges naturally.
 
 ### ls
 
-- `scout ls [-r repo] [prefix] [--gone]`: print live rows from the
+- `scout ls [manifest] [prefix] [--gone]`: print live rows from the
   manifest, optionally under a path prefix (range scan on `dir.path`),
   optionally only gone rows.
 - First `View`:
