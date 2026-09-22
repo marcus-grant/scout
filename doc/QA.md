@@ -44,8 +44,6 @@ the hunt short-circuits and the change is signed off.
   proportionate to the plan?
   A disproportionate diff is stopped and flagged before any content is
   read.
-- Salvage: does the summary state what was moved back, rewritten, or
-  left in `salvage/` for the modules touched?
 - Signatures, by targeted diff or grep: is the substantive change the
   one that was specified?
 - Claims against ground truth, only when the summary makes a
@@ -76,7 +74,7 @@ Derive the targets from the plan:
   not yet written.
 
 Use `grep -I --include='*.py'`.
-Exclude `__pycache__/`, `.venv/`, and `salvage/`.
+Exclude `__pycache__/` & `.venv/`.
 
 These greps confirm the tests assert the right thing for the cases
 they name.
@@ -135,7 +133,6 @@ A change is signed off when all of the following hold:
 
 - Its commits match the plan.
 - Its scope is contained and proportionate.
-- The salvage statement is present and accurate.
 - Every falsifiable claim checks against ground truth.
 - The applicable trap and completeness rungs found nothing.
 - The PR's e2e test is unskipped and green.

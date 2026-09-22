@@ -35,10 +35,12 @@ class ScanRepo:
         self.db.conn.execute(self._INSERT, (started,))
         return started
 
-    def finish(self, started: int, files_seen: int) -> None:
-        """Set finished to now and files_seen on the row keyed by started."""
-        params = (time.time_ns(), files_seen, started)
-        self.db.conn.execute(self._UPDATE_FINISHED, params)
+    def finish(self, started: int, files_seen: int) -> int:
+        """Set finished to now and files_seen on the row keyed by started;
+        return the finished timestamp written."""
+        finished = time.time_ns()
+        self.db.conn.execute(self._UPDATE_FINISHED, (finished, files_seen, started))
+        return finished
 
     def last_finished(self) -> int | None:
         """Return the newest started whose finished is set, or None."""

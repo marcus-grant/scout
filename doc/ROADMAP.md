@@ -70,6 +70,52 @@ planned.
   that `has` can check against another manifest before anything is
   removed.
 
+### comment
+
+- `scout comment [repo] [TEXT]`: get-set verb like `scout root`.
+  Bare prints `meta.comment`; with an argument it replaces it.
+  Dropped from `scan`, where one-per-manifest state has no business.
+
+### rehash-budget
+
+- `rehash_after` in `meta`: a file whose `hashed` is older than it is
+  rehashed even when its stat matches.
+- Pair it with a per-run budget (a count or a fraction of files) and an
+  order (oldest `hashed` first) so a giant NAS collection is rehashed
+  incrementally rather than in one burden.
+- Enters the decision as one keyword parameter and one comparison.
+
+### observation-log
+
+- A possible table: one row per file per scan with its outcome, and
+  `UNREADABLE` as a state, which the file table cannot hold.
+- Weigh it before building: Scout is a claim about the last scan, not a
+  history; `gone`, `hashed`, and the `scan` rows may be all the history
+  wanted.
+
+### verb-architecture
+
+- Decide, with `status` in hand, the shape of verbs that reconcile a
+  manifest against disk.
+  - The read-compare-apply split: `decide` is pure, `_scan_file` both
+    decides and writes; the second verb shows whether that holds.
+  - Cross-table writes: `_mark_dir_gone` lives in `lib/scan.py`; a
+    named kind (`Op`, the write mirror of `View`, holding no SQL and
+    composing repo calls) is the candidate home once a second exists.
+  - The parameter threading through `_scan_file` and `_scan_dir` wants
+    an options object or a scan context.
+  - `scan` still holds setup, the counting loop, and the gone sweep;
+    a tally and a sweep helper are the next cuts.
+  - `decide`, `Outcome`, `walk`, and `hash_file` are shared readers and
+    lift out of `lib/scan.py` when `status` uses them.
+
+### progress
+
+- Rich renderer: the resetting stderr line for files done and bytes of
+  the current file; porcelain keeps its plain lines.
+- b3c32: a defined error contract for path and stream failures, or
+  confirmation that `OSError` pass-through is the contract.
+
 ### Undecided
 
 Needs more thought before any of these become tasks.

@@ -52,3 +52,17 @@ class TestScanRepo:
         scans.finish(a, 1)
         scans.finish(b, 1)
         assert scans.last_finished() == b
+
+
+class TestFinishReturn:
+    """finish returns the finished timestamp it wrote."""
+
+    def test_finish_returns_the_written_timestamp(self, manifest: Manifest) -> None:
+        """finish's return equals the finished column on that row."""
+        started = manifest.scans.start()
+
+        finished = manifest.scans.finish(started, 3)
+
+        with sql.connect(manifest.db.path) as conn:
+            q = "SELECT finished, files_seen FROM scan WHERE started = ?;"
+            assert conn.execute(q, (started,)).fetchone() == (finished, 3)

@@ -27,5 +27,7 @@ def main() -> None:
 
 # Add commands with imports below click main
 from scout.cli.subcmd.init import init
+from scout.cli.subcmd.scan import scan
 
 main.add_command(init)
+main.add_command(scan)

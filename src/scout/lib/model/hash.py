@@ -2,6 +2,7 @@
 """Hash value type: one certified-width Crockford Base32 b3c32 code.
 Author: Marcus
 Created: 2026-09-08
+Revised: [2026-09-18]
 License: AGPL-3.0-or-later
 """
 
@@ -10,6 +11,8 @@ from dataclasses import dataclass
 from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET
 
 import scout.lib.error as Err
+
+DEFAULT_BITS = 120
 
 
 @dataclass(frozen=True)
