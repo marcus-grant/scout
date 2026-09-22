@@ -12,8 +12,7 @@ from pathlib import PurePosixPath as PPP
 from factory import mk_file_model
 
 from scout.lib.manifest import Manifest
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import File, Hash
 from scout.lib.repo.file_repo import FileRepo
 
 

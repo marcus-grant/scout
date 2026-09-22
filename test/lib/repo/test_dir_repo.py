@@ -13,7 +13,7 @@ from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
-from scout.lib.model.dir import Dir
+from scout.lib.models import Dir
 from scout.lib.repo.dir_repo import DirRepo
 
 

@@ -12,16 +12,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-
-
-@dataclass(frozen=True)
-class FileStat:
-    """What stat says about one regular file, but only fields our table records:
-    its name, size, and mtime ns."""
-
-    name: str
-    size: int
-    mtime: int
+from scout.lib.models import FileStat
 
 
 @dataclass(frozen=True)

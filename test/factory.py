@@ -11,8 +11,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 from scout.lib.manifest import Manifest
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import File, Hash
 
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:

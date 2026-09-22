@@ -8,7 +8,7 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.model.dir import Dir
+from scout.lib.models import Dir
 from scout.lib.repo.db_connector import DBConnector
 
 

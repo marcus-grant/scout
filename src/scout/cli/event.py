@@ -10,7 +10,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.model.file import File
+from scout.lib.models import File
 from scout.lib.scan import Outcome
 
 

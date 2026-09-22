@@ -20,7 +20,7 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
-from scout.lib.model.hash import DEFAULT_BITS, Hash
+from scout.lib.models import DEFAULT_BITS, Hash
 from scout.lib.scan import (
     Gone,
     Outcome,

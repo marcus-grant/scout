@@ -15,8 +15,7 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing, walk
 from scout.lib.manifest import Manifest
-from scout.lib.model.file import File
-from scout.lib.model.hash import DEFAULT_BITS
+from scout.lib.models import DEFAULT_BITS, File
 from scout.lib.util import to_rel
 
 

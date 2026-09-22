@@ -13,8 +13,7 @@ from pathlib import PurePosixPath as PPP
 import factory
 import pytest
 
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import File, Hash
 
 mk_file = factory.mk_file
 mk_dir = factory.mk_dir

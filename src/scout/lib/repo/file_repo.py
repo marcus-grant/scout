@@ -5,8 +5,7 @@ Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import File, Hash
 from scout.lib.repo.db_connector import DBConnector
 
 
