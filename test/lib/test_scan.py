@@ -18,7 +18,7 @@ from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, Listing
+from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
 from scout.lib.scan import (
@@ -150,13 +150,13 @@ class TestScanFile:
 
 
 class TestScanDir:
-    """_scan_dir on one Listing of the default tree."""
+    """_scan_dir on one WalkedDir of the default tree."""
 
     def test_adds_dir_and_files_in_order(self, tree: Tree, manifest: Manifest) -> None:
         """The listing for b: dirs.get(b) exists after; two Scanned records
         ADDED, paths b/b1.txt then b/b2.txt; no Gone, no Unreadable."""
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = Listing(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -171,7 +171,7 @@ class TestScanDir:
         d = manifest.dirs.add(PPP("b"))
         manifest.files.add(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = Listing(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -184,10 +184,10 @@ class TestScanDir:
     def test_listing_errors_are_yielded_last(
         self, tree: Tree, manifest: Manifest
     ) -> None:
-        """A Listing for b/c with no files and one Unreadable: dirs.get(b/c)
+        """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
         exists, the one record yielded is that Unreadable."""
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
-        listing = Listing(PPP("b/c"), (), (unreadable,))
+        listing = WalkedDir(PPP("b/c"), (), (unreadable,))
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 

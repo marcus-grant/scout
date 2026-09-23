@@ -12,7 +12,7 @@ from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, Listing, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.util import to_rel
@@ -107,7 +107,7 @@ def _scan_file(
 def _scan_dir(
     manifest: Manifest,
     root: Path,
-    listing: Listing,
+    listing: WalkedDir,
     started: int,
     *,
     hash: bool = True,

@@ -13,7 +13,7 @@ from pathlib import PurePosixPath as PPP
 
 import factory
 
-from scout.lib.fs.walk import FileStat, Listing, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, walk
 
 """
 tree: Tree is a fixture that is the default case of mk_tree
@@ -26,8 +26,8 @@ Tree = factory.Tree
 _DIR_PATHS_DFS = [PPP(n) for n in (".", "b", "b/c", "d")]
 
 
-def _listing_by_path(listings: Iterable[Listing], path: str | PPP) -> Listing:
-    """Iterate walk()'s returned Listing iterator and return matching path or None."""
+def _listing_by_path(listings: Iterable[WalkedDir], path: str | PPP) -> WalkedDir:
+    """Iterate walk()'s returned WalkedDir iterator and return matching path or None."""
     _path = PPP(path) if isinstance(path, str) else path
     lst = next((lst for lst in listings if lst.path == _path), None)
     assert lst is not None, f"No listing found with path {path}"
@@ -35,7 +35,7 @@ def _listing_by_path(listings: Iterable[Listing], path: str | PPP) -> Listing:
 
 
 class TestWalk:
-    """walk yields one Listing per directory in sorted DFS path order."""
+    """walk yields one WalkedDir per directory in sorted DFS path order."""
 
     def test_default_tree_in_dfs_order(self, tree: Tree) -> None:
         """On the default tree the listing paths are ., b, b/c, d in that
@@ -77,7 +77,7 @@ class TestWalk:
     def test_unreadable_dir_yields_error_and_no_files(
         self, tree: Tree, monkeypatch
     ) -> None:
-        """A directory with mode 000 yields a Listing with its path,
+        """A directory with mode 000 yields a WalkedDir with its path,
         no files, and one Err.Unreadable carrying that path and errno.EACCES.
         Instead of setting a file to mode 000, patch os.scandir to
         raise PermissionError on a test path.
