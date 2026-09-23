@@ -13,7 +13,7 @@ from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
-from scout.lib.model.dir import Dir
+from scout.lib.models import DirRecord
 from scout.lib.repo.dir_repo import DirRepo
 
 
@@ -26,18 +26,18 @@ class TestSchema:
         with sql.connect(manifest.db.path) as conn:
             conn.executescript(DirRepo.SCHEMA)
             assert conn.execute("SELECT count(*) FROM dir;").fetchone() == (1,)
-        assert repo.get(PPP(".")) == Dir(0, PPP("."))
+        assert repo.get(PPP(".")) == DirRecord(0, PPP("."))
 
 
 class TestAdd:
-    """add upserts a path with its ancestors and returns the leaf Dir."""
+    """add upserts a path with its ancestors and returns the leaf DirRecord."""
 
     def test_returns_dir_with_id(self, manifest: Manifest) -> None:
-        """The Dir returned has the given path, gone None, and an int id."""
+        """The DirRecord returned has the given path, gone None, and an int id."""
         repo, path = manifest.dirs, PPP("a/b")
         assert (dir := repo.add(path)).path == path
         assert dir.gone is None
-        assert isinstance(dir, Dir)
+        assert isinstance(dir, DirRecord)
 
     def test_same_path_returns_same_id(self, manifest: Manifest) -> None:
         """Adding a path twice yields one row and the same id."""
@@ -65,10 +65,10 @@ class TestAdd:
 
 
 class TestGet:
-    """get returns the live Dir at a path, or None."""
+    """get returns the live DirRecord at a path, or None."""
 
     def test_returns_added(self, manifest: Manifest) -> None:
-        """get returns the Dir add returned, and None for an unknown path."""
+        """get returns the DirRecord add returned, and None for an unknown path."""
         repo, missing = manifest.dirs, PPP("a/b/c")
         result = repo.add(added := PPP("a/b"))
         assert repo.get(added) == result

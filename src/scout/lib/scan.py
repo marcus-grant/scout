@@ -7,7 +7,6 @@ License: AGPL-3.0-or-later
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -15,34 +14,8 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing, walk
 from scout.lib.manifest import Manifest
-from scout.lib.model.file import File
-from scout.lib.model.hash import DEFAULT_BITS
+from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.util import to_rel
-
-
-class Outcome(Enum):
-    """What the scan did to a file's row; each member claims only what stat
-    can prove."""
-
-    ADDED = "added"
-    UPDATED = "updated"
-    MATCHED = "matched"
-
-
-def decide(
-    row: File | None, stat: FileStat, *, force: bool = False, hash: bool = False
-) -> Outcome:
-    """ADDED when row is None; UPDATED when force is set or row.size or
-    row.mtime differ from stat; MATCHED when size and mtime both agree."""
-    if row is None:
-        return Outcome.ADDED
-    if (row.size != stat.size) or (row.mtime != stat.mtime):
-        return Outcome.UPDATED
-    if hash and row.hash is None:
-        return Outcome.UPDATED
-    if force:
-        return Outcome.UPDATED
-    return Outcome.MATCHED
 
 
 @dataclass(frozen=True)
@@ -51,8 +24,8 @@ class Scanned:
     what the scan did to that row."""
 
     path: PPP
-    file: File
-    outcome: Outcome
+    file: FileRecord
+    change: RecordChange
 
 
 @dataclass(frozen=True)
@@ -64,7 +37,7 @@ class Gone:
 
 @dataclass(frozen=True)
 class Summary:
-    """What one scan did in total: its window and the count per outcome,
+    """What one scan did in total: its window and the count per change,
     plus the errors met and the rows marked gone."""
 
     started: int
@@ -85,7 +58,7 @@ def _mark_dir_gone(manifest: Manifest, path: PPP, started: int) -> Iterator[Gone
     subtree = [top, *manifest.dirs.descendants(path)]
     for d in subtree:
         for row in manifest.files.in_dir(d.id):
-            yield Gone(d.path / row.name)
+            yield Gone(d.path / row.stat.name)
     manifest.files.mark_gone([d.id for d in subtree], started)
     for d in subtree:
         yield Gone(d.path)
@@ -106,17 +79,19 @@ def _scan_file(
     on_progress: Callable[[int], None] | None = None,
 ) -> Scanned | Err.Unreadable:
     """Bring one file's row up to date and say what was done.
-    Fetch the live row at (dir_id, stat.name); decide against stat.
+    Fetch the live row at (dir_id, stat.name); classify against stat.
     MATCHED: write nothing and return the row as found.
     ADDED or UPDATED with hash: hash_file(dir_abs / stat.name), write the
     row with that hash and hashed = started.
     ADDED or UPDATED without hash: write the row with hash and hashed null.
     An Unreadable from hash_file is returned and nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
-    outcome = decide(row, stat, force=force)
-    if outcome is Outcome.MATCHED:
+    change = RecordChange.classify(stat, row)
+    if force and change is RecordChange.MATCHED:
+        change = RecordChange.UPDATED  # TODO: Interim till _should_hash (scan restruct)
+    if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
-        return Scanned(dir_rel / stat.name, row, outcome)
+        return Scanned(dir_rel / stat.name, row, change)
 
     h, hashed = None, None
     if hash:
@@ -124,9 +99,9 @@ def _scan_file(
         if isinstance(h, Err.Unreadable):
             return Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
         hashed = started
-    file = manifest.files.add(File(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
+    file = manifest.files.add(FileRecord(dir_id, stat, h, hashed))
 
-    return Scanned(dir_rel / stat.name, file, outcome)
+    return Scanned(dir_rel / stat.name, file, change)
 
 
 def _scan_dir(
@@ -161,9 +136,9 @@ def _scan_dir(
         )
     seen = {st.name for st in listing.files}
     for row in manifest.files.in_dir(d.id):
-        if row.name not in seen:
-            manifest.files.mark_gone_one(d.id, row.name, started)
-            yield Gone(listing.path / row.name)
+        if row.stat.name not in seen:
+            manifest.files.mark_gone_one(d.id, row.stat.name, started)
+            yield Gone(listing.path / row.stat.name)
     yield from listing.errors
 
 
@@ -217,7 +192,7 @@ def scan(
     except Err.NotUnderRoot:
         exclude = frozenset()
     started = manifest.scans.start()
-    counts = {Outcome.ADDED: 0, Outcome.UPDATED: 0, Outcome.MATCHED: 0}
+    counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     batch = _Batch(manifest, batch_size)
     batch.open()
@@ -242,7 +217,7 @@ def scan(
         )
         for record in records_iter:
             if isinstance(record, Scanned):
-                counts[record.outcome] += 1
+                counts[record.change] += 1
                 batch.tick()
             elif isinstance(record, Gone):
                 gone += 1
@@ -262,9 +237,9 @@ def scan(
     yield Summary(
         started,
         finished,
-        counts[Outcome.ADDED],
-        counts[Outcome.UPDATED],
-        counts[Outcome.MATCHED],
+        counts[RecordChange.ADDED],
+        counts[RecordChange.UPDATED],
+        counts[RecordChange.MATCHED],
         errors,
         gone,
     )

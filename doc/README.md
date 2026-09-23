@@ -8,6 +8,7 @@
 - [TODO.md](TODO.md): the tracker.
   Crucial rules, sequenced PRs to MVP, and optional work.
 - [ROADMAP.md](ROADMAP.md): Unscheduled work.
+- [architecture.md](architecture.md): layers, vocabulary, promotion.
 
 Every document is reachable from the root README through a chain of
 links.

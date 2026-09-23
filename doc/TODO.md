@@ -47,12 +47,6 @@
 Staging: each restructure PR's doc commit moves its lines from here
 into `doc/architecture.md`; this block empties as the sequence lands.
 
-- Vocabulary ledger:
-  - **stat** = live fs truth; **record** = the manifest's last claim;
-  - **event** = a fact a verb emits, layer-prefixed
-    (`ScanEvent` lib-side, `CliEvent` render-side);
-  - **tally** = progress counting for display; **summary** = the
-    run's contract counts, persisted and yielded.
 - Naming:
   - producer-prefixed product types (`WalkedDir`, `ScanEvent`);
   - past tense for completed observations and happenings
@@ -70,14 +64,13 @@ into `doc/architecture.md`; this block empties as the sequence lands.
     merely named, to avoid verb-imports-verb.
 - History stays `gone` and `hashed`; unreadable subtrees leave no db
   trace — report loudly (`AccessLost`), record nothing.
-- Verbs differ at their policy and assembly; they share observation
-  atoms (`fs/`), vocabulary (`models.py`), and manifest services.
 
 ### Required reading
 
-- `doc/CONTRIBUTE.md` (mandatory)
-- `doc/QA.md` (mandatory)
-- `README.md` (optional)
+- [`doc/CONTRIBUTE.md`](CONTRIBUTE.md) *(mandatory)*
+- [`doc/QA.md`](QA.md) *(mandatory)*
+- [`README.md`](../README.md) *(optional)*
+- [`doc/architecture.md`](architecture.md) *(optional)*
 
 ## Sequenced PRs to MVP
 
@@ -86,29 +79,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order; each was
 signed off point-by-point on 2026-09-22.
-
-### models
-
-- `lib/models.py`, one flat module replacing `lib/model/`
-  - *(house style: `lib/error.py`)*;
-  - section order: observation, record, value.
-- `FileStat` moves in from `fs/walk.py`; walk imports it from models.
-- `File` → `FileRecord`, `Dir` → `DirRecord`:
-  - `FileRecord` embeds `stat: FileStat`;
-    - the type now encodes observation / identity / history;
-  - no schema change; only `FileRepo`'s mappers nest and unnest.
-- `RecordChange` replaces `Outcome`; `decide` dissolves:
-  - members `ADDED`, `UPDATED`, `MATCHED`, new `VERIFIED`;
-    - `MATCHED` claims stat agreement only (confident);
-    - `VERIFIED` is hash-confirmed equal (certain);
-  - `RecordChange.classify(record, stat)` classmethod, pure:
-    - no `force`/`hash` params; that policy moves to scan's
-      `_should_hash`, killing the dead branch by dissolution.
-- `cli/event.py`: `Event` → `CliEvent` (small sibling PR or rider).
-- Doc commit near the end: create `doc/architecture.md` — the layer
-  map, the vocabulary ledger, the promotion rule; moved out of the
-  conventions block below, which stages until each PR relocates its
-  lines.
 
 ### walk
 

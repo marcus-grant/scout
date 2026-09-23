@@ -10,17 +10,16 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.model.file import File
-from scout.lib.scan import Outcome
+from scout.lib.models import FileRecord, RecordChange
 
 
 @dataclass(frozen=True)
-class Event:
+class CliEvent:
     """Root of every verb event; renderers dispatch on concrete types."""
 
 
 @dataclass(frozen=True)
-class InitDone(Event):
+class InitDone(CliEvent):
     """Init succeeded: where the manifest is, what it roots, what was unread."""
 
     repo: Path
@@ -29,23 +28,23 @@ class InitDone(Event):
 
 
 @dataclass(frozen=True)
-class ScanFile(Event):
+class ScanFile(CliEvent):
     """One file processed: its root-relative path, its row, its outcome."""
 
     path: PPP
-    file: File
-    outcome: Outcome
+    file: FileRecord
+    change: RecordChange
 
 
 @dataclass(frozen=True)
-class ScanGone(Event):
+class ScanGone(CliEvent):
     """One row marked gone this scan: its root-relative path."""
 
     path: PPP
 
 
 @dataclass(frozen=True)
-class ScanError(Event):
+class ScanError(CliEvent):
     """A file or directory the scan could not read."""
 
     path: PPP
@@ -53,7 +52,7 @@ class ScanError(Event):
 
 
 @dataclass(frozen=True)
-class ScanFinished(Event):
+class ScanFinished(CliEvent):
     """A scan ended: its window and the count per outcome, errors, gone."""
 
     started: int

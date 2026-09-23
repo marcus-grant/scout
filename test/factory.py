@@ -11,8 +11,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 from scout.lib.manifest import Manifest
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import FileRecord, FileStat, Hash
 
 
 def mk_file(root: Path, rel: str, content: bytes = b"") -> Path:
@@ -66,7 +65,12 @@ def mk_tree(
     return tree
 
 
-def mk_file_model(
+def mk_stat(name: str = "f", size: int = 1, mtime: int = 1) -> FileStat:
+    """Return a FileStat with small defaults; kw overrides any field."""
+    return FileStat(name=name, size=size, mtime=mtime)
+
+
+def mk_file_record(
     dir_id: int = 0,
     name: str = "f",
     size: int = 1,
@@ -74,17 +78,12 @@ def mk_file_model(
     hash: Hash | None = None,
     hashed: int | None = None,
     gone: int | None = None,
-) -> File:
-    """Return a File with small defaults; kw overrides hash, hashed, or gone."""
-    return File(
-        dir_id,
-        name,
-        size,
-        mtime,
-        hash=hash,
-        hashed=hashed,
-        gone=gone,
-    )
+    stat: FileStat | None = None,
+) -> FileRecord:
+    """Return a FileRecord whose stat is mk_stat(name, size, mtime); kw
+    overrides any field."""
+    stat = stat or mk_stat(name=name, size=size, mtime=mtime)
+    return FileRecord(dir_id=dir_id, stat=stat, hash=hash, hashed=hashed, gone=gone)
 
 
 def mk_manifest(

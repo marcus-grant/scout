@@ -13,13 +13,13 @@ from pathlib import PurePosixPath as PPP
 import factory
 import pytest
 
-from scout.lib.model.file import File
-from scout.lib.model.hash import Hash
+from scout.lib.models import FileRecord, FileStat
 
 mk_file = factory.mk_file
 mk_dir = factory.mk_dir
 mk_tree = factory.mk_tree
-mk_file_model = factory.mk_file_model
+mk_stat = factory.mk_stat
+mk_file_record = factory.mk_file_record
 
 
 class TestMkFile:
@@ -90,20 +90,35 @@ class TestMkTree:
         assert list(tmp_path.iterdir()) == []
 
 
-class TestMkFileModel:
-    """mk_file_model builds a File from defaults and overrides."""
+class TestMkStat:
+    """mk_stat builds a FileStat from defaults and overrides."""
 
     def test_defaults(self) -> None:
-        """No args yields File(0, "f", 1, 1) with hash, hashed, gone None."""
-        assert mk_file_model() == factory.File(0, "f", 1, 1)
+        """No args yields FileStat("f", 1, 1)."""
+        assert mk_stat() == FileStat("f", 1, 1)
 
     def test_overrides(self) -> None:
-        """Positional and keyword overrides land on the named fields."""
-        expect = File(42, "foo", 1234, 5678, Hash("A" * 24), 9012, 1)
-        got = mk_file_model(
-            42, "foo", 1234, 5678, hash=expect.hash, hashed=9012, gone=1
-        )
-        assert got == expect
+        """Positional overrides land on name, size, and mtime."""
+        assert mk_stat("x", 42, 2**30) == FileStat("x", 42, 2**30)
+
+
+class TestMkFileRecord:
+    """mk_file_record builds a FileRecord from defaults and overrides."""
+
+    def test_defaults(self) -> None:
+        """No args yields FileRecord(0, FileStat("f", 1, 1)) with hash,
+        hashed, gone None."""
+        assert mk_file_record() == FileRecord(0, mk_stat())
+
+    def test_scalar_overrides(self) -> None:
+        """name, size, mtime build embedded stat; hash, hashed, gone -> the record"""
+        expect = FileRecord(0, FileStat("x", 42, 2**30))
+        assert mk_file_record(name="x", size=42, mtime=2**30) == expect
+
+    def test_stat_overrides_scalars(self) -> None:
+        """Given stat embedded as is; name, size, mtime passed beside it are ignored"""
+        expect = FileRecord(0, FileStat("x", 42, 2**30))
+        assert mk_file_record(stat=expect.stat, name="y", size=9, mtime=7) == expect
 
 
 class TestMkManifest:

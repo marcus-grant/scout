@@ -12,7 +12,7 @@ from pathlib import PurePosixPath as PPP
 from b3c32 import code_from_path
 
 import scout.lib.error as Err
-from scout.lib.model.hash import DEFAULT_BITS, Hash
+from scout.lib.models import DEFAULT_BITS, Hash
 
 
 def hash_file(

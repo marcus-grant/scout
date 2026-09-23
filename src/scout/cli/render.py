@@ -29,7 +29,7 @@ def _init_done(event: events.InitDone) -> Output:
 
 def _scan_file(event: events.ScanFile) -> Output:
     """One out line: the outcome word, a space, the path."""
-    return Output(out=(f"{event.outcome.value} {event.path}",))
+    return Output(out=(f"{event.change.value} {event.path}",))
 
 
 def _scan_gone(event: events.ScanGone) -> Output:
@@ -55,7 +55,7 @@ def _scan_finished(event: events.ScanFinished) -> Output:
     return Output(out=(" ".join(parts),))
 
 
-def porcelain(event: events.Event) -> Output:
+def porcelain(event: events.CliEvent) -> Output:
     """Return the porcelain lines for event; raise on unknown event types."""
     match event:
         case events.InitDone():
@@ -71,7 +71,7 @@ def porcelain(event: events.Event) -> Output:
     raise TypeError(f"porcelain renderer has no handler for event: {type(event)}")
 
 
-def echo_porcelain(event: events.Event) -> None:
+def echo_porcelain(event: events.CliEvent) -> None:
     """Render event with porcelain and echo out and err lines."""
     output = porcelain(event)
     for line in output.out:
