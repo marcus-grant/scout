@@ -26,7 +26,7 @@ Tree = factory.Tree
 _DIR_PATHS_DFS = [PPP(n) for n in (".", "b", "b/c", "d")]
 
 
-def _listing_by_path(listings: Iterable[WalkedDir], path: str | PPP) -> WalkedDir:
+def _walked_dir_at(listings: Iterable[WalkedDir], path: str | PPP) -> WalkedDir:
     """Iterate walk()'s returned WalkedDir iterator and return matching path or None."""
     _path = PPP(path) if isinstance(path, str) else path
     lst = next((lst for lst in listings if lst.path == _path), None)
@@ -50,7 +50,7 @@ class TestWalk:
         b1_stat = FileStat("b1.txt", 5, b1_path.stat().st_mtime_ns)
         b2_stat = FileStat("b2.txt", 5, b2_path.stat().st_mtime_ns)
 
-        b_lst = _listing_by_path(walk(tree.root), "b")
+        b_lst = _walked_dir_at(walk(tree.root), "b")
         assert b_lst.files == (b1_stat, b2_stat)
 
     def test_exclude_skips_that_file(self, tree: Tree) -> None:
@@ -60,7 +60,7 @@ class TestWalk:
 
         listings = walk(tree.root, exclude=frozenset({PPP(EXCLUDE)}))
 
-        assert all(f.name != EXCLUDE for f in _listing_by_path(listings, ".").files)
+        assert all(f.name != EXCLUDE for f in _walked_dir_at(listings, ".").files)
 
     def test_symlinks_are_not_listed_or_followed(self, tree: Tree) -> None:
         """A symlink to a file is not in any listing; a symlink to a
@@ -91,7 +91,7 @@ class TestWalk:
 
         monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
         listings_list = list(walk(tree.root))
-        bad = _listing_by_path(listings_list, "b/c")
+        bad = _walked_dir_at(listings_list, "b/c")
         assert bad.files == ()
         assert (bad.errors[0].path, bad.errors[0].errno) == (PPP("b/c"), errno.EACCES)
         assert [lst.path for lst in listings_list] == _DIR_PATHS_DFS
