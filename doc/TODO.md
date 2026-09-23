@@ -47,12 +47,6 @@
 Staging: each restructure PR's doc commit moves its lines from here
 into `doc/architecture.md`; this block empties as the sequence lands.
 
-- Vocabulary ledger:
-  - **stat** = live fs truth; **record** = the manifest's last claim;
-  - **event** = a fact a verb emits, layer-prefixed
-    (`ScanEvent` lib-side, `CliEvent` render-side);
-  - **tally** = progress counting for display; **summary** = the
-    run's contract counts, persisted and yielded.
 - Naming:
   - producer-prefixed product types (`WalkedDir`, `ScanEvent`);
   - past tense for completed observations and happenings
@@ -70,8 +64,6 @@ into `doc/architecture.md`; this block empties as the sequence lands.
     merely named, to avoid verb-imports-verb.
 - History stays `gone` and `hashed`; unreadable subtrees leave no db
   trace — report loudly (`AccessLost`), record nothing.
-- Verbs differ at their policy and assembly; they share observation
-  atoms (`fs/`), vocabulary (`models.py`), and manifest services.
 
 ### Required reading
 
