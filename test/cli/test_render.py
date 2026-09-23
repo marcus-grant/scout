@@ -66,7 +66,7 @@ class TestPorcelainScan:
 
     def test_file_line(self) -> None:
         """ScanFile(b/x.txt, any FileRecord, ADDED) renders out ("added b/x.txt",)."""
-        evt = events.ScanFile(PPP("b/x.txt"), factory.mk_file_model(), Outcome.ADDED)
+        evt = events.ScanFile(PPP("b/x.txt"), factory.mk_file_record(), Outcome.ADDED)
 
         assert porcelain(evt).out == ("added b/x.txt",)
         assert porcelain(evt).err == ()

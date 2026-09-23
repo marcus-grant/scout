@@ -5,7 +5,7 @@ Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
-from scout.lib.models import FileRecord, Hash
+from scout.lib.models import FileRecord, FileStat, Hash
 from scout.lib.repo.db_connector import DBConnector
 
 
@@ -48,7 +48,8 @@ class FileRepo:
     def _row_to_file(r: tuple) -> FileRecord:
         """Build a FileRecord from one row in _SELECT column order."""
         h = r[2] if r[2] is None else Hash(r[2])
-        return FileRecord(r[0], r[1], r[3], r[4], hash=h, hashed=r[5], gone=r[6])
+        stat = FileStat(r[1], r[3], r[4])
+        return FileRecord(r[0], stat, hash=h, hashed=r[5], gone=r[6])
 
     @staticmethod
     def _rows_to_files(rows: list[tuple]) -> list[FileRecord]:
@@ -59,7 +60,7 @@ class FileRepo:
     def _file_to_params(f: FileRecord) -> tuple:
         """Six insert bindings for f: dir_id, name, hash code, size, mtime, hashed"""
         h = None if f.hash is None else f.hash.code
-        return (f.dir_id, f.name, h, f.size, f.mtime, f.hashed)
+        return (f.dir_id, f.stat.name, h, f.stat.size, f.stat.mtime, f.hashed)
 
     def _select_files(self, where: str, params: tuple = ()) -> list[FileRecord]:
         """Select live files WHERE where, bound from params, by dir_id and name."""
@@ -69,7 +70,7 @@ class FileRepo:
     def add(self, file: FileRecord) -> FileRecord:
         """Upsert file on (dir_id, name), writing content and gone = NULL."""
         self.db.conn.execute(self._UPSERT, self._file_to_params(file))
-        where, params = "dir_id = ? AND name = ?", (file.dir_id, file.name)
+        where, params = "dir_id = ? AND name = ?", (file.dir_id, file.stat.name)
         files = self._select_files(where, params)
         assert len(files) == 1, f"add lost its own row: {params}"
         return files[0]

@@ -31,11 +31,11 @@ class Outcome(Enum):
 def decide(
     row: FileRecord | None, stat: FileStat, *, force: bool = False, hash: bool = False
 ) -> Outcome:
-    """ADDED when row is None; UPDATED when force is set or row.size or
-    row.mtime differ from stat; MATCHED when size and mtime both agree."""
+    """ADDED when row is None; UPDATED when force is set or row.stat.size or
+    row.stat.mtime differ from stat; MATCHED when size and mtime both agree."""
     if row is None:
         return Outcome.ADDED
-    if (row.size != stat.size) or (row.mtime != stat.mtime):
+    if (row.stat.size != stat.size) or (row.stat.mtime != stat.mtime):
         return Outcome.UPDATED
     if hash and row.hash is None:
         return Outcome.UPDATED
@@ -84,7 +84,7 @@ def _mark_dir_gone(manifest: Manifest, path: PPP, started: int) -> Iterator[Gone
     subtree = [top, *manifest.dirs.descendants(path)]
     for d in subtree:
         for row in manifest.files.in_dir(d.id):
-            yield Gone(d.path / row.name)
+            yield Gone(d.path / row.stat.name)
     manifest.files.mark_gone([d.id for d in subtree], started)
     for d in subtree:
         yield Gone(d.path)
@@ -123,7 +123,7 @@ def _scan_file(
         if isinstance(h, Err.Unreadable):
             return Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
         hashed = started
-    file = manifest.files.add(FileRecord(dir_id, stat.name, stat.size, stat.mtime, h, hashed))
+    file = manifest.files.add(FileRecord(dir_id, stat, h, hashed))
 
     return Scanned(dir_rel / stat.name, file, outcome)
 
@@ -160,9 +160,9 @@ def _scan_dir(
         )
     seen = {st.name for st in listing.files}
     for row in manifest.files.in_dir(d.id):
-        if row.name not in seen:
-            manifest.files.mark_gone_one(d.id, row.name, started)
-            yield Gone(listing.path / row.name)
+        if row.stat.name not in seen:
+            manifest.files.mark_gone_one(d.id, row.stat.name, started)
+            yield Gone(listing.path / row.stat.name)
     yield from listing.errors
 
 

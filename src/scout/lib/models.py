@@ -42,6 +42,16 @@ class Hash:
 
 
 @dataclass(frozen=True)
+class FileStat:
+    """What stat says about one regular file, but only fields our table records:
+    its name, size, and mtime ns."""
+
+    name: str
+    size: int
+    mtime: int
+
+
+@dataclass(frozen=True)
 class DirRecord:
     """A directory the manifest knows; path is relative to root."""
 
@@ -52,12 +62,11 @@ class DirRecord:
 
 @dataclass(frozen=True)
 class FileRecord:
-    """One file row; name is the entry under dir_id, never a path."""
+    """One file row: where it sits, what stat said when the manifest last
+    saw it, and what the manifest knows beyond stat."""
 
     dir_id: int
-    name: str
-    size: int
-    mtime: int
+    stat: FileStat
     hash: Hash | None = None
     hashed: int | None = None
     gone: int | None = None
@@ -67,13 +76,3 @@ class FileRecord:
         if (self.hash is None) != (self.hashed is None):
             code = None if self.hash is None else self.hash.code
             raise Err.UnpairedHash("hash and hashed must be set together", code=code)
-
-
-@dataclass(frozen=True)
-class FileStat:
-    """What stat says about one regular file, but only fields our table records:
-    its name, size, and mtime ns."""
-
-    name: str
-    size: int
-    mtime: int

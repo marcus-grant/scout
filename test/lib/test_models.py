@@ -14,6 +14,7 @@ from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET, hash_b32, verify_conform
 
 import scout.lib.error as Err
 from scout.lib.models import DirRecord, FileRecord, Hash
+from test.factory import mk_stat
 
 BITS = min(CERTIFIED_BITS)
 CODE = hash_b32(b"scout", BITS)
@@ -73,17 +74,17 @@ class TestDir:
             dir.gone = 42  # type: ignore
 
 
-class TestFile:
+class TestFileRecord:
     """FileRecord mirrors one file row keyed by (dir_id, name)."""
 
     def test_defaults_to_unhashed_and_live(self) -> None:
-        """FileRecord(dir_id, name, size, mtime) has hash, hashed, and gone None."""
-        f = FileRecord(1, "foo", 42, 2**30)
-        assert all(getattr(f, attr) is None for attr in ("hash", "hashed", "gone"))
+        """FileRecord(dir_id, factory.mk_stat(name, size, mtime)) has hash, hashed, and gone None."""
+        rec, none_fields = FileRecord(1, mk_stat()), ("hash", "hashed", "gone")
+        assert all(getattr(rec, fld) is None for fld in none_fields)
 
     def test_equal_by_fields(self) -> None:
         """Two FileRecord built from the same args are equal."""
-        args = (1, "foo", 42, 2**30)
+        args = (1, mk_stat("foo", 42, 2**30))
         kw = {"hash": Hash("A" * 24), "hashed": (2**30) + 1}
         assert FileRecord(*args, **kw) == FileRecord(*args, **kw)
 
@@ -96,4 +97,4 @@ class TestFile:
     def test_rejects_hash_without_hashed(self, kw: dict) -> None:
         """hash and hashed must both be set or both be None."""
         with pytest.raises(Err.UnpairedHash):
-            FileRecord(1, "foo", 42, 2**30, **kw)
+            FileRecord(1, mk_stat(), **kw)
