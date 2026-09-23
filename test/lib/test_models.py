@@ -13,8 +13,8 @@ import pytest
 from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET, hash_b32, verify_conformance
 
 import scout.lib.error as Err
-from scout.lib.models import DirRecord, FileRecord, Hash
-from test.factory import mk_stat
+from scout.lib.models import DirRecord, FileRecord, Hash, RecordChange
+from test.factory import mk_file_record, mk_stat
 
 BITS = min(CERTIFIED_BITS)
 CODE = hash_b32(b"scout", BITS)
@@ -98,3 +98,23 @@ class TestFileRecord:
         """hash and hashed must both be set or both be None."""
         with pytest.raises(Err.UnpairedHash):
             FileRecord(1, mk_stat(), **kw)
+
+
+class TestRecordChange:
+    """RecordChange.classify says what stat proves about a record."""
+
+    RC = RecordChange  # Shortened alias
+
+    def test_no_record_is_added(self) -> None:
+        """classify(None, stat) is ADDED."""
+        assert self.RC.classify(mk_stat()) is self.RC.ADDED
+
+    @pytest.mark.parametrize("kw", [{"size": 2}, {"mtime": 7}, {"size": 2, "mtime": 7}])
+    def test_size_or_mtime_change_is_updated(self, kw: dict) -> None:
+        """recorded stat differs from FS stat in size, mtime, or both is UPDATED."""
+        assert self.RC.classify(mk_stat(**kw), mk_file_record()) == self.RC.UPDATED
+
+    def test_equal_stat_is_matched(self) -> None:
+        """A record whose stat equals stat is MATCHED, whatever its hash.
+        NOTE: default mk_stat & mk_file_record factories produce same FileStat."""
+        assert self.RC.classify(mk_stat(), mk_file_record()) == self.RC.MATCHED

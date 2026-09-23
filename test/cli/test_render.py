@@ -14,7 +14,7 @@ import pytest
 import scout.cli.event as events
 import scout.lib.error as Err
 from scout.cli.render import Output, porcelain
-from scout.lib.scan import Outcome
+from scout.lib.models import RecordChange
 
 
 class TestPorcelainInitDone:
@@ -66,7 +66,8 @@ class TestPorcelainScan:
 
     def test_file_line(self) -> None:
         """ScanFile(b/x.txt, any FileRecord, ADDED) renders out ("added b/x.txt",)."""
-        evt = events.ScanFile(PPP("b/x.txt"), factory.mk_file_record(), Outcome.ADDED)
+        args = (PPP("b/x.txt"), factory.mk_file_record(), RecordChange.ADDED)
+        evt = events.ScanFile(*args)
 
         assert porcelain(evt).out == ("added b/x.txt",)
         assert porcelain(evt).err == ()

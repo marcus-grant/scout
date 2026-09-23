@@ -7,7 +7,6 @@ License: AGPL-3.0-or-later
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -15,33 +14,8 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing, walk
 from scout.lib.manifest import Manifest
-from scout.lib.models import DEFAULT_BITS, FileRecord
+from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.util import to_rel
-
-
-class Outcome(Enum):
-    """What the scan did to a file's row; each member claims only what stat
-    can prove."""
-
-    ADDED = "added"
-    UPDATED = "updated"
-    MATCHED = "matched"
-
-
-def decide(
-    row: FileRecord | None, stat: FileStat, *, force: bool = False, hash: bool = False
-) -> Outcome:
-    """ADDED when row is None; UPDATED when force is set or row.stat.size or
-    row.stat.mtime differ from stat; MATCHED when size and mtime both agree."""
-    if row is None:
-        return Outcome.ADDED
-    if (row.stat.size != stat.size) or (row.stat.mtime != stat.mtime):
-        return Outcome.UPDATED
-    if hash and row.hash is None:
-        return Outcome.UPDATED
-    if force:
-        return Outcome.UPDATED
-    return Outcome.MATCHED
 
 
 @dataclass(frozen=True)
@@ -51,7 +25,7 @@ class Scanned:
 
     path: PPP
     file: FileRecord
-    outcome: Outcome
+    change: RecordChange
 
 
 @dataclass(frozen=True)
@@ -63,7 +37,7 @@ class Gone:
 
 @dataclass(frozen=True)
 class Summary:
-    """What one scan did in total: its window and the count per outcome,
+    """What one scan did in total: its window and the count per change,
     plus the errors met and the rows marked gone."""
 
     started: int
@@ -105,17 +79,19 @@ def _scan_file(
     on_progress: Callable[[int], None] | None = None,
 ) -> Scanned | Err.Unreadable:
     """Bring one file's row up to date and say what was done.
-    Fetch the live row at (dir_id, stat.name); decide against stat.
+    Fetch the live row at (dir_id, stat.name); classify against stat.
     MATCHED: write nothing and return the row as found.
     ADDED or UPDATED with hash: hash_file(dir_abs / stat.name), write the
     row with that hash and hashed = started.
     ADDED or UPDATED without hash: write the row with hash and hashed null.
     An Unreadable from hash_file is returned and nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
-    outcome = decide(row, stat, force=force)
-    if outcome is Outcome.MATCHED:
+    change = RecordChange.classify(stat, row)
+    if force and change is RecordChange.MATCHED:
+        change = RecordChange.UPDATED  # TODO: Interim till _should_hash (scan restruct)
+    if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
-        return Scanned(dir_rel / stat.name, row, outcome)
+        return Scanned(dir_rel / stat.name, row, change)
 
     h, hashed = None, None
     if hash:
@@ -125,7 +101,7 @@ def _scan_file(
         hashed = started
     file = manifest.files.add(FileRecord(dir_id, stat, h, hashed))
 
-    return Scanned(dir_rel / stat.name, file, outcome)
+    return Scanned(dir_rel / stat.name, file, change)
 
 
 def _scan_dir(
@@ -216,7 +192,7 @@ def scan(
     except Err.NotUnderRoot:
         exclude = frozenset()
     started = manifest.scans.start()
-    counts = {Outcome.ADDED: 0, Outcome.UPDATED: 0, Outcome.MATCHED: 0}
+    counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     batch = _Batch(manifest, batch_size)
     batch.open()
@@ -241,7 +217,7 @@ def scan(
         )
         for record in records_iter:
             if isinstance(record, Scanned):
-                counts[record.outcome] += 1
+                counts[record.change] += 1
                 batch.tick()
             elif isinstance(record, Gone):
                 gone += 1
@@ -261,9 +237,9 @@ def scan(
     yield Summary(
         started,
         finished,
-        counts[Outcome.ADDED],
-        counts[Outcome.UPDATED],
-        counts[Outcome.MATCHED],
+        counts[RecordChange.ADDED],
+        counts[RecordChange.UPDATED],
+        counts[RecordChange.MATCHED],
         errors,
         gone,
     )

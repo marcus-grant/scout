@@ -7,6 +7,7 @@ License: AGPL-3.0-or-later
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import PurePosixPath as PPP
 
 from b3c32 import CERTIFIED_BITS, CROCKFORD32_ALPHABET
@@ -76,3 +77,31 @@ class FileRecord:
         if (self.hash is None) != (self.hashed is None):
             code = None if self.hash is None else self.hash.code
             raise Err.UnpairedHash("hash and hashed must be set together", code=code)
+
+
+class RecordChange(Enum):
+    """What a real life filesystem scan with stat discovers that manifest record needs.
+    Each member claims only what evidence about the filesystem proves is true.
+
+    MATCHED: stat agrees, likely nothing changed, but not certain
+    VERIFIED: hash confirms file unchanged (or 1 in ~sqrt(2**120) chance of collision)
+    ADDED: file added since manifest recording
+    """
+
+    ADDED = "added"
+    UPDATED = "updated"
+    MATCHED = "matched"
+
+    @classmethod
+    def classify(
+        cls, fs_stat: FileStat, record: FileRecord | None = None
+    ) -> "RecordChange":
+        """ADDED when record is None;
+        UPDATED when record.stat differs from stat in size or mtime;
+        MATCHED when otherwise.
+        Pure: hashing policy choices since hashing is slow on slow drives."""
+        if record is None:
+            return cls.ADDED
+        if record and (fs_stat != record.stat):
+            return cls.UPDATED
+        return cls.MATCHED

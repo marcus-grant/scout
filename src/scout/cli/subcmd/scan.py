@@ -49,7 +49,7 @@ def run_scan(
     for result in results:
         match result:
             case Scanned():
-                emit(events.ScanFile(result.path, result.file, result.outcome))
+                emit(events.ScanFile(result.path, result.file, result.change))
             case Gone():
                 emit(events.ScanGone(result.path))
             case Err.Unreadable():

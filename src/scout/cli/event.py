@@ -10,8 +10,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.models import FileRecord
-from scout.lib.scan import Outcome
+from scout.lib.models import FileRecord, RecordChange
 
 
 @dataclass(frozen=True)
@@ -34,7 +33,7 @@ class ScanFile(CliEvent):
 
     path: PPP
     file: FileRecord
-    outcome: Outcome
+    change: RecordChange
 
 
 @dataclass(frozen=True)

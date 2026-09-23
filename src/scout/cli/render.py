@@ -29,7 +29,7 @@ def _init_done(event: events.InitDone) -> Output:
 
 def _scan_file(event: events.ScanFile) -> Output:
     """One out line: the outcome word, a space, the path."""
-    return Output(out=(f"{event.outcome.value} {event.path}",))
+    return Output(out=(f"{event.change.value} {event.path}",))
 
 
 def _scan_gone(event: events.ScanGone) -> Output:

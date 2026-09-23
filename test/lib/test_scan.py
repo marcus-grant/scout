@@ -20,17 +20,15 @@ import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, Listing
 from scout.lib.manifest import Manifest
-from scout.lib.models import DEFAULT_BITS, Hash
+from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
 from scout.lib.scan import (
     Gone,
-    Outcome,
     Scanned,
     Summary,
     _Batch,
     _mark_dir_gone,
     _scan_dir,
     _scan_file,
-    decide,
     scan,
 )
 
@@ -48,38 +46,9 @@ def _mk_fstat(**overrides) -> FileStat:
     return FileStat(**{**default, **overrides})
 
 
-ADDED = Outcome.ADDED
-MATCHED = Outcome.MATCHED
-UPDATED = Outcome.UPDATED
-
-
-class TestDecide:
-    """decide maps a stored row and a fresh stat to one Outcome."""
-
-    def test_no_row_is_added(self) -> None:
-        """row None gives ADDED, with or without force."""
-        assert decide(None, _mk_fstat()) == ADDED
-        assert decide(None, _mk_fstat()) == ADDED
-
-    def test_equal_stat_is_matched(self) -> None:
-        """A row whose size and mtime equal the stat gives MATCHED."""
-        assert decide(mk_frec(), _mk_fstat()) == MATCHED
-
-    def test_size_or_mtime_change_is_updated(self) -> None:
-        """A row differing from the stat in size only, or mtime only, gives UPDATED."""
-        assert decide(mk_frec(size=2), _mk_fstat()) == UPDATED
-        assert decide(mk_frec(mtime=2), _mk_fstat()) == UPDATED
-        assert decide(mk_frec(size=2, mtime=2), _mk_fstat()) == UPDATED
-
-    def test_force_updates_a_matching_row(self) -> None:
-        """A row equal to the stat gives UPDATED when force is True."""
-        assert decide(mk_frec(), _mk_fstat(), force=True) == UPDATED
-
-    def test_null_hash_row_is_updated_when_hashing(self) -> None:
-        """A row equal to the stat but with hash None gives UPDATED when
-        hash is True and MATCHED when hash is False."""
-        assert decide(mk_frec(), _mk_fstat(), hash=True) == UPDATED
-        assert decide(mk_frec(), _mk_fstat(), hash=False) == MATCHED
+ADDED = RecordChange.ADDED
+MATCHED = RecordChange.MATCHED
+UPDATED = RecordChange.UPDATED
 
 
 # The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path) of:
@@ -108,7 +77,7 @@ class TestScanFile:
             result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, Scanned)
-        assert result.outcome == ADDED
+        assert result.change == ADDED
         assert result.file.hash == expected
         assert result.file.hashed == 7
         assert manifest.files.get(0, "a.txt") == result.file
@@ -124,7 +93,7 @@ class TestScanFile:
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, Scanned)
-        assert result.outcome == MATCHED
+        assert result.change == MATCHED
         assert result.file == stored
         assert manifest.files.get(0, "a.txt") == stored
 
@@ -142,7 +111,7 @@ class TestScanFile:
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, Scanned)
-        assert result.outcome == UPDATED
+        assert result.change == UPDATED
         assert (result.file.hash, result.file.hashed) == (new_h, 7)
         assert result.file.stat.size == st.size
 
@@ -157,7 +126,7 @@ class TestScanFile:
         act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, hash=False)
 
         assert isinstance(act, Scanned)
-        assert act.outcome == UPDATED
+        assert act.change == UPDATED
         assert act.file.hash is None
         assert act.file.hashed is None
         assert act.file.stat.size == st.size
@@ -194,7 +163,7 @@ class TestScanDir:
         assert manifest.dirs.get(PPP("b")) is not None
         assert [type(r) for r in records] == [Scanned, Scanned]
         assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
-        assert all(r.outcome == ADDED for r in records if isinstance(r, Scanned))
+        assert all(r.change == ADDED for r in records if isinstance(r, Scanned))
 
     def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
         """A stored row b/old.txt not in the listing: one Gone with path
@@ -295,7 +264,7 @@ class TestScan:
 
         assert isinstance(summary, Summary)
         assert [r.path for r in scanned] == sorted(tree.files)
-        assert all(r.outcome == ADDED for r in scanned)
+        assert all(r.change == ADDED for r in scanned)
         assert not any(isinstance(r, Gone) for r in records)
         assert manifest.files.get(0, ".scout.db") is None
         counts = (summary.added, summary.updated, summary.matched)
