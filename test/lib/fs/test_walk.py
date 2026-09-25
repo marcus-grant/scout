@@ -62,14 +62,19 @@ class TestWalk:
         assert results_map[PPP("b/c")] == ()
         assert results_map[PPP("d")] == ()
 
-    def test_exclude_skips_that_file(self, tree: Tree) -> None:
-        """A file at an excluded root-relative path is absent from its
-        directory's listing; every other file is present."""
-        factory.mk_file(tree.root, EXCLUDE := ".scout.db", b"dont scan")
+    def test_exclude_skips_those_files_and_dirs(self, tree: Tree) -> None:
+        """Excluding ./.scout.db and b/c: the root's WalkedDir has no
+        .scout.db in files, b's WalkedDir has no subdirs, and the yielded
+        paths are ".", "b", "d", so nothing at or under b/c is walked."""
+        factory.mk_file(tree.root, ".scout.db", b"manifest")
+        exclude = frozenset({PPP(".scout.db"), PPP("b/c")})
 
-        listings = walk(tree.root, exclude=frozenset({PPP(EXCLUDE)}))
+        walked = list(walk(tree.root, exclude=exclude))
 
-        assert all(f.name != EXCLUDE for f in _walked_dir_at(listings, ".").files)
+        root_walk, b_walk = _walked_dir_at(walked, "."), _walked_dir_at(walked, "b")
+        assert all(f.name != ".scout.db" for f in root_walk.files)
+        assert b_walk.subdirs == ()
+        assert [w.path for w in walked] == [PPP("."), PPP("b"), PPP("d")]
 
     def test_symlinks_are_not_listed_or_followed(self, tree: Tree) -> None:
         """A symlink to a file is not in any listing; a symlink to a

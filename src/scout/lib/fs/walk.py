@@ -52,9 +52,11 @@ def _read_dir(
         errs = (Err.Unreadable(msg, path=rel, errno=e.errno),)
         return WalkedDir(rel, (), (), errs, unlistable=True)
     for ent in entries:
+        if (rel / ent.name) in exclude:
+            continue  # If entry is excluded, skip entirely
         if ent.is_dir(follow_symlinks=False):
             child_dir_names.append(ent.name)
-        elif ent.is_file(follow_symlinks=False) and (rel / ent.name) not in exclude:
+        elif ent.is_file(follow_symlinks=False):
             stat = ent.stat()
             child_files.append(FileStat(ent.name, stat.st_size, stat.st_mtime_ns))
     return WalkedDir(rel, tuple(child_dir_names), tuple(child_files), ())
