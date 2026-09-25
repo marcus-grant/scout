@@ -200,7 +200,7 @@ def scan(
     unreadable: set[PPP] = set()
     for listing in walk(root, exclude):
         walked.add(listing.path)
-        if any(e.path == listing.path for e in listing.errors):
+        if listing.unlistable:
             unreadable.add(listing.path)
             errors += len(listing.errors)
             yield from listing.errors

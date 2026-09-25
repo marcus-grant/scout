@@ -156,7 +156,7 @@ class TestScanDir:
         """The listing for b: dirs.get(b) exists after; two Scanned records
         ADDED, paths b/b1.txt then b/b2.txt; no Gone, no Unreadable."""
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = WalkedDir(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -171,7 +171,7 @@ class TestScanDir:
         d = manifest.dirs.add(PPP("b"))
         manifest.files.add(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = WalkedDir(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -187,7 +187,7 @@ class TestScanDir:
         """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
         exists, the one record yielded is that Unreadable."""
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
-        listing = WalkedDir(PPP("b/c"), (), (unreadable,))
+        listing = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 

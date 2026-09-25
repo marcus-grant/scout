@@ -12,14 +12,13 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import factory
+import pytest
 
 from scout.lib.fs.walk import FileStat, WalkedDir, walk
 
-"""
-tree: Tree is a fixture that is the default case of mk_tree
-Its shape from tmp_path as root is:
-./a.txt, ./b/b1.txt, ./b/b2.txt, ./b/c/empty.txt, ./d/(empty dir)
-"""
+# tree: Tree is a fixture that is the default case of mk_tree
+# Its shape from tmp_path as root is:
+# ./a.txt, ./b/b1.txt, ./b/b2.txt, ./b/c/empty.txt, ./d/(empty dir)
 Tree = factory.Tree
 
 # Expected DFS order PurePosixPaths (PPP) of default tree fixture directories
@@ -53,6 +52,16 @@ class TestWalk:
         b_lst = _walked_dir_at(walk(tree.root), "b")
         assert b_lst.files == (b1_stat, b2_stat)
 
+    def test_walked_dir_holds_subdir_names(self, tree: Tree) -> None:
+        """Each WalkedDir's subdirs are its child directory names in name
+        order: ("b", "d") for ".", ("c",) for "b", () for "b/c" and "d"."""
+        results_map = {walked.path: walked.subdirs for walked in walk(tree.root)}
+
+        assert results_map[PPP(".")] == ("b", "d")
+        assert results_map[PPP("b")] == ("c",)
+        assert results_map[PPP("b/c")] == ()
+        assert results_map[PPP("d")] == ()
+
     def test_exclude_skips_that_file(self, tree: Tree) -> None:
         """A file at an excluded root-relative path is absent from its
         directory's listing; every other file is present."""
@@ -74,24 +83,25 @@ class TestWalk:
         assert all(f.name != "link.txt" for f in all_files)
         assert [lst.path for lst in listings_list] == _DIR_PATHS_DFS
 
-    def test_unreadable_dir_yields_error_and_no_files(
-        self, tree: Tree, monkeypatch
+    def test_unlistable_dir_is_reported_and_not_descended(
+        self, tree: Tree, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A directory with mode 000 yields a WalkedDir with its path,
-        no files, and one Err.Unreadable carrying that path and errno.EACCES.
-        Instead of setting a file to mode 000, patch os.scandir to
-        raise PermissionError on a test path.
-        That way root running this test doesn't bypass the mode check."""
+        """A directory that can't be listed yields WalkedDir flagged unlistable,
+        whose one error carries errno.EACCES, and nothing under it is walked:
+        the yielded paths are ".", "b", "d".
+        Patches os.scandir to raise PermissionError on b,
+        so test run as root isn't bypassing a mode check."""
         real = os.scandir
 
         def fake(path):
-            if Path(path) == tree.root / "b" / "c":
+            if Path(path) == tree.root / "b":
                 raise PermissionError(errno.EACCES, "Permission denied")
             return real(path)
 
         monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
-        listings_list = list(walk(tree.root))
-        bad = _walked_dir_at(listings_list, "b/c")
-        assert bad.files == ()
-        assert (bad.errors[0].path, bad.errors[0].errno) == (PPP("b/c"), errno.EACCES)
-        assert [lst.path for lst in listings_list] == _DIR_PATHS_DFS
+        yielded = list(walk(tree.root))
+
+        bad = _walked_dir_at(yielded, "b")
+        assert bad.unlistable
+        assert bad.errors[0].errno == errno.EACCES
+        assert [walked.path for walked in yielded] == [PPP("."), PPP("b"), PPP("d")]

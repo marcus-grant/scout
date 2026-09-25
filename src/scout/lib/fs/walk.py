@@ -17,24 +17,32 @@ from scout.lib.models import FileStat
 
 @dataclass(frozen=True)
 class WalkedDir:
-    """One directory as walked: its root-relative path, its files in name
-    order, and the errors met while reading it."""
+    """DTO for directory as walked:
+    Its root-relative path, its subdirectories,
+    its files in name order, and the errors met while reading it.
+    unlistable is True when this directory itself could not be listed; its
+    subdirs and files are then empty because nothing inside it could be seen,
+    not because it holds nothing, and errors holds that one failure.
+    """
 
     path: PPP
+    subdirs: tuple[str, ...]
     files: tuple[FileStat, ...]
     errors: tuple[Err.Unreadable, ...]
+    unlistable: bool = False
 
 
 def _read_dir(
     root: Path,
     rel: PPP,
     exclude: frozenset[PPP] = frozenset(),
-) -> tuple[WalkedDir, list[PPP]]:
-    """One step of a file tree walk at given root and relative-to-root path.
-    Use that path with os.scandir to list os.DirEntry in that directory.
-    Add
-    """
-    child_dirs: list[PPP] = []
+) -> WalkedDir:
+    """One step of the walk: list root / rel with os.scandir,
+    entries in name order, & return what was seen as a WalkedDir:
+    subdirectory names & file stats, skipping symlinks & files in exclude.
+    If the directory cannot be listed, return it flagged unlistable,
+    with its one Unreadable in errors."""
+    child_dir_names: list[str] = []
     child_files: list[FileStat] = []
     try:
         with os.scandir(root / rel) as it:
@@ -42,24 +50,26 @@ def _read_dir(
     except OSError as e:
         msg = e.strerror or "unreadable"
         errs = (Err.Unreadable(msg, path=rel, errno=e.errno),)
-        return (WalkedDir(rel, (), errs), child_dirs)
+        return WalkedDir(rel, (), (), errs, unlistable=True)
     for ent in entries:
         if ent.is_dir(follow_symlinks=False):
-            child_dirs.append(rel / ent.name)
+            child_dir_names.append(ent.name)
         elif ent.is_file(follow_symlinks=False) and (rel / ent.name) not in exclude:
             stat = ent.stat()
             child_files.append(FileStat(ent.name, stat.st_size, stat.st_mtime_ns))
-    return (WalkedDir(rel, tuple(child_files), ()), child_dirs)
+    return WalkedDir(rel, tuple(child_dir_names), tuple(child_files), ())
 
 
 def walk(root: Path, exclude: frozenset[PPP] = frozenset()) -> Iterator[WalkedDir]:
     """Yields WalkedDir iterator for root & every directory under, in DFS order.
     Skips symlinks, files & directories whose root-relative path is in exclude.
-    Unreadable directories yield a listing with no files and one error.
-    That unreadable path is not descended into."""
+    An unlistable directory yields its WalkedDir flagged unlistable and is
+    not descended into."""
     walk_stack: list[PPP] = [PPP(".")]
     while walk_stack:
         walking_rel = walk_stack.pop()
-        listing, child_dirs = _read_dir(root, walking_rel, exclude)
-        yield listing
-        walk_stack.extend(reversed(child_dirs))
+        walked = _read_dir(root, walking_rel, exclude)
+        yield walked
+        # Stack pops last-in 1st; reverse so siblings get visited in name order.
+        subdir_names = reversed(walked.subdirs)
+        walk_stack.extend(walked.path / name for name in subdir_names)
