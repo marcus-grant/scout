@@ -8,8 +8,10 @@ License: AGPL-3.0-or-later
 import errno
 import os
 from collections.abc import Iterable
+from contextlib import nullcontext
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
+from types import SimpleNamespace
 
 import factory
 import pytest
@@ -31,6 +33,33 @@ def _walked_dir_at(listings: Iterable[WalkedDir], path: str | PPP) -> WalkedDir:
     lst = next((lst for lst in listings if lst.path == _path), None)
     assert lst is not None, f"No listing found with path {path}"
     return lst
+
+
+def _fail_stat(monkeypatch: pytest.MonkeyPatch, root: Path, rel: str, err: int) -> None:
+    """Patch os.scandir as walk.py sees it,
+    so the entry at root-relative rel raises OSError(err) on stat;
+    every other path and entry is real."""
+    real = os.scandir
+    entry = PPP(rel)
+
+    def _stat(**_):
+        raise OSError(err, os.strerror(err))
+
+    def fake(path):
+        if Path(path) != root / entry.parent:
+            return real(path)
+        with real(path) as it:
+            entries = [
+                SimpleNamespace(
+                    name=e.name, is_dir=e.is_dir, is_file=e.is_file, stat=_stat
+                )
+                if e.name == entry.name
+                else e
+                for e in it
+            ]
+        return nullcontext(entries)
+
+    monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
 
 
 class TestWalk:
@@ -110,3 +139,36 @@ class TestWalk:
         assert bad.unlistable
         assert bad.errors[0].errno == errno.EACCES
         assert [walked.path for walked in yielded] == [PPP("."), PPP("b"), PPP("d")]
+
+    def test_failing_entry_is_reported_and_walk_continues(
+        self, tree: Tree, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An entry whose stat fails with EIO is left out of its directory's
+        files and reported in its errors: b's WalkedDir holds only b2.txt,
+        one Unreadable for b/b1.txt carrying errno.EIO, and is not unlistable.
+        The walk continues: the yielded paths are ".", "b", "b/c", "d".
+        Patches os.scandir so the entry for b/b1.txt raises on stat."""
+        _fail_stat(monkeypatch, tree.root, "b/b1.txt", errno.EIO)
+
+        walked = list(walk(tree.root))
+
+        b_walk = _walked_dir_at(walked, "b")
+        assert [f.name for f in b_walk.files] == ["b2.txt"]
+        errors = [(e.path, e.errno) for e in b_walk.errors]
+        assert errors == [(PPP("b/b1.txt"), errno.EIO)]
+        assert not b_walk.unlistable
+        assert [w.path for w in walked] == [PPP("."), PPP("b"), PPP("b/c"), PPP("d")]
+
+    def test_vanished_entry_is_left_out_unreported(
+        self, tree: Tree, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An entry whose stat fails with ENOENT vanished after the listing:
+        b's WalkedDir holds only b2.txt and has no errors, so scan later sees
+        b/b1.txt as absent. Patches os.scandir so the entry for b/b1.txt
+        raises ENOENT on stat."""
+        _fail_stat(monkeypatch, tree.root, "b/b1.txt", errno.ENOENT)
+
+        walked = list(walk(tree.root))
+
+        assert [f.name for f in _walked_dir_at(walked, "b").files] == ["b2.txt"]
+        assert _walked_dir_at(walked, "b").errors == ()
