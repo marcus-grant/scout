@@ -80,22 +80,6 @@ introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order; each was
 signed off point-by-point on 2026-09-22.
 
-### walk
-
-- `Listing` → `WalkedDir`:
-  - past tense: a completed observation, immutable because the
-    moment it describes is over.
-- `walk` yields `WalkedDir | Err.Unreadable`:
-  - dir-level failure is the error itself, no sentinel listing;
-  - `WalkedDir.errors` narrows to per-entry stat failures.
-- Guard the per-entry block in `_read_dir`:
-  - `OSError` on one entry appends `Err.Unreadable(rel/name)` to the
-    step's errors and continues; one racing file no longer kills the
-    run *(minor hardening for cold media, not a design driver)*.
-- `_read_dir`'s truncated docstring completed.
-- Doc commit: `doc/architecture.md` gains the fs contract — the
-  yield union, failure-as-value vs raise.
-
 ### manifest-services
 
 - Composition rule: **Manifest composes, never implements**:
@@ -185,6 +169,12 @@ signed off point-by-point on 2026-09-22.
   `meta.write_fs_detail`) moves from `run_scan` into `scan()`'s
   session opening — it is part of the verb, not adapter work;
   `run_scan`'s `detail=` test param dies with it.
+- `test/lib/test_scan.py` locals still say `listing` for a `WalkedDir`.
+  - Rename them to `walked` when the module is reassessed.
+- `test/lib/fs/test_walk.py` holds `_fail_scandir` and `_fail_stat`.
+  - If the reassessed `test/lib/test_scan.py` needs them,
+    - hoist them into `test/factory.py`;
+    - replacing its own inline `os.scandir` fake.
 - Doc commit: `doc/architecture.md` gains verb anatomy
   (atoms / policy / assembly), the event-family pattern, and the
   options shape with its config-fold constraint.

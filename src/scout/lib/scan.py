@@ -12,7 +12,7 @@ from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, Listing, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.util import to_rel
@@ -107,7 +107,7 @@ def _scan_file(
 def _scan_dir(
     manifest: Manifest,
     root: Path,
-    listing: Listing,
+    listing: WalkedDir,
     started: int,
     *,
     hash: bool = True,
@@ -134,9 +134,14 @@ def _scan_dir(
             bits=bits,
             on_progress=on_progress,
         )
-    seen = {st.name for st in listing.files}
+
+    # A row is marked gone only when its name is absent from the listing.
+    # A failed entry was listed, so it exists; only its stat is unknown.
+    file_names = {st.name for st in listing.files}
+    failed_names = {e.path.name for e in listing.errors if e.path is not None}
+    present = file_names | failed_names
     for row in manifest.files.in_dir(d.id):
-        if row.stat.name not in seen:
+        if row.stat.name not in present:
             manifest.files.mark_gone_one(d.id, row.stat.name, started)
             yield Gone(listing.path / row.stat.name)
     yield from listing.errors
@@ -200,11 +205,17 @@ def scan(
     unreadable: set[PPP] = set()
     for listing in walk(root, exclude):
         walked.add(listing.path)
-        if any(e.path == listing.path for e in listing.errors):
+
+        if listing.unlistable:
             unreadable.add(listing.path)
             errors += len(listing.errors)
             yield from listing.errors
             continue
+
+        for failed in listing.errors:
+            if failed.path is not None:
+                unreadable.add(failed.path)
+
         records_iter = _scan_dir(
             manifest,
             root,
@@ -224,6 +235,7 @@ def scan(
             else:
                 errors += 1
             yield record
+
     for d in manifest.dirs.descendants(PPP(".")):
         under_unreadable = any(u == d.path or u in d.path.parents for u in unreadable)
         if d.path in walked or under_unreadable:
@@ -231,9 +243,11 @@ def scan(
         for record in _mark_dir_gone(manifest, d.path, started):
             gone += 1
             yield record
+
     files_seen = sum(counts.values())
     finished = manifest.scans.finish(started, files_seen)
     batch.close()
+
     yield Summary(
         started,
         finished,

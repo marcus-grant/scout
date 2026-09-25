@@ -18,7 +18,7 @@ from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, Listing
+from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
 from scout.lib.scan import (
@@ -150,13 +150,13 @@ class TestScanFile:
 
 
 class TestScanDir:
-    """_scan_dir on one Listing of the default tree."""
+    """_scan_dir on one WalkedDir of the default tree."""
 
     def test_adds_dir_and_files_in_order(self, tree: Tree, manifest: Manifest) -> None:
         """The listing for b: dirs.get(b) exists after; two Scanned records
         ADDED, paths b/b1.txt then b/b2.txt; no Gone, no Unreadable."""
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = Listing(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -171,7 +171,7 @@ class TestScanDir:
         d = manifest.dirs.add(PPP("b"))
         manifest.files.add(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = Listing(PPP("b"), (st_b1, st_b2), ())
+        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -181,13 +181,30 @@ class TestScanDir:
             q = "SELECT gone FROM file WHERE name = 'old.txt';"
             assert conn.execute(q).fetchone() == (7,)
 
+    def test_failed_entry_keeps_its_row(self, tree: Tree, manifest: Manifest) -> None:
+        """A stored row b/b1.txt whose entry failed in the listing: the
+        WalkedDir for b has only b2.txt in files and an Unreadable for
+        b/b1.txt in errors. No Gone is yielded, and the row's gone stays None."""
+        d = manifest.dirs.add(PPP("b"))
+        manifest.files.add(mk_frec(dir_id=d.id, name="b1.txt"))
+        failed = PPP("b/b1.txt")
+        unreadable = Err.Unreadable("Input/output error", path=failed, errno=errno.EIO)
+        walked = WalkedDir(PPP("b"), ("c",), (_st(tree, "b/b2.txt"),), (unreadable,))
+
+        records = list(_scan_dir(manifest, tree.root, walked, started=7))
+
+        assert not any(isinstance(r, Gone) for r in records)
+        with sql.connect(manifest.db.path) as conn:
+            q = "SELECT gone FROM file WHERE name = 'b1.txt';"
+            assert conn.execute(q).fetchone() == (None,)
+
     def test_listing_errors_are_yielded_last(
         self, tree: Tree, manifest: Manifest
     ) -> None:
-        """A Listing for b/c with no files and one Unreadable: dirs.get(b/c)
+        """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
         exists, the one record yielded is that Unreadable."""
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
-        listing = Listing(PPP("b/c"), (), (unreadable,))
+        listing = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
@@ -313,6 +330,33 @@ class TestScan:
 
         unreadable = [r for r in records if isinstance(r, Err.Unreadable)]
         assert [u.path for u in unreadable] == [PPP("b")]
+        assert not any(isinstance(r, Gone) for r in records)
+        with sql.connect(manifest.db.path) as conn:
+            gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
+            gone_files = conn.execute(
+                "SELECT count(*) FROM file WHERE gone IS NOT NULL;"
+            )
+            assert (gone_dirs.fetchone()[0], gone_files.fetchone()[0]) == (0, 0)
+
+    def test_failed_subdir_entry_keeps_its_subtree(
+        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Scan, then walk patched so the root's listing reports b as a failed
+        entry: b is absent from the root's subdirs, and an Unreadable for b is
+        in its errors. No Gone, and the rows for b, b/c, and their files keep
+        gone None."""
+        list(scan(manifest))
+        unreadable = Err.Unreadable(
+            "Input/output error", path=PPP("b"), errno=errno.EIO
+        )
+        root_walked = WalkedDir(PPP("."), ("d",), (_st(tree, "a.txt"),), (unreadable,))
+        d_walked = WalkedDir(PPP("d"), (), (), ())
+        monkeypatch.setattr(
+            "scout.lib.scan.walk", lambda *_: iter([root_walked, d_walked])
+        )
+
+        records = list(scan(manifest))
+
         assert not any(isinstance(r, Gone) for r in records)
         with sql.connect(manifest.db.path) as conn:
             gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
