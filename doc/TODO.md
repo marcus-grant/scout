@@ -42,7 +42,7 @@
     taking an `emit` callable; tests collect events, not text.
   - Error placement follows CONTRIBUTE's error rules.
 
-### Restructure conventions (signed off 2026-09-22)
+### Restructure conventions
 
 Staging: each restructure PR's doc commit moves its lines from here
 into `doc/architecture.md`; this block empties as the sequence lands.
@@ -77,46 +77,73 @@ into `doc/architecture.md`; this block empties as the sequence lands.
 MVP means dogfood-ready: `init`, `scan`, and raw `sqlite3` queries,
 where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
-The restructure sections below come first, in order; each was
-signed off point-by-point on 2026-09-22.
+The restructure sections below come first, in order.
+
+### manifest-package
+
+- `git checkout -b ref/manifest-package` from `main`.
+- `Fix:` `DirRepo._UPDATE_GONE` gains `gone IS NULL`.
+  - Marking a parent gone overwrote an already-gone child's `gone`.
+  - Pin: `test_keeps_earlier_gone` in `test/lib/repo/test_dir_repo.py`.
+- `Fix:` `FileRepo.mark_gone` chunks `dir_ids`.
+  - One `?` per id overflows SQLite's bound-variable limit.
+  - Chunk at a class constant below 32766, the upstream default.
+  - Pin: a test in `test/lib/repo/test_file_repo.py`,
+    - with the constant patched small.
+- `Ref:` `lib/manifest.py` becomes `lib/manifest/__init__.py`.
+  - `test/lib/test_manifest.py` becomes
+    `test/lib/manifest/test_init.py`.
+- `Ref:` `lib/repo/` becomes `lib/manifest/repo/`.
+  - `test/lib/repo/` becomes `test/lib/manifest/repo/`.
+  - `scout.lib.repo` becomes `scout.lib.manifest.repo`,
+    - by whole-word `sed`, previewed per file.
+- `Doc:` Layers list in `doc/architecture.md`.
+- `Pln:` delete this section.
 
 ### manifest-services
 
-- Composition rule: **Manifest composes, never implements**:
-  - Consider if manifest should be a package in lib root
-    - That way mainfest.Manifest is importable as single class
-    - Its services are clearly split out from other services in lib
-    - Although I think an argument could be made services in root of lib, discuss
-  - single-table concern → repo; cross-repo updates → a service
-    *(Fowler's Service Layer in the strict sense; naming rules in
-    CONTRIBUTE)*, composed like a fifth repo.
-- `Subtree(dirs, files)` as `manifest.subtree` (named by concern
-  alone, no suffix):
-  - `mark_gone(path, started)`: the body of scan's `_mark_dir_gone`,
-    returning plain paths, files before dir;
-  - `live_counts(path)`: the read backing `AccessLost` — read-only,
-    so `View` territory under the strict rule; placement (small
-    subtree view vs an along-the-way read on `Subtree`) decided in
-    this PR;
-  - services run inside whatever transaction is open; committing is
-    `Manifest`'s act alone.
-- Repos stay executors first, SQL-fragment owners second
-  - *(`_where_descendants` style)*;
-  - a service may go set-based single-statement when roundtrips
-    matter; the service is the roundtrip boundary.
-- `Manifest.open` owns the whole path policy:
-  - gains `path.resolve()` mirroring `init`; dir → `DEFAULT_NAME`
-    stays; adapters never resolve paths themselves.
-- `CommitBatcher` via `manifest.commit_every(n)`:
-  - a real context manager; bounds work lost to interruption;
-  - ticks on writes only, never on `MATCHED`;
-  - no resume feature: rerunning scan is cheap by construction
-    (`MATCHED` skips the hash); unfinished scan rows stay as they
-    are and mean nothing special.
-- Doc commit: `doc/architecture.md` gains the
-  Repository / Unit of Work / Service Layer trio, the composition
-  rule, and the service rules (transaction participation, the
-  roundtrip boundary).
+- `git checkout -b ref/manifest-services` from `main`,
+  - after `ref/manifest-package` merges.
+- Kinds under `lib/manifest/`:
+  - repos in `repo/`, services in `service.py`, queries in `query.py`;
+  - a flat module becomes a package once populated enough;
+  - query replaces the `View` term.
+- Ownership: queries join across tables; repos alone write.
+  - Ids pass as Python values;
+    - leaves room for a read-through id cache repos invalidate.
+- `Ref:` `GoneSubtree(dirs, files)` as `manifest.gone_subtree`:
+  - `mark(path, started) -> list[PPP]`, the body of `_mark_dir_gone`;
+  - completes its writes when called, no generator;
+  - order as produced: files, then dirs in path order;
+  - `scan` wraps each returned path in `Gone`;
+  - `TestMarkDirGone` becomes `TestGoneSubtree`,
+    - in `test/lib/manifest/test_service.py`.
+- `Ft:` `PresentSubtree(db)` as `manifest.present_subtree`:
+  - `counts(path) -> PresentCounts(dirs, files)`, backing `AccessLost`;
+  - two `COUNT(*)` statements over `DirRepo`'s two where fragments,
+    - which become public in this commit;
+  - dirs strictly under path; files in path and in those dirs;
+  - bounds provisional until seen running.
+- `Ft:` `Manifest.open` resolves `path` first.
+  - `run_scan` drops its own `path.resolve()`.
+- `Ft:` `manifest.commit_every(n)` returns `CommitBatcher`:
+  - enter begins; `tick()` commits and begins again at `n`;
+  - exit commits when clean, rolls back on exception,
+    - including `GeneratorExit` from an abandoned `scan`;
+  - no resume feature: rerunning scan is cheap (`MATCHED` skips hash).
+- `Ref:` `scan` uses `manifest.commit_every(batch_size)`.
+  - Ticks on `ADDED` and `UPDATED` only, never `MATCHED`.
+  - `_Batch` deleted.
+- Deferred to a later PR:
+  - `PresentSubtree.files(path)`, one join,
+    - replacing the per-dir `files.in_dir` N+1 in `GoneSubtree.mark`;
+  - repo docstrings say present instead of live.
+- `Doc:` `doc/architecture.md` gains the repo / service / query trio,
+  - the composition rule and the ownership rule;
+  - CONTRIBUTE: `View` becomes query,
+    - its `Subtree` example becomes `GoneSubtree`;
+  - `### scan-restructure` lines naming `manifest.subtree` updated.
+- `Pln:` delete this section.
 
 ### scan-restructure
 
