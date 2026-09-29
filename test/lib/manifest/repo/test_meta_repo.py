@@ -1,4 +1,4 @@
-# test/lib/repo/test_meta_repo.py
+# test/lib/manifest/repo/test_meta_repo.py
 """Pin MetaRepo, the typed owner of meta.
 Author: Marcus
 Created: 2026-09-08

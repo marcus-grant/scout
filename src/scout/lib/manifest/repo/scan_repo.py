@@ -1,4 +1,4 @@
-# src/scout/lib/repo/scan_repo.py
+# src/scout/lib/manifest/repo/scan_repo.py
 """ScanRepo: the activity log, one row per scan run.
 Author: Marcus
 Created: 2026-09-08
@@ -7,7 +7,7 @@ License: AGPL-3.0-or-later
 
 import time
 
-from scout.lib.repo.db_connector import DBConnector
+from scout.lib.manifest.repo.db_connector import DBConnector
 
 
 class ScanRepo:

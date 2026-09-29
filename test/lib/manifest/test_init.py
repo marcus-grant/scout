@@ -1,7 +1,8 @@
-# test/lib/test_manifest.py
+# test/lib/manifest/test_init.py
 """Pin Manifest, the composite over one .scout.db file.
 Author: Marcus
 Created: 2026-09-09
+Revised: [2026-09-29]
 License: AGPL-3.0-or-later
 """
 

@@ -1,4 +1,4 @@
-# src/scout/lib/repo/meta_repo.py
+# src/scout/lib/manifest/repo/meta_repo.py
 """MetaRepo: typed getters and setters over the meta table.
 Author: Marcus
 Created: 2026-09-08
@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.repo.db_connector import DBConnector
+from scout.lib.manifest.repo.db_connector import DBConnector
 
 
 class MetaRepo:

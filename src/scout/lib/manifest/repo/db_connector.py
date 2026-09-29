@@ -1,4 +1,4 @@
-# src/scout/lib/repo/db_connector.py
+# src/scout/lib/manifest/repo/db_connector.py
 """DBConnector: opens and validates one manifest file and owns its connection.
 Author: Marcus
 Created: 2026-09-10

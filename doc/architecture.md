@@ -6,8 +6,8 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
 
 - `lib/models.py`: the vocabulary every layer passes around.
 - `lib/fs/`: observation atoms; read the disk, never the manifest.
-- `lib/repo/`: one class per table.
-- `lib/manifest`: services; the only place a transaction commits.
+- `lib/manifest/`: manifest services; the only place a transaction commits.
+  - `repo/`: one class per table.
 - Verbs (`lib/scan.py`): policy and assembly; yield typed events.
 - `cli/`: input, output, exit codes; renderers turn events into lines.
 

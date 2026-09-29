@@ -1,4 +1,4 @@
-# test/lib/repo/test_file_repo.py
+# test/lib/manifest/repo/test_file_repo.py
 """Pin FileRepo, the owner of the file table.
 Author: Marcus
 Created: 2026-09-09
@@ -11,8 +11,8 @@ from pathlib import PurePosixPath as PPP
 from factory import mk_file_record
 
 from scout.lib.manifest import Manifest
+from scout.lib.manifest.repo.file_repo import FileRepo
 from scout.lib.models import FileRecord, Hash
-from scout.lib.repo.file_repo import FileRepo
 
 
 def as_row(f: FileRecord) -> tuple:
@@ -113,6 +113,19 @@ class TestMarkGone:
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
             assert conn.execute(q).fetchall() == [(0, None), (d.id, 9), (e.id, 9)]
+
+    def test_chunks_dir_ids(self, manifest: Manifest, monkeypatch) -> None:
+        """With CHUNK patched below the id count, every listed dir still gets gone."""
+        monkeypatch.setattr(FileRepo, "CHUNK", 2)
+        dirs = [manifest.dirs.add(PPP(f"d{i}")) for i in range(5)]
+        for d in dirs:
+            manifest.files.add(mk_file_record(dir_id=d.id))
+
+        manifest.files.mark_gone([d.id for d in dirs], 9)
+
+        q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
+        with sql.connect(manifest.db.path) as conn:
+            assert conn.execute(q).fetchall() == [(d.id, 9) for d in dirs]
 
 
 class TestMarkGoneOne:

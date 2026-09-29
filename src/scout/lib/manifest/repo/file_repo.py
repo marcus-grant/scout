@@ -1,16 +1,18 @@
-# src/scout/lib/repo/file_repo.py
+# src/scout/lib/manifest/repo/file_repo.py
 """FileRepo: the file table, keyed on (dir_id, name).
 Author: Marcus
 Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
+from scout.lib.manifest.repo.db_connector import DBConnector
 from scout.lib.models import FileRecord, FileStat, Hash
-from scout.lib.repo.db_connector import DBConnector
 
 
 class FileRepo:
     """Owns file(dir_id, name, hash, size, mtime, hashed, gone); hides gone rows."""
+
+    CHUNK = 1024
 
     SCHEMA = """CREATE TABLE IF NOT EXISTS file (
         dir_id INTEGER NOT NULL REFERENCES dir(id),
@@ -91,8 +93,10 @@ class FileRepo:
 
     def mark_gone(self, dir_ids: list[int], started: int) -> None:
         """Set gone to started on every live file in the listed dirs."""
-        dids = ", ".join("?" * len(dir_ids))
-        self.db.conn.execute(self._UPDATE_GONE.format(dids), (started, *dir_ids))
+        for i in range(0, len(dir_ids), self.CHUNK):
+            chunk = dir_ids[i : i + self.CHUNK]
+            dids = ", ".join("?" * len(chunk))
+            self.db.conn.execute(self._UPDATE_GONE.format(dids), (started, *chunk))
 
     def mark_gone_one(self, dir_id: int, name: str, started: int) -> None:
         """Set gone to started on the live file at (dir_id, name), if any."""

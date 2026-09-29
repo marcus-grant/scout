@@ -1,4 +1,4 @@
-# src/scout/lib/repo/dir_repo.py
+# src/scout/lib/manifest/repo/dir_repo.py
 """DirRepo: the dir table, paths relative to root, queried by prefix.
 Author: Marcus
 Created: 2026-09-08
@@ -8,8 +8,8 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
+from scout.lib.manifest.repo.db_connector import DBConnector
 from scout.lib.models import DirRecord
-from scout.lib.repo.db_connector import DBConnector
 
 
 class DirRepo:
@@ -27,7 +27,7 @@ class DirRepo:
     _UPSERT = """INSERT INTO dir (path) VALUES (?)
                     ON CONFLICT(path) DO UPDATE SET gone = NULL;"""
 
-    _UPDATE_GONE = "UPDATE dir SET gone = ? WHERE {};"
+    _UPDATE_GONE = "UPDATE dir SET gone = ? WHERE gone IS NULL AND ({});"
 
     def __init__(self, db: DBConnector) -> None:
         """Bind to the manifest db shares."""

@@ -79,27 +79,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### manifest-package
-
-- `git checkout -b ref/manifest-package` from `main`.
-- `Fix:` `DirRepo._UPDATE_GONE` gains `gone IS NULL`.
-  - Marking a parent gone overwrote an already-gone child's `gone`.
-  - Pin: `test_keeps_earlier_gone` in `test/lib/repo/test_dir_repo.py`.
-- `Fix:` `FileRepo.mark_gone` chunks `dir_ids`.
-  - One `?` per id overflows SQLite's bound-variable limit.
-  - Chunk at a class constant below 32766, the upstream default.
-  - Pin: a test in `test/lib/repo/test_file_repo.py`,
-    - with the constant patched small.
-- `Ref:` `lib/manifest.py` becomes `lib/manifest/__init__.py`.
-  - `test/lib/test_manifest.py` becomes
-    `test/lib/manifest/test_init.py`.
-- `Ref:` `lib/repo/` becomes `lib/manifest/repo/`.
-  - `test/lib/repo/` becomes `test/lib/manifest/repo/`.
-  - `scout.lib.repo` becomes `scout.lib.manifest.repo`,
-    - by whole-word `sed`, previewed per file.
-- `Doc:` Layers list in `doc/architecture.md`.
-- `Pln:` delete this section.
-
 ### manifest-services
 
 - `git checkout -b ref/manifest-services` from `main`,
