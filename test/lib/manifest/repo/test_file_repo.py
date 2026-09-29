@@ -1,4 +1,4 @@
-# test/lib/repo/test_file_repo.py
+# test/lib/manifest/repo/test_file_repo.py
 """Pin FileRepo, the owner of the file table.
 Author: Marcus
 Created: 2026-09-09
@@ -11,8 +11,8 @@ from pathlib import PurePosixPath as PPP
 from factory import mk_file_record
 
 from scout.lib.manifest import Manifest
+from scout.lib.manifest.repo.file_repo import FileRepo
 from scout.lib.models import FileRecord, Hash
-from scout.lib.repo.file_repo import FileRepo
 
 
 def as_row(f: FileRecord) -> tuple:

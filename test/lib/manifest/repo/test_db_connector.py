@@ -1,4 +1,4 @@
-# test/lib/repo/test_db_connector.py
+# test/lib/manifest/repo/test_db_connector.py
 """Pin DBConnector: opens and validates one manifest file, owns its connection.
 Author: Marcus
 Created: 2026-09-10
@@ -14,7 +14,7 @@ from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
-from scout.lib.repo.db_connector import DBConnector
+from scout.lib.manifest.repo.db_connector import DBConnector
 
 
 class TestInit:

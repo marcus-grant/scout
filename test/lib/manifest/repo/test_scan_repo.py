@@ -1,4 +1,4 @@
-# test/lib/repo/test_scan_repo.py
+# test/lib/manifest/repo/test_scan_repo.py
 """Pin ScanRepo, the activity log of scan runs.
 Author: Marcus
 Created: 2026-09-08

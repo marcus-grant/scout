@@ -14,11 +14,11 @@ from typing import Self
 
 import scout.lib.error as Err
 from scout.lib.fs import meta as fs_meta
-from scout.lib.repo.db_connector import DBConnector
-from scout.lib.repo.dir_repo import DirRepo
-from scout.lib.repo.file_repo import FileRepo
-from scout.lib.repo.meta_repo import MetaRepo
-from scout.lib.repo.scan_repo import ScanRepo
+from scout.lib.manifest.repo.db_connector import DBConnector
+from scout.lib.manifest.repo.dir_repo import DirRepo
+from scout.lib.manifest.repo.file_repo import FileRepo
+from scout.lib.manifest.repo.meta_repo import MetaRepo
+from scout.lib.manifest.repo.scan_repo import ScanRepo
 
 
 class Manifest:

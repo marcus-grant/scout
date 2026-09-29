@@ -1,4 +1,4 @@
-# test/lib/repo/test_dir_repo.py
+# test/lib/manifest/repo/test_dir_repo.py
 """Pin DirRepo, the owner of the dir table.
 Author: Marcus
 Created: 2026-09-08
@@ -13,8 +13,8 @@ from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
+from scout.lib.manifest.repo.dir_repo import DirRepo
 from scout.lib.models import DirRecord
-from scout.lib.repo.dir_repo import DirRepo
 
 
 class TestSchema:

@@ -1,12 +1,12 @@
-# src/scout/lib/repo/file_repo.py
+# src/scout/lib/manifest/repo/file_repo.py
 """FileRepo: the file table, keyed on (dir_id, name).
 Author: Marcus
 Created: 2026-09-09
 License: AGPL-3.0-or-later
 """
 
+from scout.lib.manifest.repo.db_connector import DBConnector
 from scout.lib.models import FileRecord, FileStat, Hash
-from scout.lib.repo.db_connector import DBConnector
 
 
 class FileRepo:
