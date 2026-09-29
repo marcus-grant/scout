@@ -27,7 +27,7 @@ class DirRepo:
     _UPSERT = """INSERT INTO dir (path) VALUES (?)
                     ON CONFLICT(path) DO UPDATE SET gone = NULL;"""
 
-    _UPDATE_GONE = "UPDATE dir SET gone = ? WHERE {};"
+    _UPDATE_GONE = "UPDATE dir SET gone = ? WHERE gone IS NULL AND ({});"
 
     def __init__(self, db: DBConnector) -> None:
         """Bind to the manifest db shares."""

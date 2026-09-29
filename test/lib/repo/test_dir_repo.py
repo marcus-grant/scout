@@ -147,3 +147,12 @@ class TestMarkGone:
         with sql.connect(manifest.db.path) as conn:
             rows = conn.execute(q).fetchall()
         assert rows == [("a", None), ("a/b", None)]
+
+    def test_keeps_earlier_gone(self, manifest: Manifest) -> None:
+        """Add 'a', 'a/b', mark 'a/b' gone at started=1, mark 'a' gone started=2."""
+        manifest.dirs.add(PPP("a/b"))
+        manifest.dirs.mark_gone(PPP("a/b"), 1)
+        manifest.dirs.mark_gone(PPP("a"), 2)
+        q = "SELECT path, gone FROM dir WHERE id != 0 ORDER BY path;"
+        with sql.connect(manifest.db.path) as conn:
+            assert conn.execute(q).fetchall() == [("a", 2), ("a/b", 1)]
