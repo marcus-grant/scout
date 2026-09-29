@@ -1,7 +1,8 @@
-# src/scout/lib/manifest.py
+# src/scout/lib/manifest/__init__.py
 """Manifest: the composite over one .scout.db, sharing one DBConnector.
 Author: Marcus
 Created: 2026-09-09
+Revised: [2026-09-29]
 License: AGPL-3.0-or-later
 """
 
