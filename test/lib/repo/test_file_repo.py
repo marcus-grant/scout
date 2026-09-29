@@ -114,6 +114,19 @@ class TestMarkGone:
             q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
             assert conn.execute(q).fetchall() == [(0, None), (d.id, 9), (e.id, 9)]
 
+    def test_chunks_dir_ids(self, manifest: Manifest, monkeypatch) -> None:
+        """With CHUNK patched below the id count, every listed dir still gets gone."""
+        monkeypatch.setattr(FileRepo, "CHUNK", 2)
+        dirs = [manifest.dirs.add(PPP(f"d{i}")) for i in range(5)]
+        for d in dirs:
+            manifest.files.add(mk_file_record(dir_id=d.id))
+
+        manifest.files.mark_gone([d.id for d in dirs], 9)
+
+        q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
+        with sql.connect(manifest.db.path) as conn:
+            assert conn.execute(q).fetchall() == [(d.id, 9) for d in dirs]
+
 
 class TestMarkGoneOne:
     """mark_gone_one sets gone on exactly one live file by dir_id and name."""
