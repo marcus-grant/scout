@@ -34,6 +34,8 @@ class Manifest:
     def __init__(self, db: DBConnector) -> None:
         """Build the four repos over db & services over db"""
         self.db = db
+        self._write_count = 0
+        self._commit_every: int | None = None
         self.meta = MetaRepo(self.db)
         self.scans = ScanRepo(self.db)
         self.dirs = DirRepo(self.db)
@@ -53,6 +55,26 @@ class Manifest:
             self.db.commit()
         else:
             self.db.rollback()
+        self._commit_every = None
+        self._write_count = 0
+
+    def commit_every(self, write_count: int) -> Self:
+        """Set the threshold for the next with block:
+        commit and begin again after every `_write_count` calls to wrote();
+        return self for the block."""
+        self._write_count = 0
+        self._commit_every = write_count
+        return self
+
+    def wrote(self) -> None:
+        """Count one row written; at the threshold, commit & begin again."""
+        if self._commit_every is None:
+            return
+        self._write_count += 1
+        if self._write_count >= self._commit_every:
+            self._write_count = 0
+            self.db.commit()
+            self.db.begin()
 
     @staticmethod
     def _create_tables(path: Path) -> None:
