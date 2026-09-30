@@ -25,8 +25,6 @@ from scout.lib.scan import (
     Gone,
     Scanned,
     Summary,
-    _Batch,
-    _mark_dir_gone,
     _scan_dir,
     _scan_file,
     scan,
@@ -210,62 +208,6 @@ class TestScanDir:
 
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [unreadable]
-
-
-class TestBatch:
-    """_Batch commits the manifest only on size boundaries and on close."""
-
-    def _count(self, manifest: Manifest) -> int:
-        """FileRecord rows visible to a second connection, committed ones only."""
-        with sql.connect(manifest.db.path) as conn:
-            return conn.execute("SELECT count(*) FROM file;").fetchone()[0]
-
-    def test_commits_on_size_boundary(self, manifest: Manifest) -> None:
-        """size 2: after one add and tick a second sqlite3 connection sees
-        no file rows; after the second add and tick it sees two."""
-        batch = _Batch(manifest, 2)
-        batch.open()
-        manifest.files.add(mk_frec(name="one"))
-        batch.tick()
-        assert self._count(manifest) == 0
-        manifest.files.add(mk_frec(name="two"))
-        batch.tick()
-        assert self._count(manifest) == 2
-        batch.close()
-
-    def test_close_commits_the_tail(self, manifest: Manifest) -> None:
-        """size 5: one add and tick, then close; a second connection sees
-        the row."""
-        batch = _Batch(manifest, 5)
-        batch.open()
-        manifest.files.add(mk_frec(name="one"))
-        batch.tick()
-        assert self._count(manifest) == 0
-        batch.close()
-        assert self._count(manifest) == 1
-
-
-class TestMarkDirGone:
-    """_mark_dir_gone on a stored subtree with nothing on disk."""
-
-    def test_marks_subtree_dirs_and_files(self, manifest: Manifest) -> None:
-        """Stored b with b/x and b/c with b/c/y, plus root a: after
-        _mark_dir_gone(b, 7) the Gone paths are exactly b/x, b/c/y, b/c, b;
-        sqlite3 shows gone 7 on rows b, b/c, x, y and None on a."""
-        b, c = manifest.dirs.add(PPP("b")), manifest.dirs.add(PPP("b/c"))
-        manifest.files.add(mk_frec(dir_id=0, name="a"))
-        manifest.files.add(mk_frec(dir_id=b.id, name="x"))
-        manifest.files.add(mk_frec(dir_id=c.id, name="y"))
-
-        gone = list(_mark_dir_gone(manifest, PPP("b"), started=7))
-
-        expected = {PPP("b/x"), PPP("b/c/y"), PPP("b/c"), PPP("b")}
-        assert {g.path for g in gone} == expected
-        with sql.connect(manifest.db.path) as conn:
-            dirs = dict(conn.execute("SELECT path, gone FROM dir;").fetchall())
-            files = dict(conn.execute("SELECT name, gone FROM file;").fetchall())
-        assert (dirs["b"], dirs["b/c"], dirs["."]) == (7, 7, None)
-        assert (files["x"], files["y"], files["a"]) == (7, 7, None)
 
 
 class TestScan:

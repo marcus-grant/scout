@@ -7,6 +7,7 @@ License: AGPL-3.0-or-later
 """
 
 import sqlite3 as sql
+from collections.abc import Generator
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -116,6 +117,14 @@ class TestInit:
             q = "SELECT value FROM meta WHERE property = 'root'"
             assert conn.execute(q).fetchone()[0] == tmp_path.resolve().as_posix()
 
+    def test_open_resolves_relative_path(self, tmp_path: Path, monkeypatch) -> None:
+        """Opened from a relative path, db.path is absolute."""
+        factory.mk_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        expected = tmp_path.resolve() / Manifest.DEFAULT_NAME
+
+        assert Manifest.open(Path(".")).db.path == expected
+
 
 class TestOpen:
     """Manifest.open returns a manifest whose repos share one db."""
@@ -175,3 +184,63 @@ class TestTransaction:
             raise RuntimeError("boom")
         q = "SELECT path FROM dir WHERE path = 'a'"
         assert sql.connect(manifest.db.path).execute(q).fetchone() is None
+
+
+class TestCommitEvery:
+    """with manifest.commit_every(n): commits at every nth wrote() and on exit."""
+
+    @staticmethod
+    def _write_dirs(manifest: Manifest, count: int, start: int = 0) -> None:
+        """Add d{start}..d{start+count-1} through manifest.dirs, wrote() after each."""
+        for i in range(start, start + count):
+            manifest.dirs.add(PPP(f"d{i}"))
+            manifest.wrote()
+
+    @staticmethod
+    def _committed_dirs(manifest: Manifest) -> int:
+        """Count non-root dir rows through a fresh connection to the manifest file."""
+        with sql.connect(manifest.db.path) as conn:
+            return conn.execute("SELECT COUNT(*) FROM dir WHERE id != 0;").fetchone()[0]
+
+    def test_nth_write_commits(self, manifest: Manifest) -> None:
+        """Rows written before the nth wrote() are visible to a fresh connection
+        before the block exits."""
+        with manifest.commit_every(2):
+            self._write_dirs(manifest, 3)
+            assert self._committed_dirs(manifest) == 2
+
+    def test_exit_commits_the_remainder(self, manifest: Manifest) -> None:
+        """Rows written after the last commit are visible after a clean exit."""
+        with manifest.commit_every(2):
+            self._write_dirs(manifest, 3)
+        assert self._committed_dirs(manifest) == 3
+
+    def test_exception_rolls_back_since_last_commit(self, manifest: Manifest) -> None:
+        """Rows before the last commit stay; rows after it are gone."""
+        with pytest.raises(RuntimeError), manifest.commit_every(2):
+            self._write_dirs(manifest, 3)
+            raise RuntimeError
+        assert self._committed_dirs(manifest) == 2
+
+    def test_abandoned_generator_rolls_back(self, manifest: Manifest) -> None:
+        """Closing a generator suspended inside the block rolls back its
+        uncommitted rows."""
+
+        def writer() -> Generator[None, None, None]:
+            with manifest.commit_every(2):
+                self._write_dirs(manifest, 3)
+                yield
+
+        gen = writer()
+        next(gen)
+        gen.close()
+        assert self._committed_dirs(manifest) == 2
+
+    def test_threshold_lasts_one_block(self, manifest: Manifest) -> None:
+        """After the block, a plain with manifest: block commits only on exit."""
+        with manifest.commit_every(2):
+            pass
+        with manifest:
+            self._write_dirs(manifest, 3)
+            committed_dirs = self._committed_dirs(manifest)
+        assert committed_dirs == 0

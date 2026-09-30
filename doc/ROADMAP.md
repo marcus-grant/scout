@@ -84,6 +84,10 @@ planned.
   order (oldest `hashed` first) so a giant NAS collection is rehashed
   incrementally rather than in one burden.
 - Enters the decision as one keyword parameter and one comparison.
+- Resume is this same policy, not transaction recovery: order by
+  oldest `hashed` first and skip files hashed within a recency window
+  given on the CLI, so an interrupted run picks up where the budget
+  left off.
 
 ### observation-log
 
@@ -98,7 +102,7 @@ planned.
 
 - Decided 2026-09-22 without waiting for `status`; sequenced in
   `doc/TODO.md` under the restructure sections.
-  - `Op` became the service (`Subtree`, composed by `Manifest`;
+  - `Op` became the service (`GoneSubtree`, composed by `Manifest`;
     naming rules in CONTRIBUTE); the options object is
     `ScanOptions`; the tally and sweep cuts are `ScanTally` and
     `_sweep_unwalked`; `RecordChange.classify` lifted to
@@ -123,6 +127,35 @@ planned.
   provably done; build an exclude set, optionally widened by scan age.
   No new columns. Only if the `MATCHED`-skip rerun proves too slow on
   stat-heavy trees.
+
+### commit-trigger
+
+- `commit_every` counts rows written; on slow media one large file is
+  one count, so a crash can lose an hour inside a single batch.
+- A time or byte trigger beside the count, same `wrote()` seam, when
+  dogfooding on the NAS shows the loss.
+
+### claimed-files
+
+- `Claimed.files(path)`: one join returning claimed file paths under
+  a path, replacing the per-dir `files.in_dir` N+1 in
+  `GoneSubtree.mark`.
+- Repo docstrings say claimed where they say live.
+
+### sql-layer
+
+- Post-MVP: thin the repos by moving SQL composition out of them.
+  - Repos supply what is inherent to their table: predicates as
+    `SqlWhere` from `where_<relation>` methods, statement heads with
+    one `{}` hole, someday a column tuple.
+  - `clause.py` grows `Statement(sql, params)` and
+    `compose(head, where, *leading)`; queries and services assemble,
+    never write fragments.
+  - The `FROM file JOIN dir ... gone IS NULL` tail in `Claimed` is
+    the first shared source; it moves to `clause.py` on its second
+    consumer.
+- Held to today: every fragment leaving a repo is a `SqlWhere`; own
+  params precede the predicate's; `clause.py` stays table-agnostic.
 
 ### Undecided
 

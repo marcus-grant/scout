@@ -14,11 +14,13 @@ from typing import Self
 
 import scout.lib.error as Err
 from scout.lib.fs import meta as fs_meta
+from scout.lib.manifest.query import Claimed
 from scout.lib.manifest.repo.db_connector import DBConnector
 from scout.lib.manifest.repo.dir_repo import DirRepo
 from scout.lib.manifest.repo.file_repo import FileRepo
 from scout.lib.manifest.repo.meta_repo import MetaRepo
 from scout.lib.manifest.repo.scan_repo import ScanRepo
+from scout.lib.manifest.service import GoneSubtree
 
 
 class Manifest:
@@ -30,12 +32,16 @@ class Manifest:
     REPOS = (MetaRepo, ScanRepo, DirRepo, FileRepo)  # In order of which must init first
 
     def __init__(self, db: DBConnector) -> None:
-        """Build the four repos over db."""
+        """Build the four repos over db & services over db"""
         self.db = db
-        self.meta = MetaRepo(db)
-        self.scans = ScanRepo(db)
-        self.dirs = DirRepo(db)
-        self.files = FileRepo(db)
+        self._write_count = 0
+        self._commit_every: int | None = None
+        self.meta = MetaRepo(self.db)
+        self.scans = ScanRepo(self.db)
+        self.dirs = DirRepo(self.db)
+        self.files = FileRepo(self.db)
+        self.gone_subtree = GoneSubtree(self.dirs, self.files)
+        self.claimed = Claimed(self.db, self.dirs)
 
     def __enter__(self) -> Self:
         """Begin one transaction across every repo;
@@ -49,6 +55,26 @@ class Manifest:
             self.db.commit()
         else:
             self.db.rollback()
+        self._commit_every = None
+        self._write_count = 0
+
+    def commit_every(self, write_count: int) -> Self:
+        """Set the threshold for the next with block:
+        commit and begin again after every `_write_count` calls to wrote();
+        return self for the block."""
+        self._write_count = 0
+        self._commit_every = write_count
+        return self
+
+    def wrote(self) -> None:
+        """Count one row written; at the threshold, commit & begin again."""
+        if self._commit_every is None:
+            return
+        self._write_count += 1
+        if self._write_count >= self._commit_every:
+            self._write_count = 0
+            self.db.commit()
+            self.db.begin()
 
     @staticmethod
     def _create_tables(path: Path) -> None:
@@ -102,6 +128,7 @@ class Manifest:
     @classmethod
     def open(cls, path: Path) -> "Manifest":
         """Open an existing manifest, refusing a wrong schema_version."""
+        path = path.resolve()
         if path.is_dir():
             path = path / cls.DEFAULT_NAME
         man = cls(DBConnector(path))

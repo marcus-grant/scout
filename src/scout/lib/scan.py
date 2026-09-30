@@ -49,22 +49,6 @@ class Summary:
     gone: int
 
 
-def _mark_dir_gone(manifest: Manifest, path: PPP, started: int) -> Iterator[Gone]:
-    """Mark the live dir at path, every live dir under it, and every live
-    file in them gone with started; yield one Gone per file and per dir,
-    files of a dir before the dir, deepest dirs last."""
-    if (top := manifest.dirs.get(path)) is None:
-        return
-    subtree = [top, *manifest.dirs.descendants(path)]
-    for d in subtree:
-        for row in manifest.files.in_dir(d.id):
-            yield Gone(d.path / row.stat.name)
-    manifest.files.mark_gone([d.id for d in subtree], started)
-    for d in subtree:
-        yield Gone(d.path)
-    manifest.dirs.mark_gone(path, started)
-
-
 def _scan_file(
     manifest: Manifest,
     dir_id: int,
@@ -147,40 +131,13 @@ def _scan_dir(
     yield from listing.errors
 
 
-class _Batch:
-    """Commit the manifest every size rows so an interrupted scan keeps
-    its progress; scan calls tick once per row written."""
-
-    def __init__(self, manifest: Manifest, size: int) -> None:
-        """Hold the manifest and the batch size; no transaction is open yet."""
-        self.manifest = manifest
-        self.size = size
-
-    def open(self) -> None:
-        """Begin a transaction on the manifest and zero the counter."""
-        self.count = 0
-        self.manifest.__enter__()
-
-    def tick(self) -> None:
-        """Count one row; at size, commit, reopen, and zero the counter."""
-        self.count += 1
-        if self.count >= self.size:
-            self.close()
-            self.open()
-
-    def close(self) -> None:
-        """Commit whatever is pending and leave no transaction open."""
-        self.count = 0
-        self.manifest.__exit__(None, None, None)
-
-
 def scan(
     manifest: Manifest,
     *,
     hash: bool = True,
     force: bool = False,
     bits: int = DEFAULT_BITS,
-    batch_size: int = 500,
+    batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[Scanned | Gone | Err.Unreadable | Summary]:
     """Walk manifest's root and bring every row current, yielding records
@@ -199,54 +156,55 @@ def scan(
     started = manifest.scans.start()
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
-    batch = _Batch(manifest, batch_size)
-    batch.open()
-    walked: set[PPP] = set()
-    unreadable: set[PPP] = set()
-    for listing in walk(root, exclude):
-        walked.add(listing.path)
+    with manifest.commit_every(batch_size):
+        walked: set[PPP] = set()
+        unreadable: set[PPP] = set()
+        for listing in walk(root, exclude):
+            walked.add(listing.path)
 
-        if listing.unlistable:
-            unreadable.add(listing.path)
-            errors += len(listing.errors)
-            yield from listing.errors
-            continue
+            if listing.unlistable:
+                unreadable.add(listing.path)
+                errors += len(listing.errors)
+                yield from listing.errors
+                continue
 
-        for failed in listing.errors:
-            if failed.path is not None:
-                unreadable.add(failed.path)
+            for failed in listing.errors:
+                if failed.path is not None:
+                    unreadable.add(failed.path)
 
-        records_iter = _scan_dir(
-            manifest,
-            root,
-            listing,
-            started,
-            hash=hash,
-            force=force,
-            bits=bits,
-            on_progress=on_progress,
-        )
-        for record in records_iter:
-            if isinstance(record, Scanned):
-                counts[record.change] += 1
-                batch.tick()
-            elif isinstance(record, Gone):
+            records_iter = _scan_dir(
+                manifest,
+                root,
+                listing,
+                started,
+                hash=hash,
+                force=force,
+                bits=bits,
+                on_progress=on_progress,
+            )
+            for record in records_iter:
+                if isinstance(record, Scanned):
+                    counts[record.change] += 1
+                    if record.change is not RecordChange.MATCHED:
+                        manifest.wrote()
+                elif isinstance(record, Gone):
+                    gone += 1
+                else:
+                    errors += 1
+                yield record
+
+        for d in manifest.dirs.descendants(PPP(".")):
+            under_unreadable = any(
+                u == d.path or u in d.path.parents for u in unreadable
+            )
+            if d.path in walked or under_unreadable:
+                continue
+            for path in manifest.gone_subtree.mark(d.path, started):
                 gone += 1
-            else:
-                errors += 1
-            yield record
+                yield Gone(path)
 
-    for d in manifest.dirs.descendants(PPP(".")):
-        under_unreadable = any(u == d.path or u in d.path.parents for u in unreadable)
-        if d.path in walked or under_unreadable:
-            continue
-        for record in _mark_dir_gone(manifest, d.path, started):
-            gone += 1
-            yield record
-
-    files_seen = sum(counts.values())
-    finished = manifest.scans.finish(started, files_seen)
-    batch.close()
+        files_seen = sum(counts.values())
+        finished = manifest.scans.finish(started, files_seen)
 
     yield Summary(
         started,

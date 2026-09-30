@@ -8,6 +8,7 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
+from scout.lib.manifest.clause import SqlWhere
 from scout.lib.manifest.repo.db_connector import DBConnector
 from scout.lib.models import DirRecord
 
@@ -23,6 +24,8 @@ class DirRepo:
 
     _SELECT = """SELECT id, path, gone FROM dir
                     WHERE GONE IS NULL AND ({}) ORDER BY path;"""
+
+    _COUNT = "SELECT COUNT(*) FROM dir WHERE gone is NULL AND ({});"
 
     _UPSERT = """INSERT INTO dir (path) VALUES (?)
                     ON CONFLICT(path) DO UPDATE SET gone = NULL;"""
@@ -51,17 +54,17 @@ class DirRepo:
         return [DirRepo._row_to_dir(r) for r in rows]
 
     @staticmethod
-    def _where_descendants(parent: str) -> tuple[str, tuple[str, ...]]:
+    def where_under(parent: str) -> SqlWhere:
         """WHERE clause and params selecting dirs strictly under _path."""
         if parent == ".":
-            return "id != 0", ()
-        return "path >= ? AND path < ?", (f"{parent}/", f"{parent}0")
+            return SqlWhere("id != 0", ())
+        return SqlWhere("path >= ? AND path < ?", (f"{parent}/", f"{parent}0"))
 
     @staticmethod
-    def _where_descendants_or_parent(parent: str) -> tuple[str, tuple[str, ...]]:
+    def where_at_or_under(parent: str) -> SqlWhere:
         """WHERE clause and params selecting _path itself and dirs under it."""
-        where, params = DirRepo._where_descendants(parent)
-        return f"path = ? OR ({where})", (parent, *params)
+        where, params = DirRepo.where_under(parent)
+        return SqlWhere(f"path = ? OR ({where})", (parent, *params))
 
     def _select_dirs(self, where: str, params: tuple = ()) -> list[DirRecord]:
         """Run _SELECT with where & params: id, path, gone FROM dir, ordered by path."""
@@ -93,9 +96,14 @@ class DirRepo:
             where, params = "id != 0", ()
         return self._select_dirs(where, params)
 
+    def count(self, where: SqlWhere) -> int:
+        """Return how many claimed dirs (gone IS NULL) satisfy where."""
+        q = self._COUNT.format(where.sql)
+        return self.db.conn.execute(q, where.params).fetchone()[0]
+
     def mark_gone(self, path: PPP, started: int) -> None:
         """Set gone to started on path and every dir under it."""
         _path = self._check(path)
-        where, params = DirRepo._where_descendants_or_parent(_path)
+        where, params = DirRepo.where_at_or_under(_path)
         params = (started, *params)
         self.db.conn.execute(self._UPDATE_GONE.format(where), params)
