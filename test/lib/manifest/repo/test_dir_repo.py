@@ -13,6 +13,7 @@ from assertion import assert_err_fields
 
 import scout.lib.error as Err
 from scout.lib.manifest import Manifest
+from scout.lib.manifest.clause import SqlWhere
 from scout.lib.manifest.repo.dir_repo import DirRepo
 from scout.lib.models import DirRecord
 
@@ -156,3 +157,21 @@ class TestMarkGone:
         q = "SELECT path, gone FROM dir WHERE id != 0 ORDER BY path;"
         with sql.connect(manifest.db.path) as conn:
             assert conn.execute(q).fetchall() == [("a", 2), ("a/b", 1)]
+
+
+class TestWhereUnder:
+    """where_under and where_at_or_under bound a subtree by path range."""
+
+    def test_under_is_a_prefix_range(self) -> None:
+        """where_under("a") is the half-open range from a/ to a0."""
+        expect = SqlWhere("path >= ? AND path < ?", ("a/", "a0"))
+        assert DirRepo.where_under("a") == expect
+
+    def test_under_root_is_every_row_but_root(self) -> None:
+        """where_under(".") is id != 0 with no params."""
+        assert DirRepo.where_under(".") == SqlWhere("id != 0", ())
+
+    def test_at_or_under_adds_the_path_itself(self) -> None:
+        """where_at_or_under("a") is path = a OR the range, params a, a/, a0."""
+        expect = SqlWhere("path = ? OR (path >= ? AND path < ?)", ("a", "a/", "a0"))
+        assert DirRepo.where_at_or_under("a") == expect
