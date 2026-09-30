@@ -58,7 +58,7 @@ class DirRepo:
         return "path >= ? AND path < ?", (f"{parent}/", f"{parent}0")
 
     @staticmethod
-    def _where_descendants_or_parent(parent: str) -> tuple[str, tuple[str, ...]]:
+    def where_at_or_under(parent: str) -> tuple[str, tuple[str, ...]]:
         """WHERE clause and params selecting _path itself and dirs under it."""
         where, params = DirRepo._where_descendants(parent)
         return f"path = ? OR ({where})", (parent, *params)
@@ -96,6 +96,6 @@ class DirRepo:
     def mark_gone(self, path: PPP, started: int) -> None:
         """Set gone to started on path and every dir under it."""
         _path = self._check(path)
-        where, params = DirRepo._where_descendants_or_parent(_path)
+        where, params = DirRepo.where_at_or_under(_path)
         params = (started, *params)
         self.db.conn.execute(self._UPDATE_GONE.format(where), params)
