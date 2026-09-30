@@ -175,3 +175,22 @@ class TestWhereUnder:
         """where_at_or_under("a") is path = a OR the range, params a, a/, a0."""
         expect = SqlWhere("path = ? OR (path >= ? AND path < ?)", ("a", "a/", "a0"))
         assert DirRepo.where_at_or_under("a") == expect
+
+
+class TestCount:
+    """count returns how many claimed dirs match a predicate."""
+
+    def test_counts_claimed_matches_only(self, manifest: Manifest) -> None:
+        """Gone rows and rows outside the predicate are not counted."""
+        for p in ("a", "a/b", "a/c", "ac"):
+            manifest.dirs.add(PPP(p))
+        manifest.dirs.mark_gone(PPP("a/c"), 7)
+
+        assert manifest.dirs.count(DirRepo.where_under("a")) == 1
+
+    def test_no_match_is_zero(self, manifest: Manifest) -> None:
+        """A predicate matching no row counts zero, not None."""
+        manifest.dirs.add(PPP("x"))
+        manifest.dirs.mark_gone(PPP("x"), 7)
+
+        assert manifest.dirs.count(DirRepo.where_under("x")) == 0

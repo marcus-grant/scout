@@ -25,6 +25,8 @@ class DirRepo:
     _SELECT = """SELECT id, path, gone FROM dir
                     WHERE GONE IS NULL AND ({}) ORDER BY path;"""
 
+    _COUNT = "SELECT COUNT(*) FROM dir WHERE gone is NULL AND ({});"
+
     _UPSERT = """INSERT INTO dir (path) VALUES (?)
                     ON CONFLICT(path) DO UPDATE SET gone = NULL;"""
 
@@ -93,6 +95,11 @@ class DirRepo:
         if _path == ".":
             where, params = "id != 0", ()
         return self._select_dirs(where, params)
+
+    def count(self, where: SqlWhere) -> int:
+        """Return how many claimed dirs (gone IS NULL) satisfy where."""
+        q = self._COUNT.format(where.sql)
+        return self.db.conn.execute(q, where.params).fetchone()[0]
 
     def mark_gone(self, path: PPP, started: int) -> None:
         """Set gone to started on path and every dir under it."""
