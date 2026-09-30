@@ -79,51 +79,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### manifest-services
-
-- `git checkout -b ref/manifest-services` from `main`,
-  - after `ref/manifest-package` merges.
-- Kinds under `lib/manifest/`:
-  - repos in `repo/`, services in `service.py`, queries in `query.py`;
-  - a flat module becomes a package once populated enough;
-  - query replaces the `View` term.
-- Ownership: queries join across tables; repos alone write.
-  - Ids pass as Python values;
-    - leaves room for a read-through id cache repos invalidate.
-- `Ref:` `GoneSubtree(dirs, files)` as `manifest.gone_subtree`:
-  - `mark(path, started) -> list[PPP]`, the body of `_mark_dir_gone`;
-  - completes its writes when called, no generator;
-  - order as produced: files, then dirs in path order;
-  - `scan` wraps each returned path in `Gone`;
-  - `TestMarkDirGone` becomes `TestGoneSubtree`,
-    - in `test/lib/manifest/test_service.py`.
-- `Ft:` `PresentSubtree(db)` as `manifest.present_subtree`:
-  - `counts(path) -> PresentCounts(dirs, files)`, backing `AccessLost`;
-  - two `COUNT(*)` statements over `DirRepo`'s two where fragments,
-    - which become public in this commit;
-  - dirs strictly under path; files in path and in those dirs;
-  - bounds provisional until seen running.
-- `Ft:` `Manifest.open` resolves `path` first.
-  - `run_scan` drops its own `path.resolve()`.
-- `Ft:` `manifest.commit_every(n)` returns `CommitBatcher`:
-  - enter begins; `tick()` commits and begins again at `n`;
-  - exit commits when clean, rolls back on exception,
-    - including `GeneratorExit` from an abandoned `scan`;
-  - no resume feature: rerunning scan is cheap (`MATCHED` skips hash).
-- `Ref:` `scan` uses `manifest.commit_every(batch_size)`.
-  - Ticks on `ADDED` and `UPDATED` only, never `MATCHED`.
-  - `_Batch` deleted.
-- Deferred to a later PR:
-  - `PresentSubtree.files(path)`, one join,
-    - replacing the per-dir `files.in_dir` N+1 in `GoneSubtree.mark`;
-  - repo docstrings say present instead of live.
-- `Doc:` `doc/architecture.md` gains the repo / service / query trio,
-  - the composition rule and the ownership rule;
-  - CONTRIBUTE: `View` becomes query,
-    - its `Subtree` example becomes `GoneSubtree`;
-  - `### scan-restructure` lines naming `manifest.subtree` updated.
-- `Pln:` delete this section.
-
 ### scan-restructure
 
 >**NOTE**: This task is likely too big for one PR, plan a split if needed
@@ -159,9 +114,10 @@ The restructure sections below come first, in order.
   - coverage sets `covered` and `unreadable`; dispatch to
     `_reconcile_dir` / `_handle_unreadable`; sweep last;
   - `_handle_unreadable` yields `ReadFailed`, derives `AccessLost`
-    via `manifest.subtree.live_counts`, writes nothing;
+    via `manifest.claimed.counts`, writes nothing;
+    - `counts` bounds are provisional until seen running here;
   - `_sweep_unwalked`: candidates via repo SQL (path-prefix, not
-    Python `parents` loops), marks via `manifest.subtree.mark_gone`,
+    Python `parents` loops), marks via `manifest.gone_subtree.mark`,
     yields `RecordGone`.
 - `ScanTally`, public, injectable: `scan(manifest, opts, tally=None)`:
   - `see(event)` before each yield, so the live instance is exactly
