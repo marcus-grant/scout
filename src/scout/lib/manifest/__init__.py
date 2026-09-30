@@ -19,6 +19,7 @@ from scout.lib.manifest.repo.dir_repo import DirRepo
 from scout.lib.manifest.repo.file_repo import FileRepo
 from scout.lib.manifest.repo.meta_repo import MetaRepo
 from scout.lib.manifest.repo.scan_repo import ScanRepo
+from scout.lib.manifest.service import GoneSubtree
 
 
 class Manifest:
@@ -30,12 +31,13 @@ class Manifest:
     REPOS = (MetaRepo, ScanRepo, DirRepo, FileRepo)  # In order of which must init first
 
     def __init__(self, db: DBConnector) -> None:
-        """Build the four repos over db."""
+        """Build the four repos over db & services over db"""
         self.db = db
         self.meta = MetaRepo(db)
         self.scans = ScanRepo(db)
         self.dirs = DirRepo(db)
         self.files = FileRepo(db)
+        self.gone_subtree = GoneSubtree(self.dirs, self.files)
 
     def __enter__(self) -> Self:
         """Begin one transaction across every repo;

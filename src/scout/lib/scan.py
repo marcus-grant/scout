@@ -49,22 +49,6 @@ class Summary:
     gone: int
 
 
-def _mark_dir_gone(manifest: Manifest, path: PPP, started: int) -> Iterator[Gone]:
-    """Mark the live dir at path, every live dir under it, and every live
-    file in them gone with started; yield one Gone per file and per dir,
-    files of a dir before the dir, deepest dirs last."""
-    if (top := manifest.dirs.get(path)) is None:
-        return
-    subtree = [top, *manifest.dirs.descendants(path)]
-    for d in subtree:
-        for row in manifest.files.in_dir(d.id):
-            yield Gone(d.path / row.stat.name)
-    manifest.files.mark_gone([d.id for d in subtree], started)
-    for d in subtree:
-        yield Gone(d.path)
-    manifest.dirs.mark_gone(path, started)
-
-
 def _scan_file(
     manifest: Manifest,
     dir_id: int,
@@ -240,9 +224,9 @@ def scan(
         under_unreadable = any(u == d.path or u in d.path.parents for u in unreadable)
         if d.path in walked or under_unreadable:
             continue
-        for record in _mark_dir_gone(manifest, d.path, started):
+        for path in manifest.gone_subtree.mark(d.path, started):
             gone += 1
-            yield record
+            yield Gone(path)
 
     files_seen = sum(counts.values())
     finished = manifest.scans.finish(started, files_seen)

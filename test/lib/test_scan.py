@@ -26,7 +26,6 @@ from scout.lib.scan import (
     Scanned,
     Summary,
     _Batch,
-    _mark_dir_gone,
     _scan_dir,
     _scan_file,
     scan,
@@ -243,29 +242,6 @@ class TestBatch:
         assert self._count(manifest) == 0
         batch.close()
         assert self._count(manifest) == 1
-
-
-class TestMarkDirGone:
-    """_mark_dir_gone on a stored subtree with nothing on disk."""
-
-    def test_marks_subtree_dirs_and_files(self, manifest: Manifest) -> None:
-        """Stored b with b/x and b/c with b/c/y, plus root a: after
-        _mark_dir_gone(b, 7) the Gone paths are exactly b/x, b/c/y, b/c, b;
-        sqlite3 shows gone 7 on rows b, b/c, x, y and None on a."""
-        b, c = manifest.dirs.add(PPP("b")), manifest.dirs.add(PPP("b/c"))
-        manifest.files.add(mk_frec(dir_id=0, name="a"))
-        manifest.files.add(mk_frec(dir_id=b.id, name="x"))
-        manifest.files.add(mk_frec(dir_id=c.id, name="y"))
-
-        gone = list(_mark_dir_gone(manifest, PPP("b"), started=7))
-
-        expected = {PPP("b/x"), PPP("b/c/y"), PPP("b/c"), PPP("b")}
-        assert {g.path for g in gone} == expected
-        with sql.connect(manifest.db.path) as conn:
-            dirs = dict(conn.execute("SELECT path, gone FROM dir;").fetchall())
-            files = dict(conn.execute("SELECT name, gone FROM file;").fetchall())
-        assert (dirs["b"], dirs["b/c"], dirs["."]) == (7, 7, None)
-        assert (files["x"], files["y"], files["a"]) == (7, 7, None)
 
 
 class TestScan:
