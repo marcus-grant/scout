@@ -228,17 +228,20 @@ Code conventions:
     - reads and writes,
     - and holds its `SCHEMA` and every statement as class constants;
     - `WHERE` fragments are literals in the class and values are always bound.
-  - A `View` reads across tables, never writes, and is named for what it returns.
+  - A query reads across tables, never writes, and is named for what it returns.
+    - *(`Claimed`, as `manifest.claimed`)*
   - A service updates across repos: one concern's writes that no
     single repo can own without branching its responsibilities;
     - the term is Fowler's Service Layer in the strict sense only.
-    - Named by its concern alone (`Subtree`, as `manifest.subtree`).
+    - Named by its concern alone (`GoneSubtree`, as `manifest.subtree`).
     - `Manifest` composes services and never implements one.
-    - A service may read along the way, but a read-only concern is
-      a `View`, and one table's logic stays in that table's repo.
-    - What fits neither repo, `View`, nor service lives in a lib
-      root module or `util.py` until a better-named pattern
-      emerges; never as a loosely named service.
+    - A service may read along the way, but a read-only concern is a query,
+      - and one table's logic stays in that table's repo.
+    - The lib root modules contain:
+      - neither repo, query, nor services
+      - `util` is another useful place for pure functions with no clear home.
+    - What fits neither repo, query, nor service lives in a lib.
+    - Eventually a better grouping that collects some of these emerges.
 - Transactions:
   - committing is `Manifest`'s act alone;
     - repos, services, and verbs never commit.

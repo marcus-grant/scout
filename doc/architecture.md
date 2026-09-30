@@ -6,8 +6,14 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
 
 - `lib/models.py`: the vocabulary every layer passes around.
 - `lib/fs/`: observation atoms; read the disk, never the manifest.
-- `lib/manifest/`: manifest services; the only place a transaction commits.
-  - `repo/`: one class per table.
+- `lib/manifest/`: the only place a transaction commits.
+  - `repo/`: one class per table; the only writer of that table.
+  - `service.py`: one concern's writes across repos (`GoneSubtree`).
+  - `query.py`: reads that join across tables, never writes (`Claimed`).
+  - `clause.py`: SQL pieces shared inside the package (`SqlWhere`).
+  - `Manifest` composes them and implements none.
+  - Ids cross these as Python values, never as joins into another
+    repo's statement.
 - Verbs (`lib/scan.py`): policy and assembly; yield typed events.
 - `cli/`: input, output, exit codes; renderers turn events into lines.
 
