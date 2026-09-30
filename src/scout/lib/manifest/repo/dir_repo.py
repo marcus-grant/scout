@@ -51,7 +51,7 @@ class DirRepo:
         return [DirRepo._row_to_dir(r) for r in rows]
 
     @staticmethod
-    def _where_descendants(parent: str) -> tuple[str, tuple[str, ...]]:
+    def where_under(parent: str) -> tuple[str, tuple[str, ...]]:
         """WHERE clause and params selecting dirs strictly under _path."""
         if parent == ".":
             return "id != 0", ()
@@ -60,7 +60,7 @@ class DirRepo:
     @staticmethod
     def where_at_or_under(parent: str) -> tuple[str, tuple[str, ...]]:
         """WHERE clause and params selecting _path itself and dirs under it."""
-        where, params = DirRepo._where_descendants(parent)
+        where, params = DirRepo.where_under(parent)
         return f"path = ? OR ({where})", (parent, *params)
 
     def _select_dirs(self, where: str, params: tuple = ()) -> list[DirRecord]:
