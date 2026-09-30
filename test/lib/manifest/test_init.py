@@ -116,6 +116,14 @@ class TestInit:
             q = "SELECT value FROM meta WHERE property = 'root'"
             assert conn.execute(q).fetchone()[0] == tmp_path.resolve().as_posix()
 
+    def test_open_resolves_relative_path(self, tmp_path: Path, monkeypatch) -> None:
+        """Opened from a relative path, db.path is absolute."""
+        factory.mk_manifest(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        expected = tmp_path.resolve() / Manifest.DEFAULT_NAME
+
+        assert Manifest.open(Path(".")).db.path == expected
+
 
 class TestOpen:
     """Manifest.open returns a manifest whose repos share one db."""

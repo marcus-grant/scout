@@ -106,6 +106,7 @@ class Manifest:
     @classmethod
     def open(cls, path: Path) -> "Manifest":
         """Open an existing manifest, refusing a wrong schema_version."""
+        path = path.resolve()
         if path.is_dir():
             path = path / cls.DEFAULT_NAME
         man = cls(DBConnector(path))
