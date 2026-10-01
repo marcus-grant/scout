@@ -83,7 +83,7 @@ def _scan_file(
         if isinstance(h, Err.Unreadable):
             return Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
         hashed = started
-    file = manifest.files.add(FileRecord(dir_id, stat, h, hashed))
+    file = manifest.files.upsert(FileRecord(dir_id, stat, h, hashed))
 
     return Scanned(dir_rel / stat.name, file, change)
 

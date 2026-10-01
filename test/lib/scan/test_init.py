@@ -86,7 +86,7 @@ class TestScanFile:
         h = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
         st = _st(tree, "a.txt")
         fmodel = mk_frec(name="a.txt", size=st.size, mtime=st.mtime, hash=h, hashed=3)
-        stored = manifest.files.add(fmodel)
+        stored = manifest.files.upsert(fmodel)
 
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
@@ -104,7 +104,7 @@ class TestScanFile:
         new_h = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
         stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
-        manifest.files.add(fmodel)
+        manifest.files.upsert(fmodel)
 
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
@@ -119,7 +119,7 @@ class TestScanFile:
         st = _st(tree, "a.txt")
         stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
-        manifest.files.add(fmodel)
+        manifest.files.upsert(fmodel)
 
         act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, hash=False)
 
@@ -167,7 +167,7 @@ class TestScanDir:
         """A stored row b/old.txt not in the listing: one Gone with path
         b/old.txt after the Scanned records; the row's gone is started."""
         d = manifest.dirs.add(PPP("b"))
-        manifest.files.add(mk_frec(dir_id=d.id, name="old.txt"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
         listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
@@ -184,7 +184,7 @@ class TestScanDir:
         WalkedDir for b has only b2.txt in files and an Unreadable for
         b/b1.txt in errors. No Gone is yielded, and the row's gone stays None."""
         d = manifest.dirs.add(PPP("b"))
-        manifest.files.add(mk_frec(dir_id=d.id, name="b1.txt"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="b1.txt"))
         failed = PPP("b/b1.txt")
         unreadable = Err.Unreadable("Input/output error", path=failed, errno=errno.EIO)
         walked = WalkedDir(PPP("b"), ("c",), (_st(tree, "b/b2.txt"),), (unreadable,))

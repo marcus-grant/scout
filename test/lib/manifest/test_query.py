@@ -23,7 +23,7 @@ class TestClaimed:
         d, bb = manifest.dirs.add(PPP("b/d")), manifest.dirs.add(PPP("bb"))
         e = manifest.dirs.add(PPP("b/c/e"))
         for dir_id in (0, b.id, c.id, d.id, e.id, bb.id):
-            manifest.files.add(mk_file_record(dir_id=dir_id))
+            manifest.files.upsert(mk_file_record(dir_id=dir_id))
         manifest.gone_subtree.mark(PPP("b/d"), started=7)
 
         assert manifest.claimed.counts(PPP(".")) == ClaimedCounts(dirs=4, files=5)
@@ -32,8 +32,8 @@ class TestClaimed:
     def test_gone_file_in_claimed_dir_not_counted(self, manifest: Manifest) -> None:
         """A file marked gone is excluded while its dir still counts."""
         b = manifest.dirs.add(PPP("b"))
-        manifest.files.add(mk_file_record(dir_id=b.id, name="1"))
-        manifest.files.add(mk_file_record(dir_id=b.id, name="2"))
+        manifest.files.upsert(mk_file_record(dir_id=b.id, name="1"))
+        manifest.files.upsert(mk_file_record(dir_id=b.id, name="2"))
         manifest.files.mark_gone_one(b.id, "2", 7)
 
         assert manifest.claimed.counts(PPP(".")) == ClaimedCounts(dirs=1, files=1)
