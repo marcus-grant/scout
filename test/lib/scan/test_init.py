@@ -1,4 +1,4 @@
-# test/lib/test_scan.py
+# test/lib/scan/test_init.py
 """Pin lib.scan: the per-file decision and the scan run.
 Author: Marcus
 Created: 2026-09-18

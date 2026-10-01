@@ -1,4 +1,4 @@
-# src/scout/lib/scan.py
+# src/scout/lib/scan/__init__.py
 """The scan verb: walk a manifest's root and bring its rows up to date.
 Author: Marcus
 Created: 2026-09-18
