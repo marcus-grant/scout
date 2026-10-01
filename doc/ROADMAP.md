@@ -70,6 +70,27 @@ planned.
   that `has` can check against another manifest before anything is
   removed.
 
+### missing-dirs-per-dir
+
+- Today missing dirs are found after the walk: every live dir is
+  loaded via `dirs.descendants(PPP("."))` and checked in Python against
+  the walked and unreadable paths.
+  - Roughly 1.5 KB per dir at peak; a home dir of 188,800 dirs
+    estimates near 280 MB. Acceptable for MVP, not measured.
+- Preferred fix: compare each `WalkedDir`'s `subdirs` against the live
+  dirs recorded directly under it, as missing files are found today.
+  - One query per walked dir, cheap next to hashing.
+  - Every missing dir found is topmost, since its parent was walked;
+    an unlistable dir has no `subdirs`, so nothing under it is missed.
+  - Removes the walked set, the unreadable set and the full dir list.
+  - Needs one new `DirRepo` method: live dirs directly under a path.
+- Trigger: measure peak memory (`/usr/bin/time -v`) in the NAS
+  acceptance run.
+  - Around 300 MiB is acceptable but unwanted; 1 GiB is not acceptable
+    even for MVP.
+  - When to adopt weighs the measured burden against the change's
+    complexity and other priorities.
+
 ### comment
 
 - `scout comment [repo] [TEXT]`: get-set verb like `scout root`.
@@ -100,13 +121,22 @@ planned.
 
 ### verb-architecture
 
-- Decided 2026-09-22 without waiting for `status`; sequenced in
-  `doc/TODO.md` under the restructure sections.
-  - `Op` became the service (`GoneSubtree`, composed by `Manifest`;
-    naming rules in CONTRIBUTE); the options object is
-    `ScanOptions`; the tally and sweep cuts are `ScanTally` and
-    `_sweep_unwalked`; `RecordChange.classify` lifted to
-    `lib/models.py` ahead of a second consumer.
+- Scan is all-encompassing and needed early, so parts later operations
+  are likely to share are built inside `src/scout/lib/scan/` first.
+  - Grouped by subject (`file_stats.py`, `missing_files.py`,
+    `missing_dirs.py`), each a reconciliation that writes nothing
+    paired with an apply that writes; provisional.
+  - Lib events are lib-wide from the start, in `src/scout/lib/event.py`.
+- Grouping by subject is expected to get in the way once `ls`, `has`,
+  `diff`, `comm` or `status` arrive.
+  - Each of those starts by deciding what moves out of scan's package
+    into cross-cutting structures, from what it actually reuses.
+- Open until then:
+  - what the lib's operation layer is called; "verb" is the CLI's word,
+    "operation" is a working name, "use case" the textbook one;
+  - "verb" is used for the lib layer across the docs and code, so the
+    rename is decided once, for all of them;
+  - where shared reconciliations, applies and events finally live.
 
 ### progress
 
@@ -156,6 +186,18 @@ planned.
     consumer.
 - Held to today: every fragment leaving a repo is a `SqlWhere`; own
   params precede the predicate's; `clause.py` stays table-agnostic.
+
+### fs-detail
+
+- The `detail=` seam on `run_scan` and `Manifest.init` keeps tests
+  isolated from the host's filesystem readers; any rework keeps it.
+- Its name is poor: the values identify the filesystem and host the
+  root lives on (`fs_type`, `fs_uuid`, `fs_label`, `fs_model`,
+  `hostname`).
+- Open: whether refreshing them is a scan policy, a `ScanOptions`
+  field, or a CLI-wide option shared by most operations;
+  - decided together with the rename, across `run_scan`,
+    `Manifest.init` and `MetaRepo.write_fs_detail`.
 
 ### Undecided
 

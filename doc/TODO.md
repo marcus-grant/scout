@@ -5,7 +5,7 @@
 ### Crucial rules
 
 - Strict lib/adapter split.
-  - `lib/` emits typed records and never formats or prints.
+  - `lib/` emits typed records/events and never formats or prints.
   - Adapters (CLI only for now) handle input, output, and exit codes.
 - A verb reads records or hashes from stdin when given no other source.
 - A verb that cannot be a stage in a scout-to-scout pipeline is not done.
@@ -18,8 +18,7 @@
 - The manifest schema is versioned via `meta.schema_version`.
   - Schema changes bump the version; unversioned or mismatched manifests are refused.
 - One branch per PR.
-  No direct commits to `main`.
-  `just check` passes before a PR is opened.
+  - `just check` passes before a PR is opened.
 - Stored paths are `PurePosixPath`,
   - imported everywhere as `from pathlib import PurePosixPath as PPP`,
   - relative to `root`.
@@ -41,6 +40,12 @@
   - Click callbacks are thin wiring over `run_<verb>` handlers
     taking an `emit` callable; tests collect events, not text.
   - Error placement follows CONTRIBUTE's error rules.
+- Before building a new operation, read `src/scout/lib/scan/` for parts
+  it would share.
+  - Scan's likely cross-cutting parts live in its package provisionally.
+  - A shared part moves out of scan's package;
+    it is never imported across operations or copied.
+  - Record the move against ROADMAP `### verb-architecture`.
 
 ### Restructure conventions
 
@@ -48,22 +53,24 @@ Staging: each restructure PR's doc commit moves its lines from here
 into `doc/architecture.md`; this block empties as the sequence lands.
 
 - Naming:
-  - producer-prefixed product types (`WalkedDir`, `ScanEvent`);
+  - producer-prefixed product types (`WalkedDir`);
   - past tense for completed observations and happenings
     (`WalkedDir`, `FileScanned`, `AccessLost`);
   - `Err.*` names conditions (`Unreadable`), its own family style;
   - event grammars per layer: cli `<Verb><Fact>` (`ScanFile`),
-    lib subject + past participle (`FileScanned`).
+    lib subject + past participle (`FileScanned`);
+  - event bases: the lib's is unprefixed `Event`, adapters prefix
+    theirs (`CliEvent`).
 - The manifest is the primary operand of every verb: first
   positional, default `"."`; `Manifest.open` owns interpretation;
   `-r`/`--repo` as override while dogfooding judges both modes.
-- Error placement and the repo / `View` / service taxonomy:
+- Error placement and the repo / query / service taxonomy:
   moved to `doc/CONTRIBUTE.md` (2026-09-22), no longer staged here.
 - Promotion on second independent consumer, for types and functions;
   - one taken exception: `RecordChange` moved to models with `check`
     merely named, to avoid verb-imports-verb.
 - History stays `gone` and `hashed`; unreadable subtrees leave no db
-  trace — report loudly (`AccessLost`), record nothing.
+  trace: report loudly (`AccessLost`), record nothing.
 
 ### Required reading
 
@@ -79,67 +86,112 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-restructure
+### scan-dir
 
->**NOTE**: This task is likely too big for one PR, plan a split if needed
+>**NOTE**: Scan's parts that are likely shared by later operations are
+>built in `src/scout/lib/scan/` grouped by subject, provisionally; see
+>ROADMAP `### verb-architecture`.
 
-- `ScanEvent` base family, mirroring `cli.event`:
-  - `FileScanned(path, record, change)`, `RecordGone(path)`,
-    `AccessLost(path, dirs, files)`, `ReadFailed(path, error)`;
-  - each subclass docstring states meaning and expected handling;
-  - `Summary` stays outside as the terminal yield;
-  - `AccessLost` is derived reporting: emitted beside `ReadFailed`
-    when prior live records exist under an unreadable dir;
-    the db is never written for unreachability.
-- `ScanOptions`, frozen, flat:
+- `git checkout -b ref/scan-dir`
+- Mechanical moves first, each its own commit:
+  - `src/scout/lib/scan.py` to `src/scout/lib/scan/__init__.py`,
+    `test/lib/test_scan.py` to its mirror under `test/lib/scan/`;
+  - lib `force` renamed `rehash` (the CLI flag is already `--rehash`);
+  - `FileRepo.add` renamed `upsert`, then `DirRepo.add`;
+    - the `sed` matches `files.add(`, `dirs.add(`, `def add(` only.
+- Events in `src/scout/lib/event.py`, bare unprefixed `Event` base:
+  - `FileScanned`, `RecordGone`, `ReadFailed` replace `Scanned`,
+    `Gone` and the bare `Err.Unreadable` yields;
+  - `run_scan`'s `match` follows.
+- `src/scout/lib/scan/file_stats.py`:
+  - `reconcile_file_stat` takes `dir_id`, the `FileStat`, the
+    `FileRecord` or None, `hash`, `rehash`;
+    - returns `FileStatReconciliation`: the `RecordChange` and the
+      intended `FileRecord`, or None when there is nothing to write;
+    - a None `hash` in the intended record means no hash is known;
+  - the loop calls `hash_file` when hashing is on and the intended
+    hash is None;
+  - `apply_file_stat` writes the intended record via `files.upsert`.
+- `src/scout/lib/scan/missing_files.py`:
+  - `reconcile_missing_files` takes the `WalkedDir` and the dir's
+    live records, returns `MissingFilesReconciliation`: the names
+    missing from the filesystem; names that failed to stat count as
+    present;
+  - `apply_missing_files` takes the `dir_id` and those names, marks
+    each via `files.mark_gone_one`.
+- Per-directory loop: upsert the dir, read its live records,
+  reconcile, hash, apply, report; stages called side by side, never
+  nested.
+- Testing rules, acceptance criteria for the structure:
+  - a reconciliation is tested with no fixture, no filesystem and no
+    monkeypatch, over every outcome, including rehash of a match;
+  - an apply arranges at most one record via the `manifest` fixture;
+  - needing more arrangement means the function is drawn wrong:
+    redraw it before writing the body.
+- `src/scout/lib/scan/__init__.py` docstring: its sibling modules are
+  likely-shared parts living here for now; see `doc/architecture.md`.
+- Doc commit: `doc/architecture.md` records the scan package's
+  modules and provisional home, the stages observe, reconcile, apply
+  and report, lib events unprefixed, and `upsert` where `add` is named.
+- Pln commit: delete this section.
+
+### scan-missing-dirs
+
+- `git checkout -b ref/scan-missing-dirs`, from `main` after
+  `ref/scan-dir` merges.
+- `src/scout/lib/scan/missing_dirs.py`:
+  - `WalkedPaths`: paths walked and paths unreadable (an unlistable
+    dir's path, each failed entry's path), filled by the per-directory
+    loop; replaces `scan`'s `walked` and `unreadable` locals;
+  - `reconcile_missing_dirs` takes `WalkedPaths` and the recorded live
+    dir paths, returns `MissingDirsReconciliation`: the topmost
+    recorded dirs missing from the filesystem, excluding unreadable
+    paths and anything under one;
+  - `apply_missing_dirs` marks each via `manifest.gone_subtree.mark`,
+    returning the paths in `mark`'s order.
+- `AccessLost` in `src/scout/lib/event.py`:
+  - for an unlistable dir, emitted beside `ReadFailed` when
+    `manifest.claimed.counts(path)` shows claims under it;
+  - nothing is written; where the "claims anything" check lives is
+    decided at the stub.
+- `GoneSubtree.mark` docstring: "deepest dirs last" becomes "every
+  file first, then every dir, each in path order".
+- Candidates still come from `dirs.descendants(PPP("."))` in memory;
+  SQL path-prefix candidate selection is out of scope.
+- Testing: the reconciliation with path sets only (a missing parent
+  and child yield the parent; a dir under an unreadable one, and a
+  failed entry, are excluded); the apply with one recorded subtree.
+- Doc commit: `doc/architecture.md` records `missing_dirs.py`.
+- Pln commit: delete this section.
+
+### scan-session
+
+- `git checkout -b ref/scan-session`, from `main` after
+  `ref/scan-missing-dirs` merges.
+- `ScanTally` and `Summary` in `src/scout/lib/scan/tally.py`:
+  - `see(event)` before each yield; `summary(started, finished)`
+    freezes it; one instance per run;
+  - `scan(..., tally=None)`: an adapter injects it for live progress,
+    consumed by `### scan-cli`.
+- `ScanOptions` in `src/scout/lib/scan/options.py`, frozen:
   - `hash`, `rehash`, `bits`, `batch_size`, `on_progress`;
-    - `rehash` renames lib's `force`: two tiers of one policy
-      (`hash` = hash new/changed; `rehash` = hash even MATCHED);
-      same word-family as the future `rehash_after` budget;
-      dogfooding may revisit the name;
-  - field defaults are the program-defaults layer of the future
-    config fold (`dataclasses.replace` per source, partial layers);
-  - context options (which manifest, streams) are adapter-side and
-    never reach the verb.
-- `_should_hash(change, record, opts)`:
-  - the one expensive decision (whole-file read on slow media),
-    isolated, exhaustively unit-testable.
-- `_scan_file`/`_scan_dir` → `_reconcile_file`/`_reconcile_dir`:
-  - assemblies stay private to scan; verbs share atoms, never
-    assemblies;
-  - the hash-and-write step inside `_reconcile_file` stays a
-    separable function *(future home: a service component, when a
-    hash-fill verb arrives)*.
-- `_reconcile_tree`: the routing loop:
-  - coverage sets `covered` and `unreadable`; dispatch to
-    `_reconcile_dir` / `_handle_unreadable`; sweep last;
-  - `_handle_unreadable` yields `ReadFailed`, derives `AccessLost`
-    via `manifest.claimed.counts`, writes nothing;
-    - `counts` bounds are provisional until seen running here;
-  - `_sweep_unwalked`: candidates via repo SQL (path-prefix, not
-    Python `parents` loops), marks via `manifest.gone_subtree.mark`,
-    yields `RecordGone`.
-- `ScanTally`, public, injectable: `scan(manifest, opts, tally=None)`:
-  - `see(event)` before each yield, so the live instance is exactly
-    current through the last yielded event;
-  - `summary(started, finished)` freezes it into `Summary`;
-  - one instance per run, shared with the adapter by injection.
-- `scan()` recomposed: session bracket
-  (`scans.start`/`finish`), `with manifest.commit_every(...)`,
-  tally + tick + relay loop, terminal `Summary`; no other logic.
-- The fs-detail refresh (`fs_meta.read_all` +
-  `meta.write_fs_detail`) moves from `run_scan` into `scan()`'s
-  session opening — it is part of the verb, not adapter work;
-  `run_scan`'s `detail=` test param dies with it.
-- `test/lib/test_scan.py` locals still say `listing` for a `WalkedDir`.
-  - Rename them to `walked` when the module is reassessed.
-- `test/lib/fs/test_walk.py` holds `_fail_scandir` and `_fail_stat`.
-  - If the reassessed `test/lib/test_scan.py` needs them,
-    - hoist them into `test/factory.py`;
-    - replacing its own inline `os.scandir` fake.
-- Doc commit: `doc/architecture.md` gains verb anatomy
-  (atoms / policy / assembly), the event-family pattern, and the
-  options shape with its config-fold constraint.
+  - unpacked by `scan`; no reconciliation or apply ever sees it.
+- `update_from_walk` takes the `Manifest`, an iterable of `WalkedDir`
+  and the settings it needs; runs the per-directory loop, then the
+  missing-dirs pass; calls `manifest.wrote()` after each file write.
+- `scan` reduced to the session: exclude its own file,
+  `scans.start`, `commit_every(batch_size)` around
+  `update_from_walk(manifest, walk(root, exclude), ...)`,
+  `scans.finish`, the `Summary` yield.
+- `test/lib/scan/` tests:
+  - the `TestScan` cases that monkeypatch `os.scandir` or `walk`
+    pass constructed `WalkedDir` values to `update_from_walk`;
+  - `test_rescan_after_rmtree_marks_subtree_gone` stays real-disk;
+  - `listing` locals renamed `walked`.
+- The fs-detail refresh and its `detail=` seam stay in `run_scan`.
+- Doc commit: `doc/architecture.md` gains the operation anatomy and
+  the provisional-home tension, pointing to ROADMAP.
+- Pln commit: delete this section.
 
 ### scan-cli
 
@@ -184,9 +236,12 @@ CLI architecture settled 2026-09-22 (discussion round two):
   - independent and freely composed; humans often want both.
 - Single-letter args pair with a long alias where no collision:
   `-v`/`--verbose`, `-p`/`--progress`.
-- Translate layer updated to the `ScanEvent` family;
-  `outcome` → `change` at the `ScanFile` mapping;
-  `run_scan` shrinks to open manifest → wire emitter → iterate.
+- Translate layer updated to the lib `Event` family;
+  - `outcome` to `change` at the `ScanFile` mapping;
+  - `run_scan` shrinks to open manifest, wire emitter, iterate.
+- Known bug: `_emitter`'s `--progress` count increments on every
+  `ScanGone`, which includes swept dir paths, so "N files" overcounts;
+  the status line reading `ScanTally` replaces that count.
 - One status-line object owning stderr under `--progress`:
   - `log(line)` erases, writes, redraws; `status(...)` redraws at
     most every 500 ms;
