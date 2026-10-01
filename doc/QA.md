@@ -72,6 +72,9 @@ Derive the targets from the plan:
 - Grep the changed test files for hardcoded literals in assertions.
   A literal the test does not care about is often a configuration line
   not yet written.
+- Grep the changed test files for `monkeypatch.setattr`.
+  Patching a system Scout doesn't control, through the CLI, is
+  expected; any other hit is a design question before sign-off.
 
 Use `grep -I --include='*.py'`.
 Exclude `__pycache__/` & `.venv/`.

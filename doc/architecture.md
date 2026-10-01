@@ -26,7 +26,9 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
 - change:
   - what stat proves a record needs (`RecordChange.classify`);
     - `VERIFIED` is claimed only after a hash.
-- event: a fact a verb emits, layer-prefixed (`ScanEvent`, `CliEvent`).
+- event: a fact a verb emits;
+  - lib events are unprefixed under `Event`,
+  - adapter events are prefixed (`CliEvent`).
 - tally: progress counting; summary: the run's contract counts.
 
 ## Walk

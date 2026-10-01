@@ -105,6 +105,15 @@ Fixtures are the zero-arg calls of factories with override kwargs; a
 test that rebuilds a factory's work inline is a duplicate.
 No pyfakefs; real files under `tmp_path`, and factory trees stay tiny.
 
+A test that is hard to arrange means the code is drawn wrong;
+redraw it before writing the test and plan the change before proceeding.
+I/O stays at the outer edge;
+deciding functions take plain values, never the `Manifest` or the disk.
+Seam parameter with real default is only for input that can't be passed as data.
+Monkeypatch only a system Scout does not control (OS, web endpoint),
+reached through an entry point that takes no arguments,
+like the CLI in an e2e test.
+
 ### Renderers
 
 Porcelain output is pinned by string comparison against fixed records.
