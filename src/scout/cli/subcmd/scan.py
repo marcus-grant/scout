@@ -28,7 +28,7 @@ def run_scan(
     emit: Callable[[events.CliEvent], None],
     *,
     hash: bool = True,
-    force: bool = False,
+    rehash: bool = False,
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
@@ -44,7 +44,7 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    results = lib_scan(manifest, hash=hash, force=force, on_progress=on_progress)
+    results = lib_scan(manifest, hash=hash, rehash=rehash, on_progress=on_progress)
     for result in results:
         match result:
             case Scanned():
@@ -111,12 +111,12 @@ def scan(
     """Bring the manifest at PATH current with its root; PATH may be the root."""
     if no_hash and rehash:
         raise click.UsageError("--rehash cannot be used with --no-hash")
-    hsh, force = not no_hash, rehash
+    hsh = not no_hash
     on_progress = _bytes_progress if progress else None
     run_scan(
         path,
         _emitter(verbose, progress),
         hash=hsh,
-        force=force,
+        rehash=rehash,
         on_progress=on_progress,
     )

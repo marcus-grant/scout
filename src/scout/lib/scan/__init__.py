@@ -58,7 +58,7 @@ def _scan_file(
     started: int,
     *,
     hash: bool = True,
-    force: bool = False,
+    rehash: bool = False,
     bits: int = DEFAULT_BITS,
     on_progress: Callable[[int], None] | None = None,
 ) -> Scanned | Err.Unreadable:
@@ -71,7 +71,7 @@ def _scan_file(
     An Unreadable from hash_file is returned and nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
     change = RecordChange.classify(stat, row)
-    if force and change is RecordChange.MATCHED:
+    if rehash and change is RecordChange.MATCHED:
         change = RecordChange.UPDATED  # TODO: Interim till _should_hash (scan restruct)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
@@ -95,7 +95,7 @@ def _scan_dir(
     started: int,
     *,
     hash: bool = True,
-    force: bool = False,
+    rehash: bool = False,
     bits: int = DEFAULT_BITS,
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[Scanned | Gone | Err.Unreadable]:
@@ -114,7 +114,7 @@ def _scan_dir(
             st,
             started,
             hash=hash,
-            force=force,
+            rehash=rehash,
             bits=bits,
             on_progress=on_progress,
         )
@@ -135,7 +135,7 @@ def scan(
     manifest: Manifest,
     *,
     hash: bool = True,
-    force: bool = False,
+    rehash: bool = False,
     bits: int = DEFAULT_BITS,
     batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
@@ -178,7 +178,7 @@ def scan(
                 listing,
                 started,
                 hash=hash,
-                force=force,
+                rehash=rehash,
                 bits=bits,
                 on_progress=on_progress,
             )
