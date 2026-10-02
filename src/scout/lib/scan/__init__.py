@@ -17,6 +17,7 @@ from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.file_stats import reconcile_file_stat
+from scout.lib.scan.missing_files import reconcile_missing_files
 from scout.lib.util import to_rel
 
 
@@ -90,28 +91,18 @@ def _scan_dir(
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
     d = manifest.dirs.upsert(walked.path)
     for st in walked.files:
+        args = (manifest, d.id, walked.path, root / walked.path, st, started)
         yield _scan_file(
-            manifest,
-            d.id,
-            walked.path,
-            root / walked.path,
-            st,
-            started,
+            *args,
             hash=hash,
             rehash=rehash,
             bits=bits,
             on_progress=on_progress,
         )
 
-    # A row is marked gone only when its name is absent from the WalkedDir.
-    # A failed entry was listed, so it exists; only its stat is unknown.
-    file_names = {st.name for st in walked.files}
-    failed_names = {e.path.name for e in walked.errors if e.path is not None}
-    present = file_names | failed_names
-    for row in manifest.files.in_dir(d.id):
-        if row.stat.name not in present:
-            manifest.files.mark_gone_one(d.id, row.stat.name, started)
-            yield RecordGone(walked.path / row.stat.name)
+    for name in reconcile_missing_files(walked, manifest.files.in_dir(d.id)):
+        manifest.files.mark_gone_one(d.id, name, started)
+        yield RecordGone(walked.path / name)
     yield from (ReadFailed(e.path, e) for e in walked.errors)
 
 
