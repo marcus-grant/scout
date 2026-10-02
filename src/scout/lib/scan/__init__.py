@@ -79,7 +79,7 @@ def _scan_file(
 def _scan_dir(
     manifest: Manifest,
     root: Path,
-    listing: WalkedDir,
+    walked: WalkedDir,
     started: int,
     *,
     hash: bool = True,
@@ -88,17 +88,17 @@ def _scan_dir(
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[FileScanned | RecordGone | ReadFailed]:
     """Bring one walked directory's rows current, yielding as it goes.
-    dirs.upsert(listing.path) first; then one _scan_file per FileStat in
-    listing order; then every live file row in this dir whose name is not
-    in the listing is marked gone with started & yielded as RecordGone;
-    last, a ReadFailed for each Unreadable the listing carried."""
-    d = manifest.dirs.upsert(listing.path)
-    for st in listing.files:
+    dirs.upsert(walked.path) first; then one _scan_file per FileStat in
+    walked.files order; then every live file row in this dir whose name is not
+    in the WalkedDir is marked gone with started & yielded as RecordGone;
+    last, a ReadFailed for each Unreadable the WalkedDir carried."""
+    d = manifest.dirs.upsert(walked.path)
+    for st in walked.files:
         yield _scan_file(
             manifest,
             d.id,
-            listing.path,
-            root / listing.path,
+            walked.path,
+            root / walked.path,
             st,
             started,
             hash=hash,
@@ -107,16 +107,16 @@ def _scan_dir(
             on_progress=on_progress,
         )
 
-    # A row is marked gone only when its name is absent from the listing.
+    # A row is marked gone only when its name is absent from the WalkedDir.
     # A failed entry was listed, so it exists; only its stat is unknown.
-    file_names = {st.name for st in listing.files}
-    failed_names = {e.path.name for e in listing.errors if e.path is not None}
+    file_names = {st.name for st in walked.files}
+    failed_names = {e.path.name for e in walked.errors if e.path is not None}
     present = file_names | failed_names
     for row in manifest.files.in_dir(d.id):
         if row.stat.name not in present:
             manifest.files.mark_gone_one(d.id, row.stat.name, started)
-            yield RecordGone(listing.path / row.stat.name)
-    yield from (ReadFailed(e.path, e) for e in listing.errors)
+            yield RecordGone(walked.path / row.stat.name)
+    yield from (ReadFailed(e.path, e) for e in walked.errors)
 
 
 def scan(
@@ -132,7 +132,7 @@ def scan(
     as they happen and one Summary last.
     started comes from scans.start(); rows commit every batch_size files.
     The manifest's own file is excluded from the walk.
-    A listing whose own directory was unreadable is reported and skipped:
+    A WalkedDir whose own directory was unreadable is reported and skipped:
     nothing under it is written or marked gone.
     After the walk, each live dir not walked and not under an unreadable
     dir is marked gone with its subtree; then scans.finish."""
@@ -145,25 +145,25 @@ def scan(
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):
-        walked: set[PPP] = set()
+        walked_paths: set[PPP] = set()
         unreadable: set[PPP] = set()
-        for listing in walk(root, exclude):
-            walked.add(listing.path)
+        for walked in walk(root, exclude):
+            walked_paths.add(walked.path)
 
-            if listing.unlistable:
-                unreadable.add(listing.path)
-                errors += len(listing.errors)
-                yield from (ReadFailed(e.path, e) for e in listing.errors)
+            if walked.unlistable:
+                unreadable.add(walked.path)
+                errors += len(walked.errors)
+                yield from (ReadFailed(e.path, e) for e in walked.errors)
                 continue
 
-            for failed in listing.errors:
+            for failed in walked.errors:
                 if failed.path is not None:
                     unreadable.add(failed.path)
 
             records_iter = _scan_dir(
                 manifest,
                 root,
-                listing,
+                walked,
                 started,
                 hash=hash,
                 rehash=rehash,
@@ -185,7 +185,7 @@ def scan(
             under_unreadable = any(
                 u == d.path or u in d.path.parents for u in unreadable
             )
-            if d.path in walked or under_unreadable:
+            if d.path in walked_paths or under_unreadable:
                 continue
             for path in manifest.gone_subtree.mark(d.path, started):
                 gone += 1

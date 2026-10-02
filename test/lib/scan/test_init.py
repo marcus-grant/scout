@@ -158,12 +158,12 @@ class TestScanDir:
     """_scan_dir on one WalkedDir of the default tree."""
 
     def test_adds_dir_and_files_in_order(self, tree: Tree, manifest: Manifest) -> None:
-        """The listing for b: dirs.get(b) exists after; two FileScanned records
+        """The WalkedDir for b: dirs.get(b) exists after; two FileScanned records
         ADDED, paths b/b1.txt then b/b2.txt; no RecordGone, no Unreadable."""
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
+        walked = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
-        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+        records = list(_scan_dir(manifest, tree.root, walked, started=7))
 
         assert manifest.dirs.get(PPP("b")) is not None
         assert [type(r) for r in records] == [FileScanned, FileScanned]
@@ -171,14 +171,14 @@ class TestScanDir:
         assert all(r.change == ADDED for r in records if isinstance(r, FileScanned))
 
     def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
-        """A stored row b/old.txt not in the listing: one RecordGone with path
+        """A stored row b/old.txt not in the WalkedDir: one RecordGone with path
         b/old.txt after the FileScanned records; the row's gone is started."""
         d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
-        listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
+        walked = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
-        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+        records = list(_scan_dir(manifest, tree.root, walked, started=7))
 
         assert len(records) == 3
         assert records[-1] == RecordGone(PPP("b/old.txt"))
@@ -187,7 +187,7 @@ class TestScanDir:
             assert conn.execute(q).fetchone() == (7,)
 
     def test_failed_entry_keeps_its_row(self, tree: Tree, manifest: Manifest) -> None:
-        """A stored row b/b1.txt whose entry failed in the listing: the
+        """A stored row b/b1.txt whose entry failed in the WalkedDir: the
         WalkedDir for b has only b2.txt in files and an Unreadable for
         b/b1.txt in errors. No RecordGone is yielded, and the row's gone stays None."""
         d = manifest.dirs.upsert(PPP("b"))
@@ -209,9 +209,9 @@ class TestScanDir:
         """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
         exists, the one record yielded is a ReadFailed carrying it."""
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
-        listing = WalkedDir(PPP("b/c"), (), (), (unreadable,))
+        walked = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
-        records = list(_scan_dir(manifest, tree.root, listing, started=7))
+        records = list(_scan_dir(manifest, tree.root, walked, started=7))
 
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [ReadFailed(PPP("b/c"), unreadable)]
@@ -290,7 +290,7 @@ class TestScan:
     def test_failed_subdir_entry_keeps_its_subtree(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Scan, then walk patched so the root's listing reports b as a failed
+        """Scan, then walk patched so the root's WalkedDir reports b as a failed
         entry: b is absent from the root's subdirs, and an Unreadable for b is
         in its errors. No RecordGone, and the rows for b, b/c, and their files keep
         gone None."""
