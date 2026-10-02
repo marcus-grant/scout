@@ -6,7 +6,9 @@ License: AGPL-3.0-or-later
 """
 
 import inspect
+from collections.abc import Callable
 from pathlib import PurePosixPath as PPP
+from typing import cast
 
 import pytest
 
@@ -60,8 +62,11 @@ class TestHierarchy:
         self, child: type[Err.ScoutDomain], parent: type[Err.ScoutDomain]
     ) -> None:
         """Raising child is caught by except parent."""
+        make = cast(Callable[..., Err.ScoutDomain], child)
+        takes_path = "path" in inspect.signature(child.__init__).parameters
+        err = make("x", path=PPP("y")) if takes_path else make("x")
         with pytest.raises(parent, match="x"):
-            raise child("x")
+            raise err
 
 
 class TestCoverage:
@@ -128,15 +133,15 @@ class TestPathDomain:
 
 
 class TestFsDomain:
-    """FsDomain carries the optional path and errno its children inherit."""
+    """FsDomain carries the required path & optional errno its children inherit."""
 
     @pytest.mark.parametrize(
         "cls", [c for c, p in HIERARCHY.items() if p is Err.FsDomain]
     )
-    def test_carries_optional_path_and_errno(self, cls: type[Err.FsDomain]) -> None:
-        """path and errno are None by default and stored when given."""
-        default, specified = cls("x"), cls("x", path=PPP("y"), errno=42)
-        assert default.path is None
+    def test_carries_path_and_optional_errno(self, cls: type[Err.FsDomain]) -> None:
+        """path is stored; errno None by default and stored when given."""
+        default, specified = cls("x", path=PPP("y")), cls("x", path=PPP("y"), errno=42)
+        assert default.path == PPP("y")
         assert default.errno is None
         assert specified.path == PPP("y")
         assert specified.errno == 42

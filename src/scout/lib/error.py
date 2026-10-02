@@ -123,13 +123,11 @@ class TargetNotDir(PathDomain):
 class FsDomain(ScoutDomain):
     """A failed listing, stat or read of a path; returned as a value, never raised."""
 
-    path: PPP | None = None
+    path: PPP
     errno: int | None = None
 
-    def __init__(
-        self, msg: str, path: PPP | None = None, errno: int | None = None
-    ) -> None:
-        """Store the offending path and the OS errno, when known."""
+    def __init__(self, msg: str, path: PPP, errno: int | None = None) -> None:
+        """Store offending path, and OS errno when known."""
         self.path = path
         self.errno = errno
         super().__init__(msg)
