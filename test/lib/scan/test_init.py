@@ -95,6 +95,19 @@ class TestScanFile:
         assert result.file == stored
         assert manifest.files.get(0, "a.txt") == stored
 
+    def test_matched_row_without_hash_is_hashed(
+        self, tree: Tree, manifest: Manifest
+    ) -> None:
+        """A row matching a.txt's stat but stored without a hash is hashed: UPDATED."""
+        st = _st(tree, "a.txt")
+        fr = mk_frec(name="a.txt", size=st.size, mtime=st.mtime, hash=None, hashed=None)
+        manifest.files.upsert(fr)
+
+        result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
+
+        assert isinstance(result, Scanned)
+        assert result.change == UPDATED
+
     def test_changed_file_is_updated_and_rehashed(
         self, tree: Tree, manifest: Manifest
     ) -> None:
