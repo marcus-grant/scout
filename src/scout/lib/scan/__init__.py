@@ -16,6 +16,7 @@ from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
+from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.util import to_rel
 
 
@@ -47,19 +48,14 @@ def _scan_file(
     on_progress: Callable[[int], None] | None = None,
 ) -> FileScanned | ReadFailed:
     """Bring one file's row up to date and say what was done.
-    Fetch the live row at (dir_id, stat.name); classify against stat.
-    MATCHED: write nothing and return the row as found, unless rehash is set
-    or hashing is on and the row has no hash; then it is handled as UPDATED.
+    Fetch the live row at (dir_id, stat.name); reconcile_file_stat decides.
+    MATCHED: write nothing and return the row as found.
     ADDED or UPDATED with hash: hash_file(dir_abs / stat.name), write the
     row with that hash and hashed = started.
     ADDED or UPDATED without hash: write the row with hash and hashed null.
     An Unreadable from hash_file comes back as a ReadFailed; nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
-    change = RecordChange.classify(stat, row)
-    if hash and row and row.hash is None:
-        change = RecordChange.UPDATED  # TODO: Interim till _should_hash (scan restruct)
-    if rehash and change is RecordChange.MATCHED:
-        change = RecordChange.UPDATED  # TODO: Interim till _should_hash (scan restruct)
+    change = reconcile_file_stat(stat, row, hash=hash, rehash=rehash)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(dir_rel / stat.name, row, change)

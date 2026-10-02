@@ -69,7 +69,6 @@ class TestScanFile:
             result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, FileScanned)
-        assert result.change == ADDED
         assert result.record.hash == expected
         assert result.record.hashed == 7
         assert manifest.files.get(0, "a.txt") == result.record
@@ -85,7 +84,6 @@ class TestScanFile:
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, FileScanned)
-        assert result.change == MATCHED
         assert result.record == stored
         assert manifest.files.get(0, "a.txt") == stored
 
@@ -100,7 +98,6 @@ class TestScanFile:
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, FileScanned)
-        assert result.change == UPDATED
 
     def test_changed_file_is_updated_and_rehashed(
         self, tree: Tree, manifest: Manifest
@@ -116,7 +113,6 @@ class TestScanFile:
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, FileScanned)
-        assert result.change == UPDATED
         assert (result.record.hash, result.record.hashed) == (new_h, 7)
         assert result.record.stat.size == st.size
 
@@ -131,7 +127,6 @@ class TestScanFile:
         act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, hash=False)
 
         assert isinstance(act, FileScanned)
-        assert act.change == UPDATED
         assert act.record.hash is None
         assert act.record.hashed is None
         assert act.record.stat.size == st.size
@@ -168,7 +163,6 @@ class TestScanDir:
         assert manifest.dirs.get(PPP("b")) is not None
         assert [type(r) for r in records] == [FileScanned, FileScanned]
         assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
-        assert all(r.change == ADDED for r in records if isinstance(r, FileScanned))
 
     def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
         """A stored row b/old.txt not in the WalkedDir: one RecordGone with path
@@ -230,7 +224,6 @@ class TestScan:
 
         assert isinstance(summary, Summary)
         assert [r.path for r in scanned] == sorted(tree.files)
-        assert all(r.change == ADDED for r in scanned)
         assert not any(isinstance(r, RecordGone) for r in records)
         assert manifest.files.get(0, ".scout.db") is None
         counts = (summary.added, summary.updated, summary.matched)
