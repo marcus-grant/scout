@@ -120,8 +120,8 @@ class TargetNotDir(PathDomain):
 ### Scan Domain
 
 
-class ScanDomain(ScoutDomain):
-    """Errors met while walking or reading a tree; the scanner yields, never raises."""
+class FsDomain(ScoutDomain):
+    """A failed listing, stat or read of a path; returned as a value, never raised."""
 
     path: PPP | None = None
     errno: int | None = None
@@ -135,5 +135,5 @@ class ScanDomain(ScoutDomain):
         super().__init__(msg)
 
 
-class Unreadable(ScanDomain):
+class Unreadable(FsDomain):
     """A file or directory that could not be stated or read."""

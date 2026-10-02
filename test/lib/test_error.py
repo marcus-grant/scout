@@ -27,8 +27,8 @@ HIERARCHY: dict[type[Err.ScoutDomain], type[Err.ScoutDomain]] = {
     Err.NotUnderRoot: Err.PathDomain,
     Err.RepoParentMissing: Err.PathDomain,
     Err.TargetNotDir: Err.PathDomain,
-    Err.ScanDomain: Err.ScoutDomain,
-    Err.Unreadable: Err.ScanDomain,
+    Err.FsDomain: Err.ScoutDomain,
+    Err.Unreadable: Err.FsDomain,
 }
 
 
@@ -127,13 +127,13 @@ class TestPathDomain:
         assert Err.TargetNotDir("x", role="y").role == "y"
 
 
-class TestScanDomain:
-    """ScanDomain carries the optional path and errno its children inherit."""
+class TestFsDomain:
+    """FsDomain carries the optional path and errno its children inherit."""
 
     @pytest.mark.parametrize(
-        "cls", [c for c, p in HIERARCHY.items() if p is Err.ScanDomain]
+        "cls", [c for c, p in HIERARCHY.items() if p is Err.FsDomain]
     )
-    def test_carries_optional_path_and_errno(self, cls: type[Err.ScanDomain]) -> None:
+    def test_carries_optional_path_and_errno(self, cls: type[Err.FsDomain]) -> None:
         """path and errno are None by default and stored when given."""
         default, specified = cls("x"), cls("x", path=PPP("y"), errno=42)
         assert default.path is None
