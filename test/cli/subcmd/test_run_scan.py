@@ -21,12 +21,18 @@ import scout.cli.event as events
 from scout.cli import main
 from scout.cli.subcmd.scan import _bytes_progress, run_scan
 from scout.lib.manifest import Manifest
+from scout.lib.scan.hashing import HashingPolicy
 
 # The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path), which is
 #   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
 #   dirs:  d (empty); implied by the files: ., b, b/c
 # The manifest fixture is factory.mk_manifest(tmp_path): .scout.db in that root.
 Tree = factory.Tree
+
+# Alias for the HashingPolicy enum to shorten references
+OFF = HashingPolicy.OFF
+NEEDED = HashingPolicy.NEEDED
+ALL = HashingPolicy.ALL
 
 
 class TestRunScan:
@@ -63,7 +69,7 @@ class TestRunScan:
         """hash False: every ScanFile has file.hash None."""
         seen: list[events.CliEvent] = []
 
-        run_scan(manifest.db.path, seen.append, hash=False, detail={})
+        run_scan(manifest.db.path, seen.append, policy=OFF, detail={})
 
         file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
         assert len(file_scans) == 4

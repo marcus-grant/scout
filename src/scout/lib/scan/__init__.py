@@ -17,6 +17,7 @@ from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.file_stats import reconcile_file_stat
+from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.missing_files import reconcile_missing_files
 from scout.lib.util import to_rel
 
@@ -43,26 +44,25 @@ def _scan_file(
     stat: FileStat,
     started: int,
     *,
-    hash: bool = True,
-    rehash: bool = False,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
     bits: int = DEFAULT_BITS,
     on_progress: Callable[[int], None] | None = None,
 ) -> FileScanned | ReadFailed:
     """Bring one file's row up to date and say what was done.
     Fetch the live row at (dir_id, stat.name); reconcile_file_stat decides.
     MATCHED: write nothing and return the row as found.
-    ADDED or UPDATED with hash: hash_file(dir_abs / stat.name), write the
-    row with that hash and hashed = started.
+    ADDED or UPDATED, when policy isn't OFF: hash_file(dir_abs / stat.name),
+    write the row with that hash and hashed = started.
     ADDED or UPDATED without hash: write the row with hash and hashed null.
     An Unreadable from hash_file comes back as a ReadFailed; nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
-    change = reconcile_file_stat(stat, row, hash=hash, rehash=rehash)
+    change = reconcile_file_stat(stat, row, policy=policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(dir_rel / stat.name, row, change)
 
     h, hashed = None, None
-    if hash:
+    if policy is not HashingPolicy.OFF:
         h = hash_file(dir_abs / stat.name, bits, on_progress=on_progress)
         if isinstance(h, Err.Unreadable):
             err = Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
@@ -79,8 +79,7 @@ def _scan_dir(
     walked: WalkedDir,
     started: int,
     *,
-    hash: bool = True,
-    rehash: bool = False,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
     bits: int = DEFAULT_BITS,
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[FileScanned | RecordGone | ReadFailed]:
@@ -94,8 +93,7 @@ def _scan_dir(
         args = (manifest, d.id, walked.path, root / walked.path, st, started)
         yield _scan_file(
             *args,
-            hash=hash,
-            rehash=rehash,
+            policy=policy,
             bits=bits,
             on_progress=on_progress,
         )
@@ -109,8 +107,7 @@ def _scan_dir(
 def scan(
     manifest: Manifest,
     *,
-    hash: bool = True,
-    rehash: bool = False,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
     bits: int = DEFAULT_BITS,
     batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
@@ -152,8 +149,7 @@ def scan(
                 root,
                 walked,
                 started,
-                hash=hash,
-                rehash=rehash,
+                policy=policy,
                 bits=bits,
                 on_progress=on_progress,
             )

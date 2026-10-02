@@ -6,10 +6,17 @@ License: AGPL-3.0-or-later
 """
 
 from scout.lib.models import FileRecord, FileStat, RecordChange
+from scout.lib.scan.hashing import HashingPolicy
+
+NEEDED = HashingPolicy.NEEDED
+OFF = HashingPolicy.OFF
+ALL = HashingPolicy.ALL
 
 
 def reconcile_file_stat(
-    stat: FileStat, record: FileRecord | None, *, hash: bool, rehash: bool
+    stat: FileStat,
+    record: FileRecord | None,
+    policy: HashingPolicy,
 ) -> RecordChange:
     """Return what record needs given stat and the hashing policy.
     ADDED when record is None;
@@ -22,5 +29,5 @@ def reconcile_file_stat(
         return change
 
     assert record is not None, "MATCHED state can only happen with a record existing"
-    needs_hash = rehash or (hash and record.hash is None)
+    needs_hash = policy is ALL or (policy is NEEDED and record.hash is None)
     return RecordChange.UPDATED if needs_hash else RecordChange.MATCHED

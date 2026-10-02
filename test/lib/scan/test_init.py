@@ -23,12 +23,16 @@ from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
 from scout.lib.scan import Summary, _scan_dir, _scan_file, scan
+from scout.lib.scan.hashing import HashingPolicy
 
 # Alias for factory:
 # Creates default file with override kwargs:
 # FileRecord(dir_id=0, stat=FileStat("f", 1, 1), hash=None, hashed=None, gone=None)
 mk_stat = factory.mk_stat
 mk_frec = factory.mk_file_record
+
+# Shortened alias for HashingPolicy enum members
+OFF = HashingPolicy.OFF
 
 
 def _mk_fstat(**overrides) -> FileStat:
@@ -124,7 +128,7 @@ class TestScanFile:
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
         manifest.files.upsert(fmodel)
 
-        act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, hash=False)
+        act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, policy=OFF)
 
         assert isinstance(act, FileScanned)
         assert act.record.hash is None

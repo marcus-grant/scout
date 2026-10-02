@@ -20,14 +20,14 @@ from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 from scout.lib.scan import Summary
 from scout.lib.scan import scan as lib_scan
+from scout.lib.scan.hashing import HashingPolicy
 
 
 def run_scan(
     path: Path,
     emit: Callable[[events.CliEvent], None],
     *,
-    hash: bool = True,
-    rehash: bool = False,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
@@ -43,7 +43,7 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    results = lib_scan(manifest, hash=hash, rehash=rehash, on_progress=on_progress)
+    results = lib_scan(manifest, policy=policy, on_progress=on_progress)
     for result in results:
         match result:
             case FileScanned():
@@ -110,12 +110,15 @@ def scan(
     """Bring the manifest at PATH current with its root; PATH may be the root."""
     if no_hash and rehash:
         raise click.UsageError("--rehash cannot be used with --no-hash")
-    hsh = not no_hash
-    on_progress = _bytes_progress if progress else None
+    if no_hash:
+        policy = HashingPolicy.OFF
+    elif rehash:
+        policy = HashingPolicy.ALL
+    else:
+        policy = HashingPolicy.NEEDED
     run_scan(
         path,
         _emitter(verbose, progress),
-        hash=hsh,
-        rehash=rehash,
-        on_progress=on_progress,
+        policy=policy,
+        on_progress=_bytes_progress if progress else None,
     )
