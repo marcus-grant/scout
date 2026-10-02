@@ -17,18 +17,12 @@ import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
+from scout.lib.event import FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
-from scout.lib.scan import (
-    Gone,
-    Scanned,
-    Summary,
-    _scan_dir,
-    _scan_file,
-    scan,
-)
+from scout.lib.scan import Summary, _scan_dir, _scan_file, scan
 
 # Alias for factory:
 # Creates default file with override kwargs:
@@ -74,11 +68,11 @@ class TestScanFile:
             st = _st(tree, "a.txt")
             result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
-        assert isinstance(result, Scanned)
+        assert isinstance(result, FileScanned)
         assert result.change == ADDED
-        assert result.file.hash == expected
-        assert result.file.hashed == 7
-        assert manifest.files.get(0, "a.txt") == result.file
+        assert result.record.hash == expected
+        assert result.record.hashed == 7
+        assert manifest.files.get(0, "a.txt") == result.record
 
     def test_matching_row_is_left_alone(self, tree: Tree, manifest: Manifest) -> None:
         """A row equal to a.txt's stat: MATCHED, the returned FileRecord is the
@@ -90,9 +84,9 @@ class TestScanFile:
 
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
-        assert isinstance(result, Scanned)
+        assert isinstance(result, FileScanned)
         assert result.change == MATCHED
-        assert result.file == stored
+        assert result.record == stored
         assert manifest.files.get(0, "a.txt") == stored
 
     def test_matched_row_without_hash_is_hashed(
@@ -105,7 +99,7 @@ class TestScanFile:
 
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
-        assert isinstance(result, Scanned)
+        assert isinstance(result, FileScanned)
         assert result.change == UPDATED
 
     def test_changed_file_is_updated_and_rehashed(
@@ -121,10 +115,10 @@ class TestScanFile:
 
         result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
-        assert isinstance(result, Scanned)
+        assert isinstance(result, FileScanned)
         assert result.change == UPDATED
-        assert (result.file.hash, result.file.hashed) == (new_h, 7)
-        assert result.file.stat.size == st.size
+        assert (result.record.hash, result.record.hashed) == (new_h, 7)
+        assert result.record.stat.size == st.size
 
     def test_no_hash_writes_null_hash(self, tree: Tree, manifest: Manifest) -> None:
         """A row for a.txt with size 1, hash False: UPDATED, stored row has
@@ -136,17 +130,17 @@ class TestScanFile:
 
         act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, hash=False)
 
-        assert isinstance(act, Scanned)
+        assert isinstance(act, FileScanned)
         assert act.change == UPDATED
-        assert act.file.hash is None
-        assert act.file.hashed is None
-        assert act.file.stat.size == st.size
-        assert manifest.files.get(0, "a.txt") == act.file
+        assert act.record.hash is None
+        assert act.record.hashed is None
+        assert act.record.stat.size == st.size
+        assert manifest.files.get(0, "a.txt") == act.record
 
     def test_unreadable_file_returns_error(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """hash_file answering Unreadable: that Unreadable comes back with
+        """hash_file answering Unreadable: a ReadFailed for b/a.txt returns with
         errno EACCES, and no row is written."""
         st = _st(tree, "a.txt")
         unreadable = Err.Unreadable("Permission denied", path=PPP("a.txt"), errno=13)
@@ -154,8 +148,8 @@ class TestScanFile:
 
         act = _scan_file(manifest, 0, PPP("b"), tree.root, st, started=7)
 
-        assert isinstance(act, Err.Unreadable)
-        assert act.errno == errno.EACCES
+        assert isinstance(act, ReadFailed)
+        assert act.error.errno == errno.EACCES
         assert act.path == PPP("b/a.txt")
         assert manifest.files.get(0, "a.txt") is None
 
@@ -164,21 +158,21 @@ class TestScanDir:
     """_scan_dir on one WalkedDir of the default tree."""
 
     def test_adds_dir_and_files_in_order(self, tree: Tree, manifest: Manifest) -> None:
-        """The listing for b: dirs.get(b) exists after; two Scanned records
-        ADDED, paths b/b1.txt then b/b2.txt; no Gone, no Unreadable."""
+        """The listing for b: dirs.get(b) exists after; two FileScanned records
+        ADDED, paths b/b1.txt then b/b2.txt; no RecordGone, no Unreadable."""
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
         listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
         assert manifest.dirs.get(PPP("b")) is not None
-        assert [type(r) for r in records] == [Scanned, Scanned]
+        assert [type(r) for r in records] == [FileScanned, FileScanned]
         assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
-        assert all(r.change == ADDED for r in records if isinstance(r, Scanned))
+        assert all(r.change == ADDED for r in records if isinstance(r, FileScanned))
 
     def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
-        """A stored row b/old.txt not in the listing: one Gone with path
-        b/old.txt after the Scanned records; the row's gone is started."""
+        """A stored row b/old.txt not in the listing: one RecordGone with path
+        b/old.txt after the FileScanned records; the row's gone is started."""
         d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
@@ -187,7 +181,7 @@ class TestScanDir:
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
         assert len(records) == 3
-        assert records[-1] == Gone(PPP("b/old.txt"))
+        assert records[-1] == RecordGone(PPP("b/old.txt"))
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT gone FROM file WHERE name = 'old.txt';"
             assert conn.execute(q).fetchone() == (7,)
@@ -195,7 +189,7 @@ class TestScanDir:
     def test_failed_entry_keeps_its_row(self, tree: Tree, manifest: Manifest) -> None:
         """A stored row b/b1.txt whose entry failed in the listing: the
         WalkedDir for b has only b2.txt in files and an Unreadable for
-        b/b1.txt in errors. No Gone is yielded, and the row's gone stays None."""
+        b/b1.txt in errors. No RecordGone is yielded, and the row's gone stays None."""
         d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="b1.txt"))
         failed = PPP("b/b1.txt")
@@ -204,7 +198,7 @@ class TestScanDir:
 
         records = list(_scan_dir(manifest, tree.root, walked, started=7))
 
-        assert not any(isinstance(r, Gone) for r in records)
+        assert not any(isinstance(r, RecordGone) for r in records)
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT gone FROM file WHERE name = 'b1.txt';"
             assert conn.execute(q).fetchone() == (None,)
@@ -213,31 +207,31 @@ class TestScanDir:
         self, tree: Tree, manifest: Manifest
     ) -> None:
         """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
-        exists, the one record yielded is that Unreadable."""
+        exists, the one record yielded is a ReadFailed carrying it."""
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
         listing = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
         records = list(_scan_dir(manifest, tree.root, listing, started=7))
 
         assert manifest.dirs.get(PPP("b/c")) is not None
-        assert records == [unreadable]
+        assert records == [ReadFailed(PPP("b/c"), unreadable)]
 
 
 class TestScan:
     """scan on the default tree under the manifest fixture: wiring only."""
 
     def test_first_scan_counts_and_order(self, tree: Tree, manifest: Manifest) -> None:
-        """Four Scanned in DFS path order, all ADDED; no Gone; no row for
+        """Four FileScanned in DFS path order, all ADDED; no RecordGone; no row for
         .scout.db; Summary added 4, others 0, finished >= started; the
         scan row has that finished and files_seen 4."""
         records = list(scan(manifest))
         summary = records[-1]
-        scanned = [r for r in records if isinstance(r, Scanned)]
+        scanned = [r for r in records if isinstance(r, FileScanned)]
 
         assert isinstance(summary, Summary)
         assert [r.path for r in scanned] == sorted(tree.files)
         assert all(r.change == ADDED for r in scanned)
-        assert not any(isinstance(r, Gone) for r in records)
+        assert not any(isinstance(r, RecordGone) for r in records)
         assert manifest.files.get(0, ".scout.db") is None
         counts = (summary.added, summary.updated, summary.matched)
         assert (counts, summary.errors, summary.gone) == ((4, 0, 0), 0, 0)
@@ -250,7 +244,7 @@ class TestScan:
     def test_rescan_after_rmtree_marks_subtree_gone(
         self, tree: Tree, manifest: Manifest
     ) -> None:
-        """Scan, remove b, scan again: Gone paths are exactly b/b1.txt,
+        """Scan, remove b, scan again: RecordGone paths are exactly b/b1.txt,
         b/b2.txt, b/c/empty.txt, b/c, b; Summary gone 5, matched 1."""
         list(scan(manifest))
         shutil.rmtree(tree.root / "b")
@@ -262,14 +256,14 @@ class TestScan:
         expected = {
             PPP(p) for p in ("b/b1.txt", "b/b2.txt", "b/c/empty.txt", "b/c", "b")
         }
-        assert {r.path for r in records if isinstance(r, Gone)} == expected
+        assert {r.path for r in records if isinstance(r, RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
 
     def test_unreadable_dir_keeps_its_rows(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Scan, then os.scandir monkeypatched to fail on b: one Unreadable
-        for b, no Gone, and the rows for b, b/c, and their files keep gone
+        """Scan, then os.scandir monkeypatched to fail on b: one ReadFailed
+        for b, no RecordGone, and the rows for b, b/c, and their files keep gone
         None."""
         list(scan(manifest))
         real = os.scandir
@@ -283,9 +277,9 @@ class TestScan:
 
         records = list(scan(manifest))
 
-        unreadable = [r for r in records if isinstance(r, Err.Unreadable)]
+        unreadable = [r for r in records if isinstance(r, ReadFailed)]
         assert [u.path for u in unreadable] == [PPP("b")]
-        assert not any(isinstance(r, Gone) for r in records)
+        assert not any(isinstance(r, RecordGone) for r in records)
         with sql.connect(manifest.db.path) as conn:
             gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
             gone_files = conn.execute(
@@ -298,7 +292,7 @@ class TestScan:
     ) -> None:
         """Scan, then walk patched so the root's listing reports b as a failed
         entry: b is absent from the root's subdirs, and an Unreadable for b is
-        in its errors. No Gone, and the rows for b, b/c, and their files keep
+        in its errors. No RecordGone, and the rows for b, b/c, and their files keep
         gone None."""
         list(scan(manifest))
         unreadable = Err.Unreadable(
@@ -312,7 +306,7 @@ class TestScan:
 
         records = list(scan(manifest))
 
-        assert not any(isinstance(r, Gone) for r in records)
+        assert not any(isinstance(r, RecordGone) for r in records)
         with sql.connect(manifest.db.path) as conn:
             gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
             gone_files = conn.execute(

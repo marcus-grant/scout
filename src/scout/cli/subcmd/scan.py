@@ -9,17 +9,16 @@ import itertools
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from pathlib import PurePosixPath as PPP
 
 import click
 
 import scout.cli.event as events
-import scout.lib.error as Err
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
+from scout.lib.event import FileScanned, ReadFailed, RecordGone
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
-from scout.lib.scan import Gone, Scanned, Summary
+from scout.lib.scan import Summary
 from scout.lib.scan import scan as lib_scan
 
 
@@ -34,7 +33,7 @@ def run_scan(
 ) -> None:
     """Open the manifest at path (a directory means its DEFAULT_NAME),
     refresh the fs detail rows, then run scan and emit one event per record:
-    Scanned to ScanFile, Gone to ScanGone,
+    Scanned to ScanFile, Gone, to ScanGone,
     Unreadable to ScanError, Summary to ScanFinished.
     Detail replaces fs_meta.read_all(root) when given, for tests."""
     # Open and update manifest with fs meta details
@@ -47,12 +46,12 @@ def run_scan(
     results = lib_scan(manifest, hash=hash, rehash=rehash, on_progress=on_progress)
     for result in results:
         match result:
-            case Scanned():
-                emit(events.ScanFile(result.path, result.file, result.change))
-            case Gone():
+            case FileScanned():
+                emit(events.ScanFile(result.path, result.record, result.change))
+            case RecordGone():
                 emit(events.ScanGone(result.path))
-            case Err.Unreadable():
-                emit(events.ScanError(result.path or PPP("?"), result))
+            case ReadFailed():
+                emit(events.ScanError(result.path, result.error))
             case Summary():
                 emit(
                     events.ScanFinished(
