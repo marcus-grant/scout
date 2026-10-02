@@ -100,11 +100,11 @@ def _scan_dir(
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[Scanned | Gone | Err.Unreadable]:
     """Bring one walked directory's rows current, yielding as it goes.
-    dirs.add(listing.path) first; then one _scan_file per FileStat in
+    dirs.upsert(listing.path) first; then one _scan_file per FileStat in
     listing order; then every live file row in this dir whose name is not
     in the listing is marked gone with started and yielded as Gone; last,
     each Unreadable the listing carried."""
-    d = manifest.dirs.add(listing.path)
+    d = manifest.dirs.upsert(listing.path)
     for st in listing.files:
         yield _scan_file(
             manifest,

@@ -19,9 +19,9 @@ class TestClaimed:
     def test_counts_claimed_subtree_of_path(self, manifest: Manifest) -> None:
         """Dirs at any depth under path, files in path and those dirs;
         gone and prefix-sharing siblings excluded."""
-        b, c = manifest.dirs.add(PPP("b")), manifest.dirs.add(PPP("b/c"))
-        d, bb = manifest.dirs.add(PPP("b/d")), manifest.dirs.add(PPP("bb"))
-        e = manifest.dirs.add(PPP("b/c/e"))
+        b, c = manifest.dirs.upsert(PPP("b")), manifest.dirs.upsert(PPP("b/c"))
+        d, bb = manifest.dirs.upsert(PPP("b/d")), manifest.dirs.upsert(PPP("bb"))
+        e = manifest.dirs.upsert(PPP("b/c/e"))
         for dir_id in (0, b.id, c.id, d.id, e.id, bb.id):
             manifest.files.upsert(mk_file_record(dir_id=dir_id))
         manifest.gone_subtree.mark(PPP("b/d"), started=7)
@@ -31,7 +31,7 @@ class TestClaimed:
 
     def test_gone_file_in_claimed_dir_not_counted(self, manifest: Manifest) -> None:
         """A file marked gone is excluded while its dir still counts."""
-        b = manifest.dirs.add(PPP("b"))
+        b = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_file_record(dir_id=b.id, name="1"))
         manifest.files.upsert(mk_file_record(dir_id=b.id, name="2"))
         manifest.files.mark_gone_one(b.id, "2", 7)

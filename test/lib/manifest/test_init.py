@@ -173,14 +173,14 @@ class TestTransaction:
     def test_commits_on_clean_exit(self, manifest: Manifest) -> None:
         """A dir added inside the block is visible to a fresh connection after."""
         with manifest:
-            manifest.dirs.add(PPP("a"))
+            manifest.dirs.upsert(PPP("a"))
             q = "SELECT path FROM dir WHERE path = 'a'"
             assert manifest.db.conn.execute(q).fetchone() == ("a",)
 
     def test_rolls_back_on_exception(self, manifest: Manifest) -> None:
         """A dir added before an exception in the block is gone after it."""
         with pytest.raises(RuntimeError), manifest:
-            manifest.dirs.add(PPP("a"))
+            manifest.dirs.upsert(PPP("a"))
             raise RuntimeError("boom")
         q = "SELECT path FROM dir WHERE path = 'a'"
         assert sql.connect(manifest.db.path).execute(q).fetchone() is None
@@ -193,7 +193,7 @@ class TestCommitEvery:
     def _write_dirs(manifest: Manifest, count: int, start: int = 0) -> None:
         """Add d{start}..d{start+count-1} through manifest.dirs, wrote() after each."""
         for i in range(start, start + count):
-            manifest.dirs.add(PPP(f"d{i}"))
+            manifest.dirs.upsert(PPP(f"d{i}"))
             manifest.wrote()
 
     @staticmethod

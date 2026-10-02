@@ -81,7 +81,7 @@ class TestInDir:
 
     def test_lists_only_that_dir(self, manifest: Manifest) -> None:
         """Files in other dirs and gone files are left out; order is by name."""
-        d = manifest.dirs.add(PPP("d"))
+        d = manifest.dirs.upsert(PPP("d"))
         b, a, _ = (manifest.files.upsert(mk_file_record(name=n)) for n in ("b", "a", "z"))
         manifest.files.upsert(mk_file_record(dir_id=d.id, name="c"))
         with sql.connect(manifest.db.path) as conn:
@@ -94,7 +94,7 @@ class TestByHash:
 
     def test_lists_duplicates_across_dirs(self, manifest: Manifest) -> None:
         """Rows with the hash in any dir, ordered by dir_id then name."""
-        repo, d, h = manifest.files, manifest.dirs.add(PPP("d")), Hash("A" * 24)
+        repo, d, h = manifest.files, manifest.dirs.upsert(PPP("d")), Hash("A" * 24)
         x = repo.upsert(mk_file_record(dir_id=0, name="x", hash=h, hashed=5))
         y = repo.upsert(mk_file_record(dir_id=d.id, name="y", hash=h, hashed=5))
         assert repo.by_hash(h) == [x, y]
@@ -106,7 +106,7 @@ class TestMarkGone:
     def test_covers_listed_dirs_only(self, manifest: Manifest) -> None:
         """Files in listed dirs get gone; other dirs and root are untouched."""
         repo, dirs = manifest.files, manifest.dirs
-        d, e = dirs.add(PPP("d")), dirs.add(PPP("e"))
+        d, e = dirs.upsert(PPP("d")), dirs.upsert(PPP("e"))
         for dir_id in (0, d.id, e.id):
             repo.upsert(mk_file_record(dir_id=dir_id))
         repo.mark_gone([d.id, e.id], 9)
@@ -117,7 +117,7 @@ class TestMarkGone:
     def test_chunks_dir_ids(self, manifest: Manifest, monkeypatch) -> None:
         """With CHUNK patched below the id count, every listed dir still gets gone."""
         monkeypatch.setattr(FileRepo, "CHUNK", 2)
-        dirs = [manifest.dirs.add(PPP(f"d{i}")) for i in range(5)]
+        dirs = [manifest.dirs.upsert(PPP(f"d{i}")) for i in range(5)]
         for d in dirs:
             manifest.files.upsert(mk_file_record(dir_id=d.id))
 
@@ -134,7 +134,7 @@ class TestMarkGoneOne:
     def test_marks_only_that_row(self, manifest: Manifest) -> None:
         """Of two files in one dir and one in root, only the named file in
         the named dir gets gone; the other two stay None."""
-        d = manifest.dirs.add(PPP("d"))
+        d = manifest.dirs.upsert(PPP("d"))
         manifest.files.upsert(mk_file_record(dir_id=0, name="root-file"))
         manifest.files.upsert(mk_file_record(dir_id=d.id, name="d-file"))
         manifest.files.upsert(mk_file_record(dir_id=d.id, name="d-gone"))

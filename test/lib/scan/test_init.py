@@ -166,7 +166,7 @@ class TestScanDir:
     def test_missing_name_is_marked_gone(self, tree: Tree, manifest: Manifest) -> None:
         """A stored row b/old.txt not in the listing: one Gone with path
         b/old.txt after the Scanned records; the row's gone is started."""
-        d = manifest.dirs.add(PPP("b"))
+        d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
         listing = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
@@ -183,7 +183,7 @@ class TestScanDir:
         """A stored row b/b1.txt whose entry failed in the listing: the
         WalkedDir for b has only b2.txt in files and an Unreadable for
         b/b1.txt in errors. No Gone is yielded, and the row's gone stays None."""
-        d = manifest.dirs.add(PPP("b"))
+        d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="b1.txt"))
         failed = PPP("b/b1.txt")
         unreadable = Err.Unreadable("Input/output error", path=failed, errno=errno.EIO)
