@@ -36,14 +36,14 @@ class TestAdd:
     def test_returns_dir_with_id(self, manifest: Manifest) -> None:
         """The DirRecord returned has the given path, gone None, and an int id."""
         repo, path = manifest.dirs, PPP("a/b")
-        assert (dir := repo.add(path)).path == path
+        assert (dir := repo.upsert(path)).path == path
         assert dir.gone is None
         assert isinstance(dir, DirRecord)
 
     def test_same_path_returns_same_id(self, manifest: Manifest) -> None:
         """Adding a path twice yields one row and the same id."""
         repo, path = manifest.dirs, PPP("a/b")
-        a, b = repo.add(path), repo.add(path)
+        a, b = repo.upsert(path), repo.upsert(path)
         assert a.id == b.id
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT count(*) FROM dir WHERE path = 'a/b';"
@@ -51,7 +51,7 @@ class TestAdd:
 
     def test_creates_ancestors(self, manifest: Manifest) -> None:
         """Adding a/b/c stores a and a/b as live dirs too, in one call."""
-        manifest.dirs.add(PPP("a/b/c"))
+        manifest.dirs.upsert(PPP("a/b/c"))
         q = "SELECT id, path, gone FROM dir WHERE id != 0 ORDER BY id;"
         with sql.connect(manifest.db.path) as conn:
             rows = conn.execute(q).fetchall()
@@ -61,7 +61,7 @@ class TestAdd:
     def test_rejects_paths_outside_root(self, manifest: Manifest, bad: PPP) -> None:
         """Absolute paths and paths escaping root raise Err.NotUnderRoot."""
         with pytest.raises(Err.NotUnderRoot) as exc:
-            manifest.dirs.add(bad)
+            manifest.dirs.upsert(bad)
         assert_err_fields(exc, bad.as_posix(), "not under root", path=bad)
 
 
@@ -71,14 +71,14 @@ class TestGet:
     def test_returns_added(self, manifest: Manifest) -> None:
         """get returns the DirRecord add returned, and None for an unknown path."""
         repo, missing = manifest.dirs, PPP("a/b/c")
-        result = repo.add(added := PPP("a/b"))
+        result = repo.upsert(added := PPP("a/b"))
         assert repo.get(added) == result
         assert repo.get(missing) is None
 
     def test_hides_gone(self, manifest: Manifest) -> None:
         """A dir whose gone is set reads as None."""
         repo = manifest.dirs
-        repo.add(PPP("a"))
+        repo.upsert(PPP("a"))
         with sql.connect(manifest.db.path) as conn:
             conn.execute("UPDATE dir SET gone = 7 WHERE path = 'a';")
         assert repo.get(PPP("a")) is None
@@ -90,7 +90,7 @@ class TestDescendants:
     def test_strict_prefix_matches(self, manifest: Manifest) -> None:
         """descendants of a excludes a itself and the sibling ab."""
         repo = manifest.dirs
-        _, ab, abc, _ = (repo.add(PPP(p)) for p in ("a", "a/b", "a/b/c", "ab"))
+        _, ab, abc, _ = (repo.upsert(PPP(p)) for p in ("a", "a/b", "a/b/c", "ab"))
         assert repo.descendants(PPP("a")) == [ab, abc]
 
     def test_respects_byte_boundaries(self, manifest: Manifest) -> None:
@@ -99,14 +99,14 @@ class TestDescendants:
         edges = ("a.", "a0", "a\U0001f600", "A/x")
         under = ("a/50%_x", "a/\u00e9", "a/\U0001f600")
         for name in edges:
-            repo.add(PPP(name))
-        expect = [repo.add(PPP(name)) for name in under]
+            repo.upsert(PPP(name))
+        expect = [repo.upsert(PPP(name)) for name in under]
         assert repo.descendants(PPP("a")) == expect
 
     def test_of_root_is_everything(self, manifest: Manifest) -> None:
         """descendants of PPP('.') returns every live dir; '' spells root too."""
         repo = manifest.dirs
-        expect = [repo.add(PPP(p)) for p in ("a", "b", "b/c")]
+        expect = [repo.upsert(PPP(p)) for p in ("a", "b", "b/c")]
         assert repo.descendants(PPP(".")) == expect
         assert repo.descendants(PPP("")) == expect
 
@@ -114,7 +114,7 @@ class TestDescendants:
         """A dir whose gone is set is left out of the list."""
         repo = manifest.dirs
         for n in ("a/x", "a/y/z", "b"):
-            repo.add(PPP(n))
+            repo.upsert(PPP(n))
         with sql.connect(manifest.db.path) as conn:
             conn.execute("UPDATE dir SET gone = 7 WHERE path IN ('a/y', 'a/y/z');")
         assert repo.descendants(PPP("a")) == [repo.get(PPP("a/x"))]
@@ -130,7 +130,7 @@ class TestMarkGone:
         repo, started = manifest.dirs, 42
         parent, child, sibling = PPP("a"), PPP("a/b"), PPP("ab")
         for p in (parent, child, sibling):
-            repo.add(p)
+            repo.upsert(p)
         repo.mark_gone(parent, started)
         q = "SELECT path, gone FROM dir WHERE id != 0 ORDER BY path;"
         with sql.connect(manifest.db.path) as conn:
@@ -141,9 +141,9 @@ class TestMarkGone:
     def test_revived_by_add(self, manifest: Manifest) -> None:
         """Re-adding a path under a gone dir clears gone on the whole chain."""
         repo = manifest.dirs
-        repo.add(PPP("a/b"))
+        repo.upsert(PPP("a/b"))
         repo.mark_gone(PPP("a"), 7)
-        repo.add(PPP("a/b"))
+        repo.upsert(PPP("a/b"))
         q = "SELECT path, gone FROM dir WHERE id != 0 ORDER BY path;"
         with sql.connect(manifest.db.path) as conn:
             rows = conn.execute(q).fetchall()
@@ -151,7 +151,7 @@ class TestMarkGone:
 
     def test_keeps_earlier_gone(self, manifest: Manifest) -> None:
         """Add 'a', 'a/b', mark 'a/b' gone at started=1, mark 'a' gone started=2."""
-        manifest.dirs.add(PPP("a/b"))
+        manifest.dirs.upsert(PPP("a/b"))
         manifest.dirs.mark_gone(PPP("a/b"), 1)
         manifest.dirs.mark_gone(PPP("a"), 2)
         q = "SELECT path, gone FROM dir WHERE id != 0 ORDER BY path;"
@@ -183,14 +183,14 @@ class TestCount:
     def test_counts_claimed_matches_only(self, manifest: Manifest) -> None:
         """Gone rows and rows outside the predicate are not counted."""
         for p in ("a", "a/b", "a/c", "ac"):
-            manifest.dirs.add(PPP(p))
+            manifest.dirs.upsert(PPP(p))
         manifest.dirs.mark_gone(PPP("a/c"), 7)
 
         assert manifest.dirs.count(DirRepo.where_under("a")) == 1
 
     def test_no_match_is_zero(self, manifest: Manifest) -> None:
         """A predicate matching no row counts zero, not None."""
-        manifest.dirs.add(PPP("x"))
+        manifest.dirs.upsert(PPP("x"))
         manifest.dirs.mark_gone(PPP("x"), 7)
 
         assert manifest.dirs.count(DirRepo.where_under("x")) == 0

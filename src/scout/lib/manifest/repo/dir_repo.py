@@ -71,7 +71,7 @@ class DirRepo:
         rows = self.db.conn.execute(self._SELECT.format(where), params).fetchall()
         return DirRepo._rows_to_dirs(rows)
 
-    def add(self, path: PPP) -> DirRecord:
+    def upsert(self, path: PPP) -> DirRecord:
         """Upsert path as live and return its DirRecord; a gone row is revived."""
         _path = self._check(path)
         for p in (*reversed(path.parents), path):

@@ -84,6 +84,7 @@ class RecordChange(Enum):
     Each member claims only what evidence about the filesystem proves is true.
 
     MATCHED: stat agrees, likely nothing changed, but not certain
+    UPDATED: the record is rewritten; its stat differed or hashing required it.
     VERIFIED: hash confirms file unchanged (or 1 in ~sqrt(2**120) chance of collision)
     ADDED: file added since manifest recording
     """

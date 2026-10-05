@@ -79,7 +79,8 @@ class TestPorcelainScan:
     def test_error_line(self) -> None:
         """ScanError(b/c, Unreadable("Permission denied")) renders err
         ("b/c: Permission denied",) and empty out."""
-        evt = events.ScanError(PPP("b/c"), Err.Unreadable("Permission denied"))
+        p, msg = PPP("b/c"), "Permission denied"
+        evt = events.ScanError(p, Err.Unreadable(msg, path=p))
 
         assert porcelain(evt) == Output(err=("b/c: Permission denied",))
 

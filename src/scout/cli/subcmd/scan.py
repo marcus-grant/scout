@@ -9,32 +9,31 @@ import itertools
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from pathlib import PurePosixPath as PPP
 
 import click
 
 import scout.cli.event as events
-import scout.lib.error as Err
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
+from scout.lib.event import FileScanned, ReadFailed, RecordGone
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
-from scout.lib.scan import Gone, Scanned, Summary
+from scout.lib.scan import Summary
 from scout.lib.scan import scan as lib_scan
+from scout.lib.scan.hashing import HashingPolicy
 
 
 def run_scan(
     path: Path,
     emit: Callable[[events.CliEvent], None],
     *,
-    hash: bool = True,
-    force: bool = False,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
     """Open the manifest at path (a directory means its DEFAULT_NAME),
     refresh the fs detail rows, then run scan and emit one event per record:
-    Scanned to ScanFile, Gone to ScanGone,
+    Scanned to ScanFile, Gone, to ScanGone,
     Unreadable to ScanError, Summary to ScanFinished.
     Detail replaces fs_meta.read_all(root) when given, for tests."""
     # Open and update manifest with fs meta details
@@ -44,15 +43,15 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    results = lib_scan(manifest, hash=hash, force=force, on_progress=on_progress)
+    results = lib_scan(manifest, policy=policy, on_progress=on_progress)
     for result in results:
         match result:
-            case Scanned():
-                emit(events.ScanFile(result.path, result.file, result.change))
-            case Gone():
+            case FileScanned():
+                emit(events.ScanFile(result.path, result.record, result.change))
+            case RecordGone():
                 emit(events.ScanGone(result.path))
-            case Err.Unreadable():
-                emit(events.ScanError(result.path or PPP("?"), result))
+            case ReadFailed():
+                emit(events.ScanError(result.path, result.error))
             case Summary():
                 emit(
                     events.ScanFinished(
@@ -111,12 +110,15 @@ def scan(
     """Bring the manifest at PATH current with its root; PATH may be the root."""
     if no_hash and rehash:
         raise click.UsageError("--rehash cannot be used with --no-hash")
-    hsh, force = not no_hash, rehash
-    on_progress = _bytes_progress if progress else None
+    if no_hash:
+        policy = HashingPolicy.OFF
+    elif rehash:
+        policy = HashingPolicy.ALL
+    else:
+        policy = HashingPolicy.NEEDED
     run_scan(
         path,
         _emitter(verbose, progress),
-        hash=hsh,
-        force=force,
-        on_progress=on_progress,
+        policy=policy,
+        on_progress=_bytes_progress if progress else None,
     )

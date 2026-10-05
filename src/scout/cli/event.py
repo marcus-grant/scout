@@ -48,7 +48,7 @@ class ScanError(CliEvent):
     """A file or directory the scan could not read."""
 
     path: PPP
-    error: Err.ScanDomain
+    error: Err.FsDomain
 
 
 @dataclass(frozen=True)

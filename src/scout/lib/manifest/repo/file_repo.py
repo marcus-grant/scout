@@ -69,7 +69,7 @@ class FileRepo:
         rows = self.db.conn.execute(self._SELECT.format(where), params).fetchall()
         return FileRepo._rows_to_files(rows)
 
-    def add(self, file: FileRecord) -> FileRecord:
+    def upsert(self, file: FileRecord) -> FileRecord:
         """Upsert file on (dir_id, name), writing content and gone = NULL."""
         self.db.conn.execute(self._UPSERT, self._file_to_params(file))
         where, params = "dir_id = ? AND name = ?", (file.dir_id, file.stat.name)

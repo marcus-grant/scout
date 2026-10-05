@@ -37,15 +37,15 @@ class TestAdd:
     def test_returns_live_file(self, manifest: Manifest) -> None:
         """The FileRecord returned equals the one given with gone None."""
         fr = mk_file_record(hash=Hash("A" * 24), hashed=7)
-        assert manifest.files.add(fr) == fr
+        assert manifest.files.upsert(fr) == fr
         with sql.connect(manifest.db.path) as conn:
             assert conn.execute("SELECT * FROM file;").fetchall() == [as_row(fr)]
 
     def test_same_key_updates_content(self, manifest: Manifest) -> None:
         """Adding the same (dir_id, name) twice leaves one row with new content."""
         fr = mk_file_record(hash=Hash("A" * 24), hashed=7)
-        manifest.files.add(fr)
-        manifest.files.add(fr2 := mk_file_record(size=2, hash=fr.hash, hashed=8))
+        manifest.files.upsert(fr)
+        manifest.files.upsert(fr2 := mk_file_record(size=2, hash=fr.hash, hashed=8))
         with sql.connect(manifest.db.path) as conn:
             rows = conn.execute("SELECT * FROM file;").fetchall()
             assert rows == [as_row(fr2)]
@@ -53,10 +53,10 @@ class TestAdd:
     def test_revives_gone_row(self, manifest: Manifest) -> None:
         """Adding over a row whose gone is set clears gone."""
         fr = mk_file_record()
-        manifest.files.add(fr)
+        manifest.files.upsert(fr)
         with sql.connect(manifest.db.path) as conn:
             conn.execute("UPDATE file SET gone = 42")
-        assert manifest.files.add(fr).gone is None
+        assert manifest.files.upsert(fr).gone is None
 
 
 class TestGet:
@@ -65,12 +65,12 @@ class TestGet:
     def test_returns_added(self, manifest: Manifest) -> None:
         """get returns the FileRecord add returned, and Nonefor an unknown name."""
         fr, repo = mk_file_record(), manifest.files
-        assert repo.add(fr) == repo.get(fr.dir_id, fr.stat.name)
+        assert repo.upsert(fr) == repo.get(fr.dir_id, fr.stat.name)
 
     def test_hides_gone(self, manifest: Manifest) -> None:
         """A file whose gone is set reads as None."""
         fr, repo = mk_file_record(), manifest.files
-        repo.add(fr)
+        repo.upsert(fr)
         with sql.connect(manifest.db.path) as conn:
             conn.execute("UPDATE file SET gone = 5")
         assert repo.get(fr.dir_id, fr.stat.name) is None
@@ -81,9 +81,9 @@ class TestInDir:
 
     def test_lists_only_that_dir(self, manifest: Manifest) -> None:
         """Files in other dirs and gone files are left out; order is by name."""
-        d = manifest.dirs.add(PPP("d"))
-        b, a, _ = (manifest.files.add(mk_file_record(name=n)) for n in ("b", "a", "z"))
-        manifest.files.add(mk_file_record(dir_id=d.id, name="c"))
+        d = manifest.dirs.upsert(PPP("d"))
+        b, a, _ = (manifest.files.upsert(mk_file_record(name=n)) for n in ("b", "a", "z"))
+        manifest.files.upsert(mk_file_record(dir_id=d.id, name="c"))
         with sql.connect(manifest.db.path) as conn:
             conn.execute("UPDATE file SET gone = 5 WHERE name = 'z';")
         assert manifest.files.in_dir(0) == [a, b]
@@ -94,9 +94,9 @@ class TestByHash:
 
     def test_lists_duplicates_across_dirs(self, manifest: Manifest) -> None:
         """Rows with the hash in any dir, ordered by dir_id then name."""
-        repo, d, h = manifest.files, manifest.dirs.add(PPP("d")), Hash("A" * 24)
-        x = repo.add(mk_file_record(dir_id=0, name="x", hash=h, hashed=5))
-        y = repo.add(mk_file_record(dir_id=d.id, name="y", hash=h, hashed=5))
+        repo, d, h = manifest.files, manifest.dirs.upsert(PPP("d")), Hash("A" * 24)
+        x = repo.upsert(mk_file_record(dir_id=0, name="x", hash=h, hashed=5))
+        y = repo.upsert(mk_file_record(dir_id=d.id, name="y", hash=h, hashed=5))
         assert repo.by_hash(h) == [x, y]
 
 
@@ -106,9 +106,9 @@ class TestMarkGone:
     def test_covers_listed_dirs_only(self, manifest: Manifest) -> None:
         """Files in listed dirs get gone; other dirs and root are untouched."""
         repo, dirs = manifest.files, manifest.dirs
-        d, e = dirs.add(PPP("d")), dirs.add(PPP("e"))
+        d, e = dirs.upsert(PPP("d")), dirs.upsert(PPP("e"))
         for dir_id in (0, d.id, e.id):
-            repo.add(mk_file_record(dir_id=dir_id))
+            repo.upsert(mk_file_record(dir_id=dir_id))
         repo.mark_gone([d.id, e.id], 9)
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT dir_id, gone FROM file ORDER BY dir_id;"
@@ -117,9 +117,9 @@ class TestMarkGone:
     def test_chunks_dir_ids(self, manifest: Manifest, monkeypatch) -> None:
         """With CHUNK patched below the id count, every listed dir still gets gone."""
         monkeypatch.setattr(FileRepo, "CHUNK", 2)
-        dirs = [manifest.dirs.add(PPP(f"d{i}")) for i in range(5)]
+        dirs = [manifest.dirs.upsert(PPP(f"d{i}")) for i in range(5)]
         for d in dirs:
-            manifest.files.add(mk_file_record(dir_id=d.id))
+            manifest.files.upsert(mk_file_record(dir_id=d.id))
 
         manifest.files.mark_gone([d.id for d in dirs], 9)
 
@@ -134,10 +134,10 @@ class TestMarkGoneOne:
     def test_marks_only_that_row(self, manifest: Manifest) -> None:
         """Of two files in one dir and one in root, only the named file in
         the named dir gets gone; the other two stay None."""
-        d = manifest.dirs.add(PPP("d"))
-        manifest.files.add(mk_file_record(dir_id=0, name="root-file"))
-        manifest.files.add(mk_file_record(dir_id=d.id, name="d-file"))
-        manifest.files.add(mk_file_record(dir_id=d.id, name="d-gone"))
+        d = manifest.dirs.upsert(PPP("d"))
+        manifest.files.upsert(mk_file_record(dir_id=0, name="root-file"))
+        manifest.files.upsert(mk_file_record(dir_id=d.id, name="d-file"))
+        manifest.files.upsert(mk_file_record(dir_id=d.id, name="d-gone"))
 
         manifest.files.mark_gone_one(d.id, "d-gone", 42)
         with sql.connect(manifest.db.path) as conn:

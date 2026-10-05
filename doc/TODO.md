@@ -86,55 +86,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-dir
-
->**NOTE**: Scan's parts that are likely shared by later operations are
->built in `src/scout/lib/scan/` grouped by subject, provisionally; see
->ROADMAP `### verb-architecture`.
-
-- `git checkout -b ref/scan-dir`
-- Mechanical moves first, each its own commit:
-  - `src/scout/lib/scan.py` to `src/scout/lib/scan/__init__.py`,
-    `test/lib/test_scan.py` to its mirror under `test/lib/scan/`;
-  - lib `force` renamed `rehash` (the CLI flag is already `--rehash`);
-  - `FileRepo.add` renamed `upsert`, then `DirRepo.add`;
-    - the `sed` matches `files.add(`, `dirs.add(`, `def add(` only.
-- Events in `src/scout/lib/event.py`, bare unprefixed `Event` base:
-  - `FileScanned`, `RecordGone`, `ReadFailed` replace `Scanned`,
-    `Gone` and the bare `Err.Unreadable` yields;
-  - `run_scan`'s `match` follows.
-- `src/scout/lib/scan/file_stats.py`:
-  - `reconcile_file_stat` takes `dir_id`, the `FileStat`, the
-    `FileRecord` or None, `hash`, `rehash`;
-    - returns `FileStatReconciliation`: the `RecordChange` and the
-      intended `FileRecord`, or None when there is nothing to write;
-    - a None `hash` in the intended record means no hash is known;
-  - the loop calls `hash_file` when hashing is on and the intended
-    hash is None;
-  - `apply_file_stat` writes the intended record via `files.upsert`.
-- `src/scout/lib/scan/missing_files.py`:
-  - `reconcile_missing_files` takes the `WalkedDir` and the dir's
-    live records, returns `MissingFilesReconciliation`: the names
-    missing from the filesystem; names that failed to stat count as
-    present;
-  - `apply_missing_files` takes the `dir_id` and those names, marks
-    each via `files.mark_gone_one`.
-- Per-directory loop: upsert the dir, read its live records,
-  reconcile, hash, apply, report; stages called side by side, never
-  nested.
-- Testing rules, acceptance criteria for the structure:
-  - a reconciliation is tested with no fixture, no filesystem and no
-    monkeypatch, over every outcome, including rehash of a match;
-  - an apply arranges at most one record via the `manifest` fixture;
-  - needing more arrangement means the function is drawn wrong:
-    redraw it before writing the body.
-- `src/scout/lib/scan/__init__.py` docstring: its sibling modules are
-  likely-shared parts living here for now; see `doc/architecture.md`.
-- Doc commit: `doc/architecture.md` records the scan package's
-  modules and provisional home, the stages observe, reconcile, apply
-  and report, lib events unprefixed, and `upsert` where `add` is named.
-- Pln commit: delete this section.
-
 ### scan-missing-dirs
 
 - `git checkout -b ref/scan-missing-dirs`, from `main` after
@@ -158,6 +109,13 @@ The restructure sections below come first, in order.
   file first, then every dir, each in path order".
 - Candidates still come from `dirs.descendants(PPP("."))` in memory;
   SQL path-prefix candidate selection is out of scope.
+- Before stubbing, follow `ref/scan-dir`'s precedent:
+  - a reconciliation returns its values directly,
+    with no wrapper type unless it carries more than one;
+  - no apply function unless it does more than one repo call;
+  - consider merging `file_stats.py`, `missing_files.py` and
+    `missing_dirs.py` into one stat-and-record reconciliation module;
+  - consider naming the hashing policy apart from reconciliation.
 - Testing: the reconciliation with path sets only (a missing parent
   and child yield the parent; a dir under an unreadable one, and a
   failed entry, are excluded); the apply with one recorded subtree.
@@ -174,8 +132,9 @@ The restructure sections below come first, in order.
   - `scan(..., tally=None)`: an adapter injects it for live progress,
     consumed by `### scan-cli`.
 - `ScanOptions` in `src/scout/lib/scan/options.py`, frozen:
-  - `hash`, `rehash`, `bits`, `batch_size`, `on_progress`;
-  - unpacked by `scan`; no reconciliation or apply ever sees it.
+  - `policy` (`HashingPolicy`), `bits`, `batch_size`, `on_progress`;
+  - unpacked by `scan` into the `ScanContext` it builds;
+    no reconciliation ever sees it.
 - `update_from_walk` takes the `Manifest`, an iterable of `WalkedDir`
   and the settings it needs; runs the per-directory loop, then the
   missing-dirs pass; calls `manifest.wrote()` after each file write.
@@ -186,8 +145,9 @@ The restructure sections below come first, in order.
 - `test/lib/scan/` tests:
   - the `TestScan` cases that monkeypatch `os.scandir` or `walk`
     pass constructed `WalkedDir` values to `update_from_walk`;
-  - `test_rescan_after_rmtree_marks_subtree_gone` stays real-disk;
-  - `listing` locals renamed `walked`.
+  - `test_abort_keeps_committed_batches` drops its `hash_file`
+    monkeypatch once the session takes the hash callable as input;
+  - `test_rescan_after_rmtree_marks_subtree_gone` stays real-disk.
 - The fs-detail refresh and its `detail=` seam stay in `run_scan`.
 - Doc commit: `doc/architecture.md` gains the operation anatomy and
   the provisional-home tension, pointing to ROADMAP.
@@ -225,8 +185,6 @@ CLI architecture settled 2026-09-22 (discussion round two):
   - verb operands follow: `init [manifest] [root]` (root defaults
     to the manifest's dir); finer operand patterns left to
     dogfooding.
-- Flags: `--rehash` → `rehash`, `--no-hash` → `not hash`
-  (identity mapping after the rename).
 - `-v`/`--verbose` and `-p`/`--progress` are different concerns:
   - verbose = stdout content policy (emitter routing): whether
     per-file events become porcelain records downstream tools see;
