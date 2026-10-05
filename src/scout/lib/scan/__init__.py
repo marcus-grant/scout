@@ -39,15 +39,14 @@ class Summary:
 
 
 def _scan_file(
-    ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat
+    ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat, row: FileRecord | None
 ) -> FileScanned | ReadFailed:
     """Bring one file's row up to date and say what was done.
-    Fetch the live row at (dir_id, stat.name); reconcile_file_stat decides.
+    Row is the file's live record, or None; reconcile_file_stat decides.
     MATCHED: write nothing and return the row as found.
     ADDED or UPDATED: hash_record prepares the record to write under policy.
     An Unreadable from it comes back as a ReadFailed; nothing is written."""
     rel = dir_path / stat.name
-    row = ctx.manifest.files.get(dir_id, stat.name)
     change = reconcile_file_stat(stat, row, policy=ctx.policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
@@ -72,10 +71,12 @@ def _scan_dir(
     in the WalkedDir is marked gone with started & yielded as RecordGone;
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
     d = ctx.manifest.dirs.upsert(walked.path)
+    records = ctx.manifest.files.in_dir(d.id)
+    by_name = {r.stat.name: r for r in records}
     for st in walked.files:
-        yield _scan_file(ctx, d.id, walked.path, st)
+        yield _scan_file(ctx, d.id, walked.path, st, by_name.get(st.name))
 
-    for name in reconcile_missing_files(walked, ctx.manifest.files.in_dir(d.id)):
+    for name in reconcile_missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         yield RecordGone(walked.path / name)
     yield from (ReadFailed(e.path, e) for e in walked.errors)

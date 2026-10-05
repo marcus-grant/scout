@@ -79,7 +79,7 @@ class TestScanFile:
         hashed equals started, and files.get finds the row."""
         with manifest:
             st = _st(tree, "a.txt")
-            result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st)
+            result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st, None)
 
         assert isinstance(result, FileScanned)
         assert manifest.files.get(0, "a.txt") == result.record
@@ -92,7 +92,7 @@ class TestScanFile:
         fmodel = mk_frec(name="a.txt", size=st.size, mtime=st.mtime, hash=h, hashed=3)
         stored = manifest.files.upsert(fmodel)
 
-        result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st)
+        result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st, stored)
 
         assert isinstance(result, FileScanned)
         assert result.record == stored
@@ -103,9 +103,9 @@ class TestScanFile:
         st = _st(tree, "a.txt")
         stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
-        manifest.files.upsert(fmodel)
+        stored = manifest.files.upsert(fmodel)
 
-        act = _scan_file(_ctx(manifest, tree.root, OFF), 0, PPP("."), st)
+        act = _scan_file(_ctx(manifest, tree.root, OFF), 0, PPP("."), st, stored)
 
         assert isinstance(act, FileScanned)
         assert act.record.hash is None
@@ -122,7 +122,7 @@ class TestScanFile:
         unreadable = Err.Unreadable("Permission denied", path=PPP("a.txt"), errno=13)
 
         ctx = _ctx(manifest, tree.root, hash_path=lambda _p: unreadable)
-        act = _scan_file(ctx, 0, PPP("b"), st)
+        act = _scan_file(ctx, 0, PPP("b"), st, None)
 
         assert isinstance(act, ReadFailed)
         assert act.path == PPP("b/a.txt")
