@@ -14,7 +14,14 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
   - `Manifest` composes them and implements none.
   - Ids cross these as Python values, never as joins into another
     repo's statement.
-- Verbs (`lib/scan.py`): policy and assembly; yield typed events.
+- `lib/scan/`: the scan operation; yields typed events (`lib/event.py`).
+  - `__init__.py`: `scan`, the session, and its per-dir and per-file steps.
+  - `file_stats.py`, `missing_files.py`: pure reconciliations,
+    records against stats and policy; they write nothing.
+  - `hashing.py`: `HashingPolicy` and `hash_record`, the hash step.
+  - `context.py`: `ScanContext`, what one run holds fixed.
+  - These parts are likely shared by later operations;
+    they live here provisionally, see ROADMAP `### verb-architecture`.
 - `cli/`: input, output, exit codes; renderers turn events into lines.
 
 ## Vocabulary

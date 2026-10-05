@@ -218,9 +218,13 @@ Code conventions:
   `Path` exists only at the I/O boundary (scanner, `DBConnector`, CLI).
 - Errors: `import scout.lib.error as Err`.
   - One hierarchy rooted at `Err.ScoutDomain`;
-    - every class is constructible as `Cls("message")`.
+    - every class is constructible from its message
+      and the members its condition cannot exist without.
   - Names ending in `Domain` group errors and...
-    - may carry optional members their children inherit;
+    - declare a member only when every child inherently has it,
+      and then as required, never optional;
+    - older domains with optional members are listed in ROADMAP
+      `### error-members`;
     - concrete errors carry no `Error` suffix.
   - `Err.ScoutUnknown.wrap` rewraps what Scout did not predict.
   - Raised closest to where the concern lies;
@@ -228,7 +232,7 @@ Code conventions:
     - Usually that is an adapter boundary (the CLI, a plugin),
       but not always.
     - Sometimes it is in the lib, which resolves them into values
-      in a verb's event stream (`Unreadable`).
+      in an operation's event stream (`ReadFailed`).
     - `scout_command` catches at the subcommand and maps to
       message and exit code.
 - Tables:
@@ -242,7 +246,7 @@ Code conventions:
   - A service updates across repos: one concern's writes that no
     single repo can own without branching its responsibilities;
     - the term is Fowler's Service Layer in the strict sense only.
-    - Named by its concern alone (`GoneSubtree`, as `manifest.subtree`).
+    - Named by its concern alone (`GoneSubtree`, as `manifest.gone_subtree`).
     - `Manifest` composes services and never implements one.
     - A service may read along the way, but a read-only concern is a query,
       - and one table's logic stays in that table's repo.
