@@ -221,8 +221,8 @@ Code conventions:
     - every class is constructible from its message
       and the members its condition cannot exist without.
   - Names ending in `Domain` group errors and...
-    - declare a member only when every child inherently has it,
-      and then as required, never optional;
+    - declare a member only when every child inherently has it;
+    - type it optional only when its value can be unknown (`errno`);
     - older domains with optional members are listed in ROADMAP
       `### error-members`;
     - concrete errors carry no `Error` suffix.
