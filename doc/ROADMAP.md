@@ -199,6 +199,18 @@ planned.
   - decided together with the rename, across `run_scan`,
     `Manifest.init` and `MetaRepo.write_fs_detail`.
 
+### error-members
+
+- `doc/CONTRIBUTE.md` rules that a domain declares a member
+  only when every child inherently has it,
+  and types it optional only when its value can be unknown.
+- `Err.FsDomain` follows it: `path` required, `errno` optional.
+- `Err.ManifestDomain` and `Err.PathDomain` still carry an optional
+  `path`; check per child whether the path is inherent:
+  - `ManifestDomain`: likely the manifest each error concerns,
+    unless a raise site such as `NestedTransaction`'s cannot know it;
+  - `PathDomain`: every child concerns a path the user passed in.
+
 ### Undecided
 
 Needs more thought before any of these become tasks.
