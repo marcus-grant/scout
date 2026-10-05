@@ -8,7 +8,7 @@ License: AGPL-3.0-or-later
 import errno
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -31,6 +31,21 @@ class WalkedDir:
     files: tuple[FileStat, ...]
     errors: tuple[Err.Unreadable, ...]
     unlistable: bool = False
+
+
+@dataclass
+class WalkedPathSets:
+    """What one walk covered:
+    every walked dir's path, and every path that could not be listed or read."""
+
+    walked: set[PPP] = field(default_factory=set)
+    unreadable: set[PPP] = field(default_factory=set)
+
+    def add(self, walked: WalkedDir) -> None:
+        """Add walked's path to walked, and each error's path to unreadable."""
+        self.walked.add(walked.path)
+        for err in walked.errors:
+            self.unreadable.add(err.path)
 
 
 def _unreadable(e: OSError, path: PPP) -> Err.Unreadable:

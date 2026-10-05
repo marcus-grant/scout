@@ -14,7 +14,7 @@ from pathlib import PurePosixPath as PPP
 import scout.lib.error as Err
 from scout.lib.event import FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, WalkedDir, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.context import ScanContext
@@ -109,20 +109,14 @@ def scan(
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):
-        walked_paths: set[PPP] = set()
-        unreadable: set[PPP] = set()
+        walked_sets = WalkedPathSets()
         for walked in walk(root, exclude):
-            walked_paths.add(walked.path)
+            walked_sets.add(walked)
 
             if walked.unlistable:
-                unreadable.add(walked.path)
                 errors += len(walked.errors)
                 yield from (ReadFailed(e.path, e) for e in walked.errors)
                 continue
-
-            for failed in walked.errors:
-                if failed.path is not None:
-                    unreadable.add(failed.path)
 
             records_iter = _scan_dir(ctx, walked)
             for record in records_iter:
@@ -138,9 +132,9 @@ def scan(
 
         for d in manifest.dirs.descendants(PPP(".")):
             under_unreadable = any(
-                u == d.path or u in d.path.parents for u in unreadable
+                u == d.path or u in d.path.parents for u in walked_sets.unreadable
             )
-            if d.path in walked_paths or under_unreadable:
+            if d.path in walked_sets.walked or under_unreadable:
                 continue
             for path in manifest.gone_subtree.mark(d.path, started):
                 gone += 1
