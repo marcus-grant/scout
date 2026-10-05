@@ -17,6 +17,7 @@ from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
+from scout.lib.scan.context import ScanContext
 from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
 from scout.lib.scan.missing_files import reconcile_missing_files
@@ -38,72 +39,44 @@ class Summary:
 
 
 def _scan_file(
-    manifest: Manifest,
-    dir_id: int,
-    dir_rel: PPP,
-    dir_abs: Path,
-    stat: FileStat,
-    started: int,
-    *,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
-    bits: int = DEFAULT_BITS,
-    on_progress: Callable[[int], None] | None = None,
+    ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat
 ) -> FileScanned | ReadFailed:
     """Bring one file's row up to date and say what was done.
     Fetch the live row at (dir_id, stat.name); reconcile_file_stat decides.
     MATCHED: write nothing and return the row as found.
     ADDED or UPDATED: hash_record prepares the record to write under policy.
     An Unreadable from it comes back as a ReadFailed; nothing is written."""
-    row = manifest.files.get(dir_id, stat.name)
-    change = reconcile_file_stat(stat, row, policy=policy)
+    rel = dir_path / stat.name
+    row = ctx.manifest.files.get(dir_id, stat.name)
+    change = reconcile_file_stat(stat, row, policy=ctx.policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
-        return FileScanned(dir_rel / stat.name, row, change)
+        return FileScanned(rel, row, change)
 
-    record = hash_record(
-        FileRecord(dir_id, stat),
-        dir_abs / stat.name,
-        policy,
-        started,
-        functools.partial(hash_file, bits=bits, on_progress=on_progress),
-    )
-    if isinstance(record, Err.Unreadable):
-        err = Err.Unreadable(
-            str(record), path=dir_rel / stat.name, errno=record.errno
-        )
-        return ReadFailed(dir_rel / stat.name, err)
-    file = manifest.files.upsert(record)
+    fresh, path_abs = FileRecord(dir_id, stat), ctx.root / rel
+    prepared = hash_record(fresh, path_abs, ctx.policy, ctx.started, ctx.hash_path)
+    if isinstance(prepared, Err.Unreadable):
+        err = Err.Unreadable(str(prepared), path=rel, errno=prepared.errno)
+        return ReadFailed(rel, err)
+    upserted = ctx.manifest.files.upsert(prepared)
 
-    return FileScanned(dir_rel / stat.name, file, change)
+    return FileScanned(rel, upserted, change)
 
 
 def _scan_dir(
-    manifest: Manifest,
-    root: Path,
-    walked: WalkedDir,
-    started: int,
-    *,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
-    bits: int = DEFAULT_BITS,
-    on_progress: Callable[[int], None] | None = None,
+    ctx: ScanContext, walked: WalkedDir
 ) -> Iterator[FileScanned | RecordGone | ReadFailed]:
     """Bring one walked directory's rows current, yielding as it goes.
     dirs.upsert(walked.path) first; then one _scan_file per FileStat in
     walked.files order; then every live file row in this dir whose name is not
     in the WalkedDir is marked gone with started & yielded as RecordGone;
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
-    d = manifest.dirs.upsert(walked.path)
+    d = ctx.manifest.dirs.upsert(walked.path)
     for st in walked.files:
-        args = (manifest, d.id, walked.path, root / walked.path, st, started)
-        yield _scan_file(
-            *args,
-            policy=policy,
-            bits=bits,
-            on_progress=on_progress,
-        )
+        yield _scan_file(ctx, d.id, walked.path, st)
 
-    for name in reconcile_missing_files(walked, manifest.files.in_dir(d.id)):
-        manifest.files.mark_gone_one(d.id, name, started)
+    for name in reconcile_missing_files(walked, ctx.manifest.files.in_dir(d.id)):
+        ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         yield RecordGone(walked.path / name)
     yield from (ReadFailed(e.path, e) for e in walked.errors)
 
@@ -130,6 +103,8 @@ def scan(
     except Err.NotUnderRoot:
         exclude = frozenset()
     started = manifest.scans.start()
+    partial_func = functools.partial(hash_file, bits=bits, on_progress=on_progress)
+    ctx = ScanContext(manifest, root, started, policy, partial_func)
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):
@@ -148,15 +123,7 @@ def scan(
                 if failed.path is not None:
                     unreadable.add(failed.path)
 
-            records_iter = _scan_dir(
-                manifest,
-                root,
-                walked,
-                started,
-                policy=policy,
-                bits=bits,
-                on_progress=on_progress,
-            )
+            records_iter = _scan_dir(ctx, walked)
             for record in records_iter:
                 if isinstance(record, FileScanned):
                     counts[record.change] += 1

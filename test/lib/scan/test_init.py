@@ -6,9 +6,11 @@ License: AGPL-3.0-or-later
 """
 
 import errno
+import functools
 import os
 import shutil
 import sqlite3 as sql
+from collections.abc import Callable
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -23,6 +25,7 @@ from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
 from scout.lib.scan import Summary, _scan_dir, _scan_file, scan
+from scout.lib.scan.context import ScanContext
 from scout.lib.scan.hashing import HashingPolicy
 
 # Alias for factory:
@@ -57,6 +60,17 @@ def _st(tree: Tree, rel: str) -> FileStat:
     return FileStat(PPP(rel).name, st.st_size, st.st_mtime_ns)
 
 
+def _ctx(
+    manifest: Manifest,
+    root: Path,
+    policy: HashingPolicy = HashingPolicy.NEEDED,
+    hash_path: Callable[[Path], Hash | Err.Unreadable] | None = None,
+) -> ScanContext:
+    """A ScanContext started at 7, hashing with hash_file unless hash_path is given."""
+    hasher = hash_path or functools.partial(hash_file, bits=DEFAULT_BITS)
+    return ScanContext(manifest, root, 7, policy, hasher)
+
+
 class TestScanFile:
     """_scan_file on one file under the manifest fixture's root."""
 
@@ -65,7 +79,7 @@ class TestScanFile:
         hashed equals started, and files.get finds the row."""
         with manifest:
             st = _st(tree, "a.txt")
-            result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
+            result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st)
 
         assert isinstance(result, FileScanned)
         assert manifest.files.get(0, "a.txt") == result.record
@@ -78,7 +92,7 @@ class TestScanFile:
         fmodel = mk_frec(name="a.txt", size=st.size, mtime=st.mtime, hash=h, hashed=3)
         stored = manifest.files.upsert(fmodel)
 
-        result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
+        result = _scan_file(_ctx(manifest, tree.root), 0, PPP("."), st)
 
         assert isinstance(result, FileScanned)
         assert result.record == stored
@@ -91,7 +105,7 @@ class TestScanFile:
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
         manifest.files.upsert(fmodel)
 
-        act = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7, policy=OFF)
+        act = _scan_file(_ctx(manifest, tree.root, OFF), 0, PPP("."), st)
 
         assert isinstance(act, FileScanned)
         assert act.record.hash is None
@@ -100,15 +114,15 @@ class TestScanFile:
         assert manifest.files.get(0, "a.txt") == act.record
 
     def test_unreadable_file_returns_error(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
+        self, tree: Tree, manifest: Manifest
     ) -> None:
         """hash_file answering Unreadable: a ReadFailed for b/a.txt returns with
         errno EACCES, and no row is written."""
         st = _st(tree, "a.txt")
         unreadable = Err.Unreadable("Permission denied", path=PPP("a.txt"), errno=13)
-        monkeypatch.setattr("scout.lib.scan.hash_file", lambda *_a, **_k: unreadable)
 
-        act = _scan_file(manifest, 0, PPP("b"), tree.root, st, started=7)
+        ctx = _ctx(manifest, tree.root, hash_path=lambda _p: unreadable)
+        act = _scan_file(ctx, 0, PPP("b"), st)
 
         assert isinstance(act, ReadFailed)
         assert act.path == PPP("b/a.txt")
@@ -124,7 +138,7 @@ class TestScanDir:
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
         walked = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
-        records = list(_scan_dir(manifest, tree.root, walked, started=7))
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
 
         assert manifest.dirs.get(PPP("b")) is not None
         assert [type(r) for r in records] == [FileScanned, FileScanned]
@@ -138,7 +152,7 @@ class TestScanDir:
         st_b1, st_b2 = _st(tree, "b/b1.txt"), _st(tree, "b/b2.txt")
         walked = WalkedDir(PPP("b"), ("c",), (st_b1, st_b2), ())
 
-        records = list(_scan_dir(manifest, tree.root, walked, started=7))
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
 
         assert len(records) == 3
         assert records[-1] == RecordGone(PPP("b/old.txt"))
@@ -156,7 +170,7 @@ class TestScanDir:
         unreadable = Err.Unreadable("Input/output error", path=failed, errno=errno.EIO)
         walked = WalkedDir(PPP("b"), ("c",), (_st(tree, "b/b2.txt"),), (unreadable,))
 
-        records = list(_scan_dir(manifest, tree.root, walked, started=7))
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
 
         assert not any(isinstance(r, RecordGone) for r in records)
         with sql.connect(manifest.db.path) as conn:
@@ -171,7 +185,7 @@ class TestScanDir:
         unreadable = Err.Unreadable("Permission denied", path=PPP("b/c"), errno=13)
         walked = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
-        records = list(_scan_dir(manifest, tree.root, walked, started=7))
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
 
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [ReadFailed(PPP("b/c"), unreadable)]
