@@ -20,7 +20,7 @@ from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
-from scout.lib.scan.missing_files import reconcile_missing_files
+from scout.lib.scan.missing import reconcile_missing_files
 from scout.lib.util import to_rel
 
 

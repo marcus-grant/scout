@@ -1,4 +1,4 @@
-# src/scout/lib/scan/missing_files.py
+# src/scout/lib/scan/missing.py
 """Decide which recorded files are missing from a walked directory.
 Author: Marcus
 Created: 2026-10-02

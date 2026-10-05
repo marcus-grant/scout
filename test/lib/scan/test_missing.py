@@ -1,4 +1,4 @@
-# test/lib/scan/test_missing_files.py
+# test/lib/scan/test_missing.py
 """Tests for reconcile_missing_files over plain values.
 Author: Marcus
 Created: 2026-10-02
@@ -10,7 +10,7 @@ from pathlib import PurePosixPath as PPP
 import scout.lib.error as Err
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.models import FileRecord, FileStat
-from scout.lib.scan.missing_files import reconcile_missing_files
+from scout.lib.scan.missing import reconcile_missing_files
 
 
 class TestReconcileMissingFiles:
