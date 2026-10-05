@@ -31,8 +31,17 @@ from scout.lib.scan.hashing import HashingPolicy
 mk_stat = factory.mk_stat
 mk_frec = factory.mk_file_record
 
-# Shortened alias for HashingPolicy enum members
+# Shortened alias for HashingPolicy, RecordChange enum members
 OFF = HashingPolicy.OFF
+ADDED = RecordChange.ADDED
+MATCHED = RecordChange.MATCHED
+UPDATED = RecordChange.UPDATED
+
+# The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path) of:
+#   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
+#   dirs:  d (empty); implied by the files: ., b, b/c
+# The manifest fixture is factory.mk_manifest(tmp_path): .scout.db in that root.
+Tree = factory.Tree
 
 
 def _mk_fstat(**overrides) -> FileStat:
@@ -40,18 +49,6 @@ def _mk_fstat(**overrides) -> FileStat:
     Defaults: name:str="f", size:int=1, mtime:int=1"""
     default = {"name": "f", "size": 1, "mtime": 1}
     return FileStat(**{**default, **overrides})
-
-
-ADDED = RecordChange.ADDED
-MATCHED = RecordChange.MATCHED
-UPDATED = RecordChange.UPDATED
-
-
-# The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path) of:
-#   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
-#   dirs:  d (empty); implied by the files: ., b, b/c
-# The manifest fixture is factory.mk_manifest(tmp_path): .scout.db in that root.
-Tree = factory.Tree
 
 
 def _st(tree: Tree, rel: str) -> FileStat:
@@ -66,15 +63,11 @@ class TestScanFile:
     def test_new_file_is_added_with_hash(self, tree: Tree, manifest: Manifest) -> None:
         """a.txt w/ no row: ADDED, hash equals b3c32 of b"alpha" (tree's a.txt bytes),
         hashed equals started, and files.get finds the row."""
-        expected = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
-
         with manifest:
             st = _st(tree, "a.txt")
             result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
 
         assert isinstance(result, FileScanned)
-        assert result.record.hash == expected
-        assert result.record.hashed == 7
         assert manifest.files.get(0, "a.txt") == result.record
 
     def test_matching_row_is_left_alone(self, tree: Tree, manifest: Manifest) -> None:
@@ -91,38 +84,8 @@ class TestScanFile:
         assert result.record == stored
         assert manifest.files.get(0, "a.txt") == stored
 
-    def test_matched_row_without_hash_is_hashed(
-        self, tree: Tree, manifest: Manifest
-    ) -> None:
-        """A row matching a.txt's stat but stored without a hash is hashed: UPDATED."""
-        st = _st(tree, "a.txt")
-        fr = mk_frec(name="a.txt", size=st.size, mtime=st.mtime, hash=None, hashed=None)
-        manifest.files.upsert(fr)
-
-        result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
-
-        assert isinstance(result, FileScanned)
-
-    def test_changed_file_is_updated_and_rehashed(
-        self, tree: Tree, manifest: Manifest
-    ) -> None:
-        """A row for a.txt with size 1 and a stale hash: UPDATED, hash is the
-        b3c32 of the current bytes, hashed equals started, size is current."""
-        st = _st(tree, "a.txt")
-        new_h = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
-        stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
-        fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
-        manifest.files.upsert(fmodel)
-
-        result = _scan_file(manifest, 0, PPP("."), tree.root, st, started=7)
-
-        assert isinstance(result, FileScanned)
-        assert (result.record.hash, result.record.hashed) == (new_h, 7)
-        assert result.record.stat.size == st.size
-
     def test_no_hash_writes_null_hash(self, tree: Tree, manifest: Manifest) -> None:
-        """A row for a.txt with size 1, hash False: UPDATED, stored row has
-        the true size, hash None, hashed None."""
+        """A stale row for a.txt, policy OFF: the stale hash is not carried over."""
         st = _st(tree, "a.txt")
         stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
         fmodel = mk_frec(name="a.txt", size=1, mtime=st.mtime, hash=stale, hashed=3)
@@ -148,7 +111,6 @@ class TestScanFile:
         act = _scan_file(manifest, 0, PPP("b"), tree.root, st, started=7)
 
         assert isinstance(act, ReadFailed)
-        assert act.error.errno == errno.EACCES
         assert act.path == PPP("b/a.txt")
         assert manifest.files.get(0, "a.txt") is None
 

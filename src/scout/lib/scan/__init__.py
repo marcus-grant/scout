@@ -5,6 +5,7 @@ Created: 2026-09-18
 License: AGPL-3.0-or-later
 """
 
+import functools
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +18,7 @@ from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.file_stats import reconcile_file_stat
-from scout.lib.scan.hashing import HashingPolicy
+from scout.lib.scan.hashing import HashingPolicy, hash_record
 from scout.lib.scan.missing_files import reconcile_missing_files
 from scout.lib.util import to_rel
 
@@ -51,24 +52,27 @@ def _scan_file(
     """Bring one file's row up to date and say what was done.
     Fetch the live row at (dir_id, stat.name); reconcile_file_stat decides.
     MATCHED: write nothing and return the row as found.
-    ADDED or UPDATED, when policy isn't OFF: hash_file(dir_abs / stat.name),
-    write the row with that hash and hashed = started.
-    ADDED or UPDATED without hash: write the row with hash and hashed null.
-    An Unreadable from hash_file comes back as a ReadFailed; nothing is written."""
+    ADDED or UPDATED: hash_record prepares the record to write under policy.
+    An Unreadable from it comes back as a ReadFailed; nothing is written."""
     row = manifest.files.get(dir_id, stat.name)
     change = reconcile_file_stat(stat, row, policy=policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(dir_rel / stat.name, row, change)
 
-    h, hashed = None, None
-    if policy is not HashingPolicy.OFF:
-        h = hash_file(dir_abs / stat.name, bits, on_progress=on_progress)
-        if isinstance(h, Err.Unreadable):
-            err = Err.Unreadable(str(h), path=dir_rel / stat.name, errno=h.errno)
-            return ReadFailed(dir_rel / stat.name, err)
-        hashed = started
-    file = manifest.files.upsert(FileRecord(dir_id, stat, h, hashed))
+    record = hash_record(
+        FileRecord(dir_id, stat),
+        dir_abs / stat.name,
+        policy,
+        started,
+        functools.partial(hash_file, bits=bits, on_progress=on_progress),
+    )
+    if isinstance(record, Err.Unreadable):
+        err = Err.Unreadable(
+            str(record), path=dir_rel / stat.name, errno=record.errno
+        )
+        return ReadFailed(dir_rel / stat.name, err)
+    file = manifest.files.upsert(record)
 
     return FileScanned(dir_rel / stat.name, file, change)
 
