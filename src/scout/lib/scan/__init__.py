@@ -66,10 +66,14 @@ def _scan_dir(
     ctx: ScanContext, walked: WalkedDir
 ) -> Iterator[FileScanned | RecordGone | ReadFailed]:
     """Bring one walked directory's rows current, yielding as it goes.
+    An unlistable WalkedDir yields its ReadFailed and writes nothing.
     dirs.upsert(walked.path) first; then one _scan_file per FileStat in
     walked.files order; then every live file row in this dir whose name is not
     in the WalkedDir is marked gone with started & yielded as RecordGone;
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
+    if walked.unlistable:
+        yield from (ReadFailed(e.path, e) for e in walked.errors)
+        return
     d = ctx.manifest.dirs.upsert(walked.path)
     records = ctx.manifest.files.in_dir(d.id)
     by_name = {r.stat.name: r for r in records}
@@ -112,11 +116,6 @@ def scan(
         walked_sets = WalkedPathSets()
         for walked in walk(root, exclude):
             walked_sets.add(walked)
-
-            if walked.unlistable:
-                errors += len(walked.errors)
-                yield from (ReadFailed(e.path, e) for e in walked.errors)
-                continue
 
             records_iter = _scan_dir(ctx, walked)
             for record in records_iter:
