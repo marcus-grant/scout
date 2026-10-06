@@ -20,7 +20,7 @@ from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
-from scout.lib.scan.missing import reconcile_missing_files
+from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
 from scout.lib.util import to_rel
 
 
@@ -130,13 +130,10 @@ def scan(
                     errors += 1
                 yield record
 
-        for d in manifest.dirs.descendants(PPP(".")):
-            under_unreadable = any(
-                u == d.path or u in d.path.parents for u in walked_sets.unreadable
-            )
-            if d.path in walked_sets.walked or under_unreadable:
-                continue
-            for path in manifest.gone_subtree.mark(d.path, started):
+        # Determine missing dirs and mark them gone; yield a RecordGone for each.
+        records = manifest.dirs.descendants(PPP("."))
+        for missing in reconcile_missing_dirs(walked_sets, records):
+            for path in manifest.gone_subtree.mark(missing, started):
                 gone += 1
                 yield RecordGone(path)
 

@@ -8,9 +8,9 @@ License: AGPL-3.0-or-later
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.fs.walk import WalkedDir
-from scout.lib.models import FileRecord, FileStat
-from scout.lib.scan.missing import reconcile_missing_files
+from scout.lib.fs.walk import WalkedDir, WalkedPathSets
+from scout.lib.models import DirRecord, FileRecord, FileStat
+from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
 
 
 class TestReconcileMissingFiles:
@@ -33,3 +33,28 @@ class TestReconcileMissingFiles:
         records = [FileRecord(1, FileStat("a.txt", 5, 100))]
 
         assert reconcile_missing_files(walked, records) == ()
+
+
+class TestReconcileMissingDirs:
+    """reconcile_missing_dirs, no fixture and no disk."""
+
+    def test_unwalked_record_is_missing(self) -> None:
+        """A record whose path was not walked is returned, in record order."""
+        walked_sets = WalkedPathSets(walked={PPP("a")})
+        records = [DirRecord(1, PPP("a")), DirRecord(2, PPP("b"))]
+
+        assert reconcile_missing_dirs(walked_sets, records) == (records[1].path,)
+
+    def test_unreadable_record_is_not_missing(self) -> None:
+        """A record whose own path is unreadable is not returned."""
+        walked_sets = WalkedPathSets(unreadable={PPP("b")})
+        records = [DirRecord(1, PPP("b"))]
+
+        assert reconcile_missing_dirs(walked_sets, records) == ()
+
+    def test_record_under_unreadable_is_not_missing(self) -> None:
+        """A record under an unreadable path is not returned."""
+        walked_sets = WalkedPathSets(unreadable={PPP("b")})
+        records = [DirRecord(1, PPP("b/c"))]
+
+        assert reconcile_missing_dirs(walked_sets, records) == ()
