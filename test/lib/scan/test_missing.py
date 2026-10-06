@@ -44,17 +44,3 @@ class TestReconcileMissingDirs:
         records = [DirRecord(1, PPP("a")), DirRecord(2, PPP("b"))]
 
         assert reconcile_missing_dirs(walked_sets, records) == (records[1].path,)
-
-    def test_unreadable_record_is_not_missing(self) -> None:
-        """A record whose own path is unreadable is not returned."""
-        walked_sets = WalkedPathSets(unreadable={PPP("b")})
-        records = [DirRecord(1, PPP("b"))]
-
-        assert reconcile_missing_dirs(walked_sets, records) == ()
-
-    def test_record_under_unreadable_is_not_missing(self) -> None:
-        """A record under an unreadable path is not returned."""
-        walked_sets = WalkedPathSets(unreadable={PPP("b")})
-        records = [DirRecord(1, PPP("b/c"))]
-
-        assert reconcile_missing_dirs(walked_sets, records) == ()

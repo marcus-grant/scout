@@ -200,3 +200,19 @@ class TestWalkedPathSets:
         walked.add(walk_with_error)
 
         assert walked.unreadable == {PPP("a/x")}
+
+    def test_unwalked_path_is_absent(self) -> None:
+        """A path in neither set and under no unreadable path is absent."""
+        assert WalkedPathSets().confirms_absent(PPP("a"))
+
+    def test_walked_path_is_not_absent(self) -> None:
+        """A walked path is not absent."""
+        assert not WalkedPathSets(walked={PPP("a")}).confirms_absent(PPP("a"))
+
+    def test_unreadable_path_is_not_absent(self) -> None:
+        """An unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a"))
+
+    def test_path_under_unreadable_is_not_absent(self) -> None:
+        """A path under an unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a/b"))
