@@ -52,6 +52,13 @@ class ScanError(CliEvent):
 
 
 @dataclass(frozen=True)
+class ScanAccessLost(CliEvent):
+    """An unlistable dir with records claimed under it: its root-relative path."""
+
+    path: PPP
+
+
+@dataclass(frozen=True)
 class ScanFinished(CliEvent):
     """A scan ended: its window and the count per outcome, errors, gone."""
 

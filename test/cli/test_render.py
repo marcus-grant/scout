@@ -84,6 +84,11 @@ class TestPorcelainScan:
 
         assert porcelain(evt) == Output(err=("b/c: Permission denied",))
 
+    def test_access_lost_line(self) -> None:
+        """ScanAccessLost(b) renders err ("b: access lost",) and empty out."""
+        evt = events.ScanAccessLost(PPP("b"))
+        assert porcelain(evt) == Output(err=("b: access lost",))
+
     def test_finished_line(self) -> None:
         """ScanFinished with counts 4 1 2 3 0 renders out
         ("added 4 updated 1 matched 2 gone 3 errors 0",)."""

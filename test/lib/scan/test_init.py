@@ -19,7 +19,7 @@ import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
-from scout.lib.event import FileScanned, ReadFailed, RecordGone
+from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir
 from scout.lib.manifest import Manifest
@@ -190,6 +190,30 @@ class TestScanDir:
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [ReadFailed(PPP("b/c"), unreadable)]
 
+    def test_unlistable_with_claims_reports_access_lost(
+        self, tree: Tree, manifest: Manifest
+    ) -> None:
+        """An unlistable b with a file claimed in it: its ReadFailed, then AccessLost."""
+        d = manifest.dirs.upsert(PPP("b"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
+        err = Err.Unreadable("denied", path=PPP("b"), errno=13)
+        walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
+
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
+
+        assert records == [ReadFailed(PPP("b"), err), AccessLost(PPP("b"))]
+
+    def test_unlistable_without_claims_reports_only_read_failed(
+        self, tree: Tree, manifest: Manifest
+    ) -> None:
+        """An unlistable b with nothing claimed under it: only its ReadFailed."""
+        err = Err.Unreadable("denied", path=PPP("b"), errno=13)
+        walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
+
+        records = list(_scan_dir(_ctx(manifest, tree.root), walked))
+
+        assert records == [ReadFailed(PPP("b"), err)]
+
 
 class TestScan:
     """scan on the default tree under the manifest fixture: wiring only."""
@@ -236,8 +260,8 @@ class TestScan:
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Scan, then os.scandir monkeypatched to fail on b: one ReadFailed
-        for b, no RecordGone, and the rows for b, b/c, and their files keep gone
-        None."""
+        and one AccessLost for b, counted as one error, no RecordGone, and the
+        rows for b, b/c, and their files keep gone None."""
         list(scan(manifest))
         real = os.scandir
 
@@ -252,6 +276,9 @@ class TestScan:
 
         unreadable = [r for r in records if isinstance(r, ReadFailed)]
         assert [u.path for u in unreadable] == [PPP("b")]
+        assert AccessLost(PPP("b")) in records
+        summary = records[-1]
+        assert isinstance(summary, Summary) and summary.errors == 1
         assert not any(isinstance(r, RecordGone) for r in records)
         with sql.connect(manifest.db.path) as conn:
             gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")

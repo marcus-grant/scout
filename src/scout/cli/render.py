@@ -42,6 +42,11 @@ def _scan_error(event: events.ScanError) -> Output:
     return Output(err=(f"{event.path}: {event.error}",))
 
 
+def _scan_access_lost(event: events.ScanAccessLost) -> Output:
+    """One err line: the path, a colon, access lost."""
+    return Output(err=(f"{event.path}: access lost",))
+
+
 def _scan_finished(event: events.ScanFinished) -> Output:
     """One out line with every count, in the order added updated matched
     gone errors, each as word space number, space separated."""
@@ -66,6 +71,8 @@ def porcelain(event: events.CliEvent) -> Output:
             return _scan_gone(event)
         case events.ScanError():
             return _scan_error(event)
+        case events.ScanAccessLost():
+            return _scan_access_lost(event)
         case events.ScanFinished():
             return _scan_finished(event)
     raise TypeError(f"porcelain renderer has no handler for event: {type(event)}")

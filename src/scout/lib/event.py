@@ -40,3 +40,10 @@ class ReadFailed(Event):
 
     path: PPP
     error: Err.Unreadable
+
+
+@dataclass(frozen=True)
+class AccessLost(Event):
+    """An unlistable dir with records claimed under it: its root-relative path."""
+
+    path: PPP

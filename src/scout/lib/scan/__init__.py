@@ -12,7 +12,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.event import FileScanned, ReadFailed, RecordGone
+from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
 from scout.lib.manifest import Manifest
@@ -64,15 +64,19 @@ def _scan_file(
 
 def _scan_dir(
     ctx: ScanContext, walked: WalkedDir
-) -> Iterator[FileScanned | RecordGone | ReadFailed]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
     """Bring one walked directory's rows current, yielding as it goes.
-    An unlistable WalkedDir yields its ReadFailed and writes nothing.
+    An unlistable WalkedDir yields its ReadFailed, then AccessLost when the
+    manifest claims anything under it, and writes nothing.
     dirs.upsert(walked.path) first; then one _scan_file per FileStat in
     walked.files order; then every live file row in this dir whose name is not
     in the WalkedDir is marked gone with started & yielded as RecordGone;
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
     if walked.unlistable:
         yield from (ReadFailed(e.path, e) for e in walked.errors)
+        claimed = ctx.manifest.claimed.counts(walked.path)
+        if claimed.dirs or claimed.files:
+            yield AccessLost(walked.path)
         return
     d = ctx.manifest.dirs.upsert(walked.path)
     records = ctx.manifest.files.in_dir(d.id)
@@ -93,7 +97,7 @@ def scan(
     bits: int = DEFAULT_BITS,
     batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
-) -> Iterator[FileScanned | RecordGone | ReadFailed | Summary]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | Summary]:
     """Walk manifest's root and bring every row current, yielding records
     as they happen and one Summary last.
     started comes from scans.start(); rows commit every batch_size files.
@@ -125,7 +129,7 @@ def scan(
                         manifest.wrote()
                 elif isinstance(record, RecordGone):
                     gone += 1
-                else:
+                elif isinstance(record, ReadFailed):
                     errors += 1
                 yield record
 
