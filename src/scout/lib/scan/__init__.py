@@ -12,15 +12,15 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.event import FileScanned, ReadFailed, RecordGone
+from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, WalkedDir, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
-from scout.lib.scan.missing_files import reconcile_missing_files
+from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
 from scout.lib.util import to_rel
 
 
@@ -64,12 +64,20 @@ def _scan_file(
 
 def _scan_dir(
     ctx: ScanContext, walked: WalkedDir
-) -> Iterator[FileScanned | RecordGone | ReadFailed]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
     """Bring one walked directory's rows current, yielding as it goes.
+    An unlistable WalkedDir yields its ReadFailed, then AccessLost when the
+    manifest claims anything under it, and writes nothing.
     dirs.upsert(walked.path) first; then one _scan_file per FileStat in
     walked.files order; then every live file row in this dir whose name is not
     in the WalkedDir is marked gone with started & yielded as RecordGone;
     last, a ReadFailed for each Unreadable the WalkedDir carried."""
+    if walked.unlistable:
+        yield from (ReadFailed(e.path, e) for e in walked.errors)
+        claimed = ctx.manifest.claimed.counts(walked.path)
+        if claimed.dirs or claimed.files:
+            yield AccessLost(walked.path)
+        return
     d = ctx.manifest.dirs.upsert(walked.path)
     records = ctx.manifest.files.in_dir(d.id)
     by_name = {r.stat.name: r for r in records}
@@ -89,7 +97,7 @@ def scan(
     bits: int = DEFAULT_BITS,
     batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
-) -> Iterator[FileScanned | RecordGone | ReadFailed | Summary]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | Summary]:
     """Walk manifest's root and bring every row current, yielding records
     as they happen and one Summary last.
     started comes from scans.start(); rows commit every batch_size files.
@@ -109,20 +117,9 @@ def scan(
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):
-        walked_paths: set[PPP] = set()
-        unreadable: set[PPP] = set()
+        walked_sets = WalkedPathSets()
         for walked in walk(root, exclude):
-            walked_paths.add(walked.path)
-
-            if walked.unlistable:
-                unreadable.add(walked.path)
-                errors += len(walked.errors)
-                yield from (ReadFailed(e.path, e) for e in walked.errors)
-                continue
-
-            for failed in walked.errors:
-                if failed.path is not None:
-                    unreadable.add(failed.path)
+            walked_sets.add(walked)
 
             records_iter = _scan_dir(ctx, walked)
             for record in records_iter:
@@ -132,17 +129,14 @@ def scan(
                         manifest.wrote()
                 elif isinstance(record, RecordGone):
                     gone += 1
-                else:
+                elif isinstance(record, ReadFailed):
                     errors += 1
                 yield record
 
-        for d in manifest.dirs.descendants(PPP(".")):
-            under_unreadable = any(
-                u == d.path or u in d.path.parents for u in unreadable
-            )
-            if d.path in walked_paths or under_unreadable:
-                continue
-            for path in manifest.gone_subtree.mark(d.path, started):
+        # Determine missing dirs and mark them gone; yield a RecordGone for each.
+        records = manifest.dirs.descendants(PPP("."))
+        for missing in reconcile_missing_dirs(walked_sets, records):
+            for path in manifest.gone_subtree.mark(missing, started):
                 gone += 1
                 yield RecordGone(path)
 

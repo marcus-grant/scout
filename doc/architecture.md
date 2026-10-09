@@ -16,8 +16,9 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
     repo's statement.
 - `lib/scan/`: the scan operation; yields typed events (`lib/event.py`).
   - `__init__.py`: `scan`, the session, and its per-dir and per-file steps.
-  - `file_stats.py`, `missing_files.py`: pure reconciliations,
-    records against stats and policy; they write nothing.
+  - `file_stats.py`, `missing.py`: pure reconciliations,
+    - records against stats, policy and walk coverage;
+    - they write nothing.
   - `hashing.py`: `HashingPolicy` and `hash_record`, the hash step.
   - `context.py`: `ScanContext`, what one run holds fixed.
   - These parts are likely shared by later operations;
@@ -46,6 +47,7 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
   - It is not descended into.
   - Nothing inside it is seen;
     - so nothing inside it is claimed present or gone.
+  - `scan` reports `AccessLost` when the manifest claims anything under it.
 - Entries that can't be read are reported in their directory's `errors`.
   - The walk continues without raising.
     - It's something to report, not an error to stop execution.

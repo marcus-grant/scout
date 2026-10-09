@@ -15,7 +15,8 @@ from types import SimpleNamespace
 import factory
 import pytest
 
-from scout.lib.fs.walk import FileStat, _read_dir, walk
+import scout.lib.error as Err
+from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, _read_dir, walk
 
 # tree: Tree is a fixture that is the default case of mk_tree
 # Its shape from tmp_path as root is:
@@ -179,3 +180,39 @@ class TestWalk:
         walked = list(walk(tree.root))
 
         assert [w.path for w in walked] == [PPP("."), PPP("b"), PPP("d")]
+
+
+class TestWalkedPathSets:
+    """WalkedPathSets.see over constructed WalkedDir values."""
+
+    def test_records_walked_path(self) -> None:
+        """A dir with no errors adds its path to walked only."""
+        walked = WalkedPathSets()
+        walked.add(WalkedDir(PPP("a"), (), (), ()))
+
+        assert walked.walked == {PPP("a")}
+        assert walked.unreadable == set()
+
+    def test_records_error_paths_as_unreadable(self) -> None:
+        """Each error's path is added to unreadable."""
+        err = Err.Unreadable("denied", path=PPP("a/x"), errno=13)
+        walk_with_error, walked = WalkedDir(PPP("a"), (), (), (err,)), WalkedPathSets()
+        walked.add(walk_with_error)
+
+        assert walked.unreadable == {PPP("a/x")}
+
+    def test_unwalked_path_is_absent(self) -> None:
+        """A path in neither set and under no unreadable path is absent."""
+        assert WalkedPathSets().confirms_absent(PPP("a"))
+
+    def test_walked_path_is_not_absent(self) -> None:
+        """A walked path is not absent."""
+        assert not WalkedPathSets(walked={PPP("a")}).confirms_absent(PPP("a"))
+
+    def test_unreadable_path_is_not_absent(self) -> None:
+        """An unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a"))
+
+    def test_path_under_unreadable_is_not_absent(self) -> None:
+        """A path under an unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a/b"))

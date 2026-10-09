@@ -15,7 +15,7 @@ import click
 import scout.cli.event as events
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
-from scout.lib.event import FileScanned, ReadFailed, RecordGone
+from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 from scout.lib.scan import Summary
@@ -34,7 +34,7 @@ def run_scan(
     """Open the manifest at path (a directory means its DEFAULT_NAME),
     refresh the fs detail rows, then run scan and emit one event per record:
     Scanned to ScanFile, Gone, to ScanGone,
-    Unreadable to ScanError, Summary to ScanFinished.
+    Unreadable to ScanError, AccessLost to ScanAccessLost, Summary to ScanFinished.
     Detail replaces fs_meta.read_all(root) when given, for tests."""
     # Open and update manifest with fs meta details
     manifest = Manifest.open(path)
@@ -52,6 +52,8 @@ def run_scan(
                 emit(events.ScanGone(result.path))
             case ReadFailed():
                 emit(events.ScanError(result.path, result.error))
+            case AccessLost():
+                emit(events.ScanAccessLost(result.path))
             case Summary():
                 emit(
                     events.ScanFinished(
