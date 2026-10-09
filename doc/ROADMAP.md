@@ -123,9 +123,11 @@ planned.
 
 - Scan is all-encompassing and needed early, so parts later operations
   are likely to share are built inside `src/scout/lib/scan/` first.
-  - Grouped by subject (`file_stats.py`, `missing_files.py`,
-    `missing_dirs.py`), each a reconciliation that writes nothing
-    paired with an apply that writes; provisional.
+  - Grouped by subject (`file_stats.py`, `missing.py`),
+    - each a reconciliation that writes nothing;
+      - writes stay repo calls in scan's steps, no apply function; provisional.
+  - Walk coverage, `WalkedPathSets`, lives beside the walk
+    in `src/scout/lib/fs/walk.py`.
   - Lib events are lib-wide from the start, in `src/scout/lib/event.py`.
 - Grouping by subject is expected to get in the way once `ls`, `has`,
   `diff`, `comm` or `status` arrive.

@@ -86,42 +86,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-missing-dirs
-
-- `git checkout -b ref/scan-missing-dirs`, from `main` after
-  `ref/scan-dir` merges.
-- `src/scout/lib/scan/missing_dirs.py`:
-  - `WalkedPaths`: paths walked and paths unreadable (an unlistable
-    dir's path, each failed entry's path), filled by the per-directory
-    loop; replaces `scan`'s `walked` and `unreadable` locals;
-  - `reconcile_missing_dirs` takes `WalkedPaths` and the recorded live
-    dir paths, returns `MissingDirsReconciliation`: the topmost
-    recorded dirs missing from the filesystem, excluding unreadable
-    paths and anything under one;
-  - `apply_missing_dirs` marks each via `manifest.gone_subtree.mark`,
-    returning the paths in `mark`'s order.
-- `AccessLost` in `src/scout/lib/event.py`:
-  - for an unlistable dir, emitted beside `ReadFailed` when
-    `manifest.claimed.counts(path)` shows claims under it;
-  - nothing is written; where the "claims anything" check lives is
-    decided at the stub.
-- `GoneSubtree.mark` docstring: "deepest dirs last" becomes "every
-  file first, then every dir, each in path order".
-- Candidates still come from `dirs.descendants(PPP("."))` in memory;
-  SQL path-prefix candidate selection is out of scope.
-- Before stubbing, follow `ref/scan-dir`'s precedent:
-  - a reconciliation returns its values directly,
-    with no wrapper type unless it carries more than one;
-  - no apply function unless it does more than one repo call;
-  - consider merging `file_stats.py`, `missing_files.py` and
-    `missing_dirs.py` into one stat-and-record reconciliation module;
-  - consider naming the hashing policy apart from reconciliation.
-- Testing: the reconciliation with path sets only (a missing parent
-  and child yield the parent; a dir under an unreadable one, and a
-  failed entry, are excluded); the apply with one recorded subtree.
-- Doc commit: `doc/architecture.md` records `missing_dirs.py`.
-- Pln commit: delete this section.
-
 ### scan-session
 
 - `git checkout -b ref/scan-session`, from `main` after
@@ -135,6 +99,11 @@ The restructure sections below come first, in order.
   - `policy` (`HashingPolicy`), `bits`, `batch_size`, `on_progress`;
   - unpacked by `scan` into the `ScanContext` it builds;
     no reconciliation ever sees it.
+  - beside `bits` and `batch_size`, a bare `policy` misreads:
+    rename it to `hashing` (candidate name) in `ScanOptions`,
+    in `ScanContext`, and as the parameter of
+    `reconcile_file_stat` and `hash_record`;
+    the enum `HashingPolicy` keeps its name.
 - `update_from_walk` takes the `Manifest`, an iterable of `WalkedDir`
   and the settings it needs; runs the per-directory loop, then the
   missing-dirs pass; calls `manifest.wrote()` after each file write.
@@ -197,6 +166,18 @@ CLI architecture settled 2026-09-22 (discussion round two):
 - Translate layer updated to the lib `Event` family;
   - `outcome` to `change` at the `ScanFile` mapping;
   - `run_scan` shrinks to open manifest, wire emitter, iterate.
+  - the translation leaves `run_scan` as a pure function,
+    lib event in, `CliEvent` out (name provisional);
+    - an unknown lib event raises, as in `porcelain`;
+      today's `match` in `run_scan` drops it silently;
+    - tested with one constructed lib event per case,
+      no scan, no tree, no patch;
+    - the `AccessLost` to `ScanAccessLost` case shipped untested
+      in `ref/scan-missing-dirs` and gets its test here.
+  - `run_scan`'s tests in `test/cli/subcmd/test_run_scan.py`
+    keep one wiring case: a real scan ending in `ScanFinished`;
+    - `test_unreadable_maps_to_scan_error` and its
+      `os.scandir` patch go, covered by the translation's cases.
 - Known bug: `_emitter`'s `--progress` count increments on every
   `ScanGone`, which includes swept dir paths, so "N files" overcounts;
   the status line reading `ScanTally` replaces that count.
