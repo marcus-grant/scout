@@ -22,7 +22,7 @@ class GoneSubtree:
     def mark(self, path: PPP, started: int) -> list[PPP]:
         """Mark the present dir at path, every present dir under it,
         and every present file in them gone with started;
-        return their paths, files of a dir before the dir, deepest dirs last.
+        return their paths: every file first, then every dir, each in path order.
         Empty when path is not stored.
         Writes complete before returning; nothing is committed."""
         if (top := self.dirs.get(path)) is None:
