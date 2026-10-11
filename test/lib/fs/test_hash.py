@@ -28,14 +28,14 @@ class TestHashFile:
         file_alpha = Hash(code_from_chunks([b"alpha"], DEFAULT_BITS))
         file_empty = Hash(code_from_chunks([], DEFAULT_BITS))
 
-        assert hash_file(tree.root / "a.txt") == file_alpha
-        assert hash_file(tree.root / "b" / "c" / "empty.txt") == file_empty
+        assert hash_file(tree.root, PPP("a.txt")) == file_alpha
+        assert hash_file(tree.root, PPP("b/c/empty.txt")) == file_empty
 
     def test_unreadable_returns_error(
         self, tree: Tree, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """With b3c32.code_from_path monkeypatched to raise PermissionError,
-        hash_file returns Unreadable with errno EACCES and path a.txt."""
+        hash_file returns Unreadable with errno EACCES and path b/b1.txt."""
 
         def raiser(*a, **k):
             _, _ = a, k  # Shut up LSP
@@ -43,18 +43,18 @@ class TestHashFile:
 
         monkeypatch.setattr("scout.lib.fs.hash.code_from_path", raiser)
 
-        result = hash_file(tree.root / "a.txt")
+        result = hash_file(tree.root, PPP("b/b1.txt"))
 
         assert isinstance(result, Err.Unreadable)
         assert result.errno == errno.EACCES
-        assert result.path == PPP("a.txt")
+        assert result.path == PPP("b/b1.txt")
 
     def test_progress_callback_sees_bytes(self, tree: Tree) -> None:
         """With interval_ms 0 and a list-appending callback on a.txt, the
         callback is called at least once and its last value is 5."""
         seen: list[int] = []
 
-        result = hash_file(tree.root / "a.txt", on_progress=seen.append)
+        result = hash_file(tree.root, PPP("a.txt"), on_progress=seen.append)
 
         assert isinstance(result, Hash)
         assert seen and seen[-1] == 5

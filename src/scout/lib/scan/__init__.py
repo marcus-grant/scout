@@ -52,11 +52,10 @@ def _scan_file(
         assert row is not None, "MATCHED implies a row"
         return FileScanned(rel, row, change)
 
-    fresh, path_abs = FileRecord(dir_id, stat), ctx.root / rel
-    prepared = hash_record(fresh, path_abs, ctx.policy, ctx.started, ctx.hash_path)
+    fresh = FileRecord(dir_id, stat)
+    prepared = hash_record(fresh, rel, ctx.policy, ctx.started, ctx.hash_path)
     if isinstance(prepared, Err.Unreadable):
-        err = Err.Unreadable(str(prepared), path=rel, errno=prepared.errno)
-        return ReadFailed(rel, err)
+        return ReadFailed(rel, prepared)
     upserted = ctx.manifest.files.upsert(prepared)
 
     return FileScanned(rel, upserted, change)
@@ -112,8 +111,8 @@ def scan(
     except Err.NotUnderRoot:
         exclude = frozenset()
     started = manifest.scans.start()
-    partial_func = functools.partial(hash_file, bits=bits, on_progress=on_progress)
-    ctx = ScanContext(manifest, root, started, policy, partial_func)
+    hash_path = functools.partial(hash_file, root, bits=bits, on_progress=on_progress)
+    ctx = ScanContext(manifest, started, policy, hash_path)
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):

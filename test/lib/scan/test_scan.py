@@ -64,11 +64,11 @@ def _ctx(
     manifest: Manifest,
     root: Path,
     policy: HashingPolicy = HashingPolicy.NEEDED,
-    hash_path: Callable[[Path], Hash | Err.Unreadable] | None = None,
+    hash_path: Callable[[PPP], Hash | Err.Unreadable] | None = None,
 ) -> ScanContext:
     """A ScanContext started at 7, hashing with hash_file unless hash_path is given."""
-    hasher = hash_path or functools.partial(hash_file, bits=DEFAULT_BITS)
-    return ScanContext(manifest, root, 7, policy, hasher)
+    hasher = hash_path or functools.partial(hash_file, root, bits=DEFAULT_BITS)
+    return ScanContext(manifest, 7, policy, hasher)
 
 
 class TestScanFile:

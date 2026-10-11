@@ -16,7 +16,8 @@ from scout.lib.models import DEFAULT_BITS, Hash
 
 
 def hash_file(
-    path: Path,
+    root: Path,
+    rel: PPP,
     bits: int = DEFAULT_BITS,
     *,
     on_progress: Callable[[int], None] | None = None,
@@ -29,8 +30,10 @@ def hash_file(
     path's name and the errno; nothing is raised."""
     try:
         return Hash(
-            code_from_path(path, bits, on_progress=on_progress, interval_ms=interval_ms)
+            code_from_path(
+                root / rel, bits, on_progress=on_progress, interval_ms=interval_ms
+            )
         )
     except OSError as e:
         msg = e.strerror or "unreadable"
-        return Err.Unreadable(msg, errno=e.errno, path=PPP(path.name))
+        return Err.Unreadable(msg, errno=e.errno, path=rel)
