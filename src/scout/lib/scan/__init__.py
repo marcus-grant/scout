@@ -6,7 +6,7 @@ License: AGPL-3.0-or-later
 """
 
 import functools
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
@@ -89,6 +89,26 @@ def _scan_dir(
     yield from (ReadFailed(e.path, e) for e in walked.errors)
 
 
+def update_from_walk(
+    ctx: ScanContext, walked_dirs: Iterable[WalkedDir]
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
+    """Bring the manifest current with one walk's output, yielding as it goes.
+    Runs _scan_dir on each WalkedDir in order;
+    then each recorded dir the walk confirms absent is marked gone with its subtree,
+    one RecordGone per path."""
+    # Go through each walked dir, add to sets to track & yeild with _scan_dir of walked
+    walked_sets = WalkedPathSets()
+    for walked in walked_dirs:
+        walked_sets.add(walked)
+        yield from _scan_dir(ctx, walked)
+
+    # Determine missing dirs & mark them gone; yield RecordGone for each
+    records = ctx.manifest.dirs.descendants(PPP("."))
+    for missing in reconcile_missing_dirs(walked_sets, records):
+        for path in ctx.manifest.gone_subtree.mark(missing, ctx.started):
+            yield RecordGone(path)
+
+
 def scan(
     manifest: Manifest,
     *,
@@ -116,28 +136,16 @@ def scan(
     counts = {enum_member: 0 for enum_member in RecordChange}
     errors = gone = 0
     with manifest.commit_every(batch_size):
-        walked_sets = WalkedPathSets()
-        for walked in walk(root, exclude):
-            walked_sets.add(walked)
-
-            records_iter = _scan_dir(ctx, walked)
-            for record in records_iter:
-                if isinstance(record, FileScanned):
-                    counts[record.change] += 1
-                    if record.change is not RecordChange.MATCHED:
-                        manifest.wrote()
-                elif isinstance(record, RecordGone):
-                    gone += 1
-                elif isinstance(record, ReadFailed):
-                    errors += 1
-                yield record
-
-        # Determine missing dirs and mark them gone; yield a RecordGone for each.
-        records = manifest.dirs.descendants(PPP("."))
-        for missing in reconcile_missing_dirs(walked_sets, records):
-            for path in manifest.gone_subtree.mark(missing, started):
+        for record in update_from_walk(ctx, walk(root, exclude)):
+            if isinstance(record, FileScanned):
+                counts[record.change] += 1
+                if record.change is not RecordChange.MATCHED:
+                    manifest.wrote()
+            elif isinstance(record, RecordGone):
                 gone += 1
-                yield RecordGone(path)
+            elif isinstance(record, ReadFailed):
+                errors += 1
+            yield record
 
         files_seen = sum(counts.values())
         finished = manifest.scans.finish(started, files_seen)

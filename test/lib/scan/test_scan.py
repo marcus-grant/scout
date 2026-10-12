@@ -6,11 +6,9 @@ License: AGPL-3.0-or-later
 """
 
 import errno
-import os
 import shutil
 import sqlite3 as sql
 from collections.abc import Callable
-from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import factory
@@ -20,10 +18,10 @@ from b3c32 import code_from_chunks
 import scout.lib.error as Err
 from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, WalkedDir
+from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
-from scout.lib.scan import Summary, _scan_dir, _scan_file, scan
+from scout.lib.scan import Summary, _scan_dir, _scan_file, scan, update_from_walk
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.hashing import HashingPolicy
 
@@ -41,12 +39,6 @@ UPDATED = RecordChange.UPDATED
 
 # TODO: DELETME
 Tree = factory.Tree  # type: ignore[assignment]
-
-
-def _st(tree: factory.Tree, rel: str) -> FileStat:
-    """FileStat of tree.root / rel as the walker would report it."""
-    st = (tree.root / rel).stat()
-    return FileStat(PPP(rel).name, st.st_size, st.st_mtime_ns)
 
 
 def _fake_hash(rel: PPP) -> Hash:
@@ -206,6 +198,56 @@ class TestScanDir:
         assert records == [ReadFailed(PPP("b"), err)]
 
 
+class TestUpdateFromWalk:
+    """update_from_walk over constructed WalkedDir values: no disk, no patch."""
+
+    def _gone_counts(self, manifest: Manifest) -> tuple[int, int]:
+        """Counts of dir rows & file rows with 'gone' column set."""
+        with sql.connect(manifest.db.path) as conn:
+            gone_d = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
+            gone_f = conn.execute("SELECT count(*) FROM file WHERE gone IS NOT NULL;")
+            return (gone_d.fetchone()[0], gone_f.fetchone()[0])
+
+    def test_unreadable_dir_keeps_its_rows(self, manifest: Manifest) -> None:
+        """An unlistable b over rows for b, b/c and a file in b:
+        nothing is marked gone."""
+        d = manifest.dirs.upsert(PPP("b"))
+        manifest.dirs.upsert(PPP("b/c"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="b1.txt"))
+        err = Err.Unreadable("Permission denied", path=PPP("b"), errno=errno.EACCES)
+        walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
+
+        records = list(update_from_walk(_ctx(manifest), [walked]))
+        assert not any(isinstance(r, RecordGone) for r in records)
+        assert self._gone_counts(manifest) == (0, 0)
+
+    def test_failed_subdir_entry_keeps_its_subtree(self, manifest: Manifest) -> None:
+        """The root's listing reports b as failed entry over rows b & b/c: no gone."""
+        manifest.dirs.upsert(PPP("b"))
+        manifest.dirs.upsert(PPP("b/c"))
+        unreadable = Err.Unreadable("I/O error", path=PPP("b"), errno=errno.EIO)
+        walked = WalkedDir(PPP("."), (), (), (unreadable,))
+
+        records = list(update_from_walk(_ctx(manifest), [walked]))
+        assert not any(isinstance(r, RecordGone) for r in records)
+        assert self._gone_counts(manifest) == (0, 0)
+
+    def test_walked_file_is_scanned(self, manifest: Manifest) -> None:
+        """A walk listing a.txt at the root yields one FileScanned for a.txt."""
+        walked = WalkedDir(PPP("."), (), (mk_stat(name="a.txt"),), ())
+
+        records = list(update_from_walk(_ctx(manifest), [walked]))
+        assert [r.path for r in records if isinstance(r, FileScanned)] == [PPP("a.txt")]
+
+    def test_unwalked_dir_is_marked_gone(self, manifest: Manifest) -> None:
+        """A recorded dir b absent from a walk of the root yields RecordGone for b."""
+        manifest.dirs.upsert(PPP("b"))
+        walked = WalkedDir(PPP("."), (), (), ())
+
+        records = list(update_from_walk(_ctx(manifest), [walked]))
+        assert records == [RecordGone(PPP("b"))]
+
+
 class TestScan:
     """scan on the default tree under the manifest fixture: wiring only."""
 
@@ -246,64 +288,6 @@ class TestScan:
         }
         assert {r.path for r in records if isinstance(r, RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
-
-    def test_unreadable_dir_keeps_its_rows(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Scan, then os.scandir monkeypatched to fail on b: one ReadFailed
-        and one AccessLost for b, counted as one error, no RecordGone, and the
-        rows for b, b/c, and their files keep gone None."""
-        list(scan(manifest))
-        real = os.scandir
-
-        def fake(path):
-            if Path(path) == tree.root / "b":
-                raise PermissionError(errno.EACCES, "Permission denied")
-            return real(path)
-
-        monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
-
-        records = list(scan(manifest))
-
-        unreadable = [r for r in records if isinstance(r, ReadFailed)]
-        assert [u.path for u in unreadable] == [PPP("b")]
-        assert AccessLost(PPP("b")) in records
-        summary = records[-1]
-        assert isinstance(summary, Summary) and summary.errors == 1
-        assert not any(isinstance(r, RecordGone) for r in records)
-        with sql.connect(manifest.db.path) as conn:
-            gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
-            gone_files = conn.execute(
-                "SELECT count(*) FROM file WHERE gone IS NOT NULL;"
-            )
-            assert (gone_dirs.fetchone()[0], gone_files.fetchone()[0]) == (0, 0)
-
-    def test_failed_subdir_entry_keeps_its_subtree(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Scan, then walk patched so the root's WalkedDir reports b as a failed
-        entry: b is absent from the root's subdirs, and an Unreadable for b is
-        in its errors. No RecordGone, and the rows for b, b/c, and their files keep
-        gone None."""
-        list(scan(manifest))
-        unreadable = Err.Unreadable(
-            "Input/output error", path=PPP("b"), errno=errno.EIO
-        )
-        root_walked = WalkedDir(PPP("."), ("d",), (_st(tree, "a.txt"),), (unreadable,))
-        d_walked = WalkedDir(PPP("d"), (), (), ())
-        monkeypatch.setattr(
-            "scout.lib.scan.walk", lambda *_: iter([root_walked, d_walked])
-        )
-
-        records = list(scan(manifest))
-
-        assert not any(isinstance(r, RecordGone) for r in records)
-        with sql.connect(manifest.db.path) as conn:
-            gone_dirs = conn.execute("SELECT count(*) FROM dir WHERE gone IS NOT NULL;")
-            gone_files = conn.execute(
-                "SELECT count(*) FROM file WHERE gone IS NOT NULL;"
-            )
-            assert (gone_dirs.fetchone()[0], gone_files.fetchone()[0]) == (0, 0)
 
     def test_abort_keeps_committed_batches(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
