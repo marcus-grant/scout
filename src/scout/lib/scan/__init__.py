@@ -16,8 +16,7 @@ from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
 from scout.lib.manifest import Manifest
-from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
-from scout.lib.scan.context import ScanContext
+from scout.lib.models import DEFAULT_BITS, FileRecord, Hash, RecordChange
 from scout.lib.scan.hashing import HashingPolicy, hash_record
 from scout.lib.scan.reconcile import (
     reconcile_file_stat,
@@ -38,6 +37,16 @@ class ScanOptions:
     exclude: frozenset[PPP] = frozenset()
     bits: int = DEFAULT_BITS
     batch_size: int = 256
+
+
+@dataclass(frozen=True)
+class ScanContext:
+    """The manifest, start, hash policy and hash call of one run."""
+
+    manifest: Manifest
+    started: int
+    hash_policy: HashingPolicy
+    hash_path: Callable[[PPP], Hash | Err.Unreadable]
 
 
 DEFAULT_OPTIONS = ScanOptions()
