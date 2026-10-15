@@ -1,0 +1,53 @@
+# src/scout/lib/scan/reconcile.py
+"""Decide which records are missing from what a FS walk saw.
+Author: Marcus
+Created: 2026-10-15
+License: AGPL-3.0-or-later
+"""
+
+from collections.abc import Iterable
+from pathlib import PurePosixPath as PPP
+
+from scout.lib.fs.walk import WalkedDir, WalkedPathSets
+from scout.lib.models import DirRecord, FileRecord, FileStat, RecordChange
+from scout.lib.scan.hashing import HashingPolicy
+
+
+def reconcile_missing_files(
+    walked: WalkedDir, records: Iterable[FileRecord]
+) -> tuple[str, ...]:
+    """Return the names of records missing from walked, in record order.
+    A name is present when it is among walked.files or walked.errors;
+    a failed entry was listed, so it exists and only its stat is unknown.
+    Pure: takes values, writes nothing."""
+    present = {st.name for st in walked.files} | {e.path.name for e in walked.errors}
+    return tuple(r.stat.name for r in records if r.stat.name not in present)
+
+
+def reconcile_missing_dirs(
+    walked_sets: WalkedPathSets, records: Iterable[DirRecord]
+) -> tuple[PPP, ...]:
+    """Return the paths of records the walk confirms absent, in record order."""
+    return tuple(r.path for r in records if walked_sets.confirms_absent(r.path))
+
+
+def reconcile_file_stat(
+    stat: FileStat,
+    record: FileRecord | None,
+    hash_policy: HashingPolicy,
+) -> RecordChange:
+    """What record needs given stat and hash_policy; pure, writes nothing.
+    ADDED with no record; UPDATED when the stat differs or the policy
+    wants a hash the record lacks; MATCHED otherwise."""
+    # Shortened aliases for HashingPolicy members
+    _NEED, _ALL = HashingPolicy.NEEDED, HashingPolicy.ALL  # Shortened aliases
+
+    # Classify determines change type; only a match can be changed by the hash policy
+    change = RecordChange.classify(stat, record)
+    if change != RecordChange.MATCHED:
+        return change
+
+    # Logic for which RecordChange to return when the stat matches and we have a record
+    assert record is not None, "MATCHED state can only happen with a record existing"
+    needs_hash = hash_policy is _ALL or (hash_policy is _NEED and record.hash is None)
+    return RecordChange.UPDATED if needs_hash else RecordChange.MATCHED

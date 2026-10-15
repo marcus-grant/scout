@@ -18,9 +18,12 @@ from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, RecordChange
 from scout.lib.scan.context import ScanContext
-from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
-from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
+from scout.lib.scan.reconcile import (
+    reconcile_file_stat,
+    reconcile_missing_dirs,
+    reconcile_missing_files,
+)
 from scout.lib.scan.tally import ScanTally, Summary
 from scout.lib.util import to_rel
 
