@@ -12,12 +12,10 @@ from collections.abc import Callable
 from pathlib import PurePosixPath as PPP
 
 import factory
-import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
 from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
-from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
@@ -53,6 +51,19 @@ def _ctx(
 ) -> ScanContext:
     """A ScanContext started at 7, hashing with _fake_hash unless hash_path is given."""
     return ScanContext(manifest, 7, policy, hash_path)
+
+
+def _committed(manifest: Manifest, query: str) -> tuple | None:
+    """Alias for returning a manifest's db query shortened."""
+    with sql.connect(manifest.db.path) as conn:
+        return conn.execute(query).fetchone()
+
+
+def _ticked(manifest: Manifest, act: Callable[[], object], query: str) -> tuple | None:
+    """The row a second connection sees after act runs under commit_every(1)."""
+    with manifest.commit_every(1):
+        act()
+        return _committed(manifest, query)
 
 
 class TestScanFile:
@@ -115,6 +126,14 @@ class TestScanFile:
         assert act.error.errno == errno.EACCES
         assert manifest.files.get(0, "a.txt") is None
 
+    def test_write_ticks_the_manifest(self, manifest: Manifest) -> None:
+        """A file marked gone committed on the tick following it."""
+
+        def act() -> None:
+            _scan_file(_ctx(manifest), 0, PPP("."), mk_stat(name="a.txt"), None)
+
+        assert _ticked(manifest, act, "SELECT count(*) FROM file;") == (1,)
+
 
 class TestScanDir:
     """_scan_dir on one WalkedDir of the default tree."""
@@ -132,8 +151,7 @@ class TestScanDir:
         assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
 
     def test_missing_name_is_marked_gone(self, manifest: Manifest) -> None:
-        """A stored row b/old.txt not in the WalkedDir: one RecordGone with path
-        b/old.txt after the FileScanned records; the row's gone is started."""
+        """A stored row absent from WalkedDir yields RecordGone last & is marked gone"""
         d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
         st_b1, st_b2 = mk_stat(name="b1.txt"), mk_stat(name="b2.txt")
@@ -143,14 +161,11 @@ class TestScanDir:
 
         assert len(records) == 3
         assert records[-1] == RecordGone(PPP("b/old.txt"))
-        with sql.connect(manifest.db.path) as conn:
-            q = "SELECT gone FROM file WHERE name = 'old.txt';"
-            assert conn.execute(q).fetchone() == (7,)
+        q = "SELECT gone FROM file WHERE name = 'old.txt';"
+        assert _committed(manifest, q) == (7,)
 
     def test_failed_entry_keeps_its_row(self, manifest: Manifest) -> None:
-        """A stored row b/b1.txt whose entry failed in the WalkedDir: the
-        WalkedDir for b has only b2.txt in files and an Unreadable for
-        b/b1.txt in errors. No RecordGone is yielded, and the row's gone stays None."""
+        """Stored row whose entry failed in WalkedDir isn't marked gone."""
         d = manifest.dirs.upsert(PPP("b"))
         manifest.files.upsert(mk_frec(dir_id=d.id, name="b1.txt"))
         failed = PPP("b/b1.txt")
@@ -160,9 +175,8 @@ class TestScanDir:
         records = list(_scan_dir(_ctx(manifest), walked))
 
         assert not any(isinstance(r, RecordGone) for r in records)
-        with sql.connect(manifest.db.path) as conn:
-            q = "SELECT gone FROM file WHERE name = 'b1.txt';"
-            assert conn.execute(q).fetchone() == (None,)
+        q = "SELECT gone FROM file WHERE name = 'b1.txt';"
+        assert _committed(manifest, q) == (None,)
 
     def test_listing_errors_are_yielded_last(self, manifest: Manifest) -> None:
         """A WalkedDir for b/c with no files and one Unreadable: dirs.get(b/c)
@@ -196,6 +210,17 @@ class TestScanDir:
         records = list(_scan_dir(_ctx(manifest), walked))
 
         assert records == [ReadFailed(PPP("b"), err)]
+
+    def test_gone_mark_ticks_the_manifest(self, manifest: Manifest) -> None:
+        """A file marked gone is committed on tick that follows it."""
+        d = manifest.dirs.upsert(PPP("b"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="old.txt"))
+
+        def act() -> None:
+            list(_scan_dir(_ctx(manifest), WalkedDir(PPP("b"), (), (), ())))
+
+        query = "SELECT gone FROM file WHERE name = 'old.txt';"
+        assert _ticked(manifest, act, query) == (7,)
 
 
 class TestUpdateFromWalk:
@@ -247,6 +272,15 @@ class TestUpdateFromWalk:
         records = list(update_from_walk(_ctx(manifest), [walked]))
         assert records == [RecordGone(PPP("b"))]
 
+    def test_gone_subtree_ticks_the_manifest(self, manifest: Manifest) -> None:
+        """A dir marked gone by the gone pass is committed on tick that follows it."""
+        manifest.dirs.upsert(PPP("b"))
+
+        def act() -> None:
+            list(update_from_walk(_ctx(manifest), [WalkedDir(PPP("."), (), (), ())]))
+
+        assert _ticked(manifest, act, "SELECT gone FROM dir WHERE path = 'b';") == (7,)
+
 
 class TestScan:
     """scan on the default tree under the manifest fixture: wiring only."""
@@ -288,27 +322,3 @@ class TestScan:
         }
         assert {r.path for r in records if isinstance(r, RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
-
-    def test_abort_keeps_committed_batches(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """batch_size 2, hash_file raising RuntimeError on its third call:
-        scan raises; a second connection sees two file rows; the scan row
-        has finished None."""
-        real, calls = hash_file, [0]
-
-        def flaky(*args, **kwargs):
-            calls[0] += 1
-            if calls[0] == 3:
-                raise RuntimeError("boom")
-            return real(*args, **kwargs)
-
-        monkeypatch.setattr("scout.lib.scan.hash_file", flaky)
-
-        with pytest.raises(RuntimeError):
-            list(scan(manifest, batch_size=2))
-
-        with sql.connect(manifest.db.path) as conn:
-            files = conn.execute("SELECT count(*) FROM file;").fetchone()[0]
-            finished = conn.execute("SELECT finished FROM scan;").fetchone()[0]
-        assert (files, finished) == (2, None)

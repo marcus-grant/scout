@@ -57,6 +57,7 @@ def _scan_file(
     if isinstance(prepared, Err.Unreadable):
         return ReadFailed(rel, prepared)
     upserted = ctx.manifest.files.upsert(prepared)
+    ctx.manifest.wrote()
 
     return FileScanned(rel, upserted, change)
 
@@ -85,6 +86,7 @@ def _scan_dir(
 
     for name in reconcile_missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
+        ctx.manifest.wrote()
         yield RecordGone(walked.path / name)
     yield from (ReadFailed(e.path, e) for e in walked.errors)
 
@@ -106,6 +108,7 @@ def update_from_walk(
     records = ctx.manifest.dirs.descendants(PPP("."))
     for missing in reconcile_missing_dirs(walked_sets, records):
         for path in ctx.manifest.gone_subtree.mark(missing, ctx.started):
+            ctx.manifest.wrote()
             yield RecordGone(path)
 
 
@@ -139,8 +142,6 @@ def scan(
         for record in update_from_walk(ctx, walk(root, exclude)):
             if isinstance(record, FileScanned):
                 counts[record.change] += 1
-                if record.change is not RecordChange.MATCHED:
-                    manifest.wrote()
             elif isinstance(record, RecordGone):
                 gone += 1
             elif isinstance(record, ReadFailed):
