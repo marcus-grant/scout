@@ -7,6 +7,7 @@ License: AGPL-3.0-or-later
 
 import functools
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -22,6 +23,21 @@ from scout.lib.scan.hashing import HashingPolicy, hash_record
 from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
 from scout.lib.scan.tally import ScanTally, Summary
 from scout.lib.util import to_rel
+
+
+@dataclass(frozen=True)
+class ScanOptions:
+    """The hashing policy, hash width, commit batch and progress callback.
+    scan unpacks it; nothing below scan sees it."""
+
+    policy: HashingPolicy = HashingPolicy.NEEDED
+    on_progress: Callable[[int], None] | None = None
+    exclude: frozenset[PPP] = frozenset()
+    bits: int = DEFAULT_BITS
+    batch_size: int = 256
+
+
+DEFAULT_OPTIONS = ScanOptions()
 
 
 def _scan_file(
@@ -94,13 +110,7 @@ def update_from_walk(
 
 
 def scan(
-    manifest: Manifest,
-    tally: ScanTally,
-    *,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
-    bits: int = DEFAULT_BITS,
-    batch_size: int = 256,
-    on_progress: Callable[[int], None] | None = None,
+    manifest: Manifest, tally: ScanTally, opt: ScanOptions = DEFAULT_OPTIONS
 ) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | Summary]:
     """Walk manifest's root and bring every row current.
     Yields each event as it happens, seen by tally, then tally's Summary.
@@ -109,17 +119,20 @@ def scan(
     # Exclude the manifest's own file when it lives under root
     root = Path(manifest.meta.root)
     try:
-        exclude = frozenset({to_rel(manifest.db.path, root)})
+        exclude = opt.exclude | frozenset({to_rel(manifest.db.path, root)})
     except Err.NotUnderRoot:
-        exclude = frozenset()
+        exclude = opt.exclude
 
     # Open the scan and fix what the run holds
-    started = manifest.scans.start()
-    hash_path = functools.partial(hash_file, root, bits=bits, on_progress=on_progress)
-    ctx = ScanContext(manifest, started, policy, hash_path)
+    ctx = ScanContext(
+        manifest,
+        started := manifest.scans.start(),
+        opt.policy,
+        functools.partial(hash_file, root, bits=opt.bits, on_progress=opt.on_progress),
+    )
 
     # Walk, counting every event, then close the scan row
-    with manifest.commit_every(batch_size):
+    with manifest.commit_every(opt.batch_size):
         for record in update_from_walk(ctx, walk(root, exclude)):
             tally.see(record)
             yield record

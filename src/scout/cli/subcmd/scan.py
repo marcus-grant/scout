@@ -18,6 +18,7 @@ from scout.cli.render import echo_porcelain
 from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
+from scout.lib.scan import ScanOptions
 from scout.lib.scan import scan as lib_scan
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
@@ -43,8 +44,8 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    results = lib_scan(manifest, ScanTally(), policy=policy, on_progress=on_progress)
-    for result in results:
+    opt = ScanOptions(policy=policy, on_progress=on_progress)
+    for result in lib_scan(manifest, ScanTally(), opt):
         match result:
             case FileScanned():
                 emit(events.ScanFile(result.path, result.record, result.change))

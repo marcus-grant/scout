@@ -19,7 +19,7 @@ from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
-from scout.lib.scan import _scan_dir, _scan_file, scan, update_from_walk
+from scout.lib.scan import ScanOptions, _scan_dir, _scan_file, scan, update_from_walk
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
@@ -320,3 +320,15 @@ class TestScan:
         expected = {PPP(p) for p in paths}
         assert {r.path for r in records if isinstance(r, RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
+
+    def test_options_reach_the_context(self, tree: Tree, manifest: Manifest) -> None:
+        """ScanOptions(policy=OFF) leaves every hash null."""
+        list(scan(manifest, ScanTally(), ScanOptions(policy=OFF)))
+        query = "SELECT count(*) FROM file WHERE hash IS NOT NULL;"
+        assert _committed(manifest, query) == (0,)
+
+    def test_excluded_dir_is_not_scanned(self, tree: Tree, manifest: Manifest) -> None:
+        """ScanOptions(exclude={b}) records nothing under b."""
+        list(scan(manifest, ScanTally(), ScanOptions(exclude=frozenset({PPP("b")}))))
+        query = "SELECT count(*) FROM dir WHERE path = 'b';"
+        assert _committed(manifest, query) == (0,)
