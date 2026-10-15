@@ -47,11 +47,11 @@ def _fake_hash(rel: PPP) -> Hash:
 
 def _ctx(
     manifest: Manifest,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
+    hash_policy: HashingPolicy = HashingPolicy.NEEDED,
     hash_path: Callable[[PPP], Hash | Err.Unreadable] = _fake_hash,
 ) -> ScanContext:
     """A ScanContext started at 7, hashing with _fake_hash unless hash_path is given."""
-    return ScanContext(manifest, 7, policy, hash_path)
+    return ScanContext(manifest, 7, hash_policy, hash_path)
 
 
 def _committed(manifest: Manifest, query: str) -> tuple | None:
@@ -97,7 +97,7 @@ class TestScanFile:
         assert manifest.files.get(0, "a.txt") == stored
 
     def test_no_hash_writes_null_hash(self, manifest: Manifest) -> None:
-        """A stale row for a.txt, policy OFF: the stale hash is not carried over."""
+        """A stale row for a.txt, hash_policy OFF: the stale hash is not carried over."""
         st = mk_stat(name="a.txt", size=2)
         stale = Hash(code_from_chunks([b"old"], DEFAULT_BITS))
         fmodel = mk_frec(name="a.txt", hash=stale, hashed=3)
@@ -322,8 +322,8 @@ class TestScan:
         assert (summary.gone, summary.matched) == (5, 1)
 
     def test_options_reach_the_context(self, tree: Tree, manifest: Manifest) -> None:
-        """ScanOptions(policy=OFF) leaves every hash null."""
-        list(scan(manifest, ScanTally(), ScanOptions(policy=OFF)))
+        """ScanOptions(hash_policy=OFF) leaves every hash null."""
+        list(scan(manifest, ScanTally(), ScanOptions(hash_policy=OFF)))
         query = "SELECT count(*) FROM file WHERE hash IS NOT NULL;"
         assert _committed(manifest, query) == (0,)
 

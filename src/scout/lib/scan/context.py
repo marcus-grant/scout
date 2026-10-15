@@ -17,9 +17,9 @@ from scout.lib.scan.hashing import HashingPolicy
 
 @dataclass(frozen=True)
 class ScanContext:
-    """The manifest, start, hashing policy and hash call of one run."""
+    """The manifest, start, hash policy and hash call of one run."""
 
     manifest: Manifest
     started: int
-    policy: HashingPolicy
+    hash_policy: HashingPolicy
     hash_path: Callable[[PPP], Hash | Err.Unreadable]

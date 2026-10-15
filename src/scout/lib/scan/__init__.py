@@ -27,10 +27,10 @@ from scout.lib.util import to_rel
 
 @dataclass(frozen=True)
 class ScanOptions:
-    """The hashing policy, hash width, commit batch and progress callback.
+    """The hashing hash_policy, hash width, commit batch and progress callback.
     scan unpacks it; nothing below scan sees it."""
 
-    policy: HashingPolicy = HashingPolicy.NEEDED
+    hash_policy: HashingPolicy = HashingPolicy.NEEDED
     on_progress: Callable[[int], None] | None = None
     exclude: frozenset[PPP] = frozenset()
     bits: int = DEFAULT_BITS
@@ -44,16 +44,16 @@ def _scan_file(
     ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat, row: FileRecord | None
 ) -> FileScanned | ReadFailed:
     """Bring one file's row current and say what was done.
-    MATCHED writes nothing; ADDED and UPDATED hash under policy and upsert.
+    MATCHED writes nothing; ADDED and UPDATED hash under hash_policy and upsert.
     An unreadable file comes back as ReadFailed with nothing written."""
     rel = dir_path / stat.name
-    change = reconcile_file_stat(stat, row, policy=ctx.policy)
+    change = reconcile_file_stat(stat, row, hash_policy=ctx.hash_policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(rel, row, change)
 
     fresh = FileRecord(dir_id, stat)
-    prepared = hash_record(fresh, rel, ctx.policy, ctx.started, ctx.hash_path)
+    prepared = hash_record(fresh, rel, ctx.hash_policy, ctx.started, ctx.hash_path)
     if isinstance(prepared, Err.Unreadable):
         return ReadFailed(rel, prepared)
     upserted = ctx.manifest.files.upsert(prepared)
@@ -127,7 +127,7 @@ def scan(
     ctx = ScanContext(
         manifest,
         started := manifest.scans.start(),
-        opt.policy,
+        opt.hash_policy,
         functools.partial(hash_file, root, bits=opt.bits, on_progress=opt.on_progress),
     )
 

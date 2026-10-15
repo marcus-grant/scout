@@ -24,7 +24,7 @@ _PATH = PPP("a.txt")
 
 
 class TestHashRecord:
-    """hash_record under each policy, no disk."""
+    """hash_record under each hash_policy, no disk."""
 
     def test_off_returns_record_without_hashing(self) -> None:
         """Policy OFF: the record comes back unchanged and nothing is hashed."""

@@ -26,7 +26,7 @@ ALL = HashingPolicy.ALL
 
 # Plain FileStat object that gets reused for all tests that don't need variation
 _ST = FileStat("a.txt", 5, 100)
-# Hashed FileRecord for testing policy decisions based on hashed records
+# Hashed FileRecord for testing hash policy decisions based on hashed records
 _HASHED = FileRecord(0, _ST, Hash(code_from_chunks([b"a"], DEFAULT_BITS)), 1)
 # Same but for unhashed
 _UNHASHED = FileRecord(0, _ST)
@@ -35,34 +35,34 @@ _UNHASHED = FileRecord(0, _ST)
 class TestReconcileFileStat:
     """reconcile_file_stat over every outcome, no fixture and no disk."""
 
-    @pytest.mark.parametrize("policy", [OFF, NEEDED, ALL])
-    def test_no_record_is_added(self, policy: HashingPolicy) -> None:
-        """No record: ADDED, whatever the hashing policy."""
-        assert reconcile_file_stat(_ST, None, policy=policy) == ADDED
+    @pytest.mark.parametrize("hash_policy", [OFF, NEEDED, ALL])
+    def test_no_record_is_added(self, hash_policy: HashingPolicy) -> None:
+        """No record: ADDED, whatever the hashing hash_policy."""
+        assert reconcile_file_stat(_ST, None, hash_policy=hash_policy) == ADDED
 
-    @pytest.mark.parametrize("policy", [OFF, NEEDED, ALL])
+    @pytest.mark.parametrize("hash_policy", [OFF, NEEDED, ALL])
     @pytest.mark.parametrize("stored", [{"size": 6}, {"mtime": 101}])
     def test_changed_stat_is_updated(
         self,
         stored: dict[str, int],
-        policy: HashingPolicy,
+        hash_policy: HashingPolicy,
     ) -> None:
         """A record whose stat differs in size or mtime: UPDATED."""
         record = FileRecord(0, replace(_ST, **stored))
-        assert reconcile_file_stat(_ST, record, policy=policy) == UPDATED
+        assert reconcile_file_stat(_ST, record, hash_policy=hash_policy) == UPDATED
 
     def test_rehash_of_a_match_is_updated(self) -> None:
         """A matching hashed record with rehash set: UPDATED."""
-        assert reconcile_file_stat(_ST, _HASHED, policy=ALL) == UPDATED
+        assert reconcile_file_stat(_ST, _HASHED, hash_policy=ALL) == UPDATED
 
     def test_unhashed_match_is_updated_when_hashing(self) -> None:
         """A matching record with no hash, hashing on: UPDATED."""
-        assert reconcile_file_stat(_ST, _UNHASHED, policy=NEEDED) == UPDATED
+        assert reconcile_file_stat(_ST, _UNHASHED, hash_policy=NEEDED) == UPDATED
 
     def test_unhashed_match_is_matched_without_hashing(self) -> None:
         """A matching record with no hash, hashing off: MATCHED."""
-        assert reconcile_file_stat(_ST, _UNHASHED, policy=OFF) == MATCHED
+        assert reconcile_file_stat(_ST, _UNHASHED, hash_policy=OFF) == MATCHED
 
     def test_hashed_match_is_matched(self) -> None:
         """A matching hashed record, hashing on, no rehash: MATCHED."""
-        assert reconcile_file_stat(_ST, _HASHED, policy=NEEDED) == MATCHED
+        assert reconcile_file_stat(_ST, _HASHED, hash_policy=NEEDED) == MATCHED

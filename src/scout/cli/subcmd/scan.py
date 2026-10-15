@@ -28,7 +28,7 @@ def run_scan(
     path: Path,
     emit: Callable[[events.CliEvent], None],
     *,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
+    hash_policy: HashingPolicy = HashingPolicy.NEEDED,
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
@@ -44,7 +44,7 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    opt = ScanOptions(policy=policy, on_progress=on_progress)
+    opt = ScanOptions(hash_policy=hash_policy, on_progress=on_progress)
     for result in lib_scan(manifest, ScanTally(), opt):
         match result:
             case FileScanned():
@@ -114,14 +114,14 @@ def scan(
     if no_hash and rehash:
         raise click.UsageError("--rehash cannot be used with --no-hash")
     if no_hash:
-        policy = HashingPolicy.OFF
+        hash_policy = HashingPolicy.OFF
     elif rehash:
-        policy = HashingPolicy.ALL
+        hash_policy = HashingPolicy.ALL
     else:
-        policy = HashingPolicy.NEEDED
+        hash_policy = HashingPolicy.NEEDED
     run_scan(
         path,
         _emitter(verbose, progress),
-        policy=policy,
+        hash_policy=hash_policy,
         on_progress=_bytes_progress if progress else None,
     )
