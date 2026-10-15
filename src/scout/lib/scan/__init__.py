@@ -7,7 +7,6 @@ License: AGPL-3.0-or-later
 
 import functools
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -21,31 +20,16 @@ from scout.lib.scan.context import ScanContext
 from scout.lib.scan.file_stats import reconcile_file_stat
 from scout.lib.scan.hashing import HashingPolicy, hash_record
 from scout.lib.scan.missing import reconcile_missing_dirs, reconcile_missing_files
+from scout.lib.scan.tally import ScanTally, Summary
 from scout.lib.util import to_rel
-
-
-@dataclass(frozen=True)
-class Summary:
-    """What one scan did in total: its window and the count per change,
-    plus the errors met and the rows marked gone."""
-
-    started: int
-    finished: int
-    added: int
-    updated: int
-    matched: int
-    errors: int
-    gone: int
 
 
 def _scan_file(
     ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat, row: FileRecord | None
 ) -> FileScanned | ReadFailed:
-    """Bring one file's row up to date and say what was done.
-    Row is the file's live record, or None; reconcile_file_stat decides.
-    MATCHED: write nothing and return the row as found.
-    ADDED or UPDATED: hash_record prepares the record to write under policy.
-    An Unreadable from it comes back as a ReadFailed; nothing is written."""
+    """Bring one file's row current and say what was done.
+    MATCHED writes nothing; ADDED and UPDATED hash under policy and upsert.
+    An unreadable file comes back as ReadFailed with nothing written."""
     rel = dir_path / stat.name
     change = reconcile_file_stat(stat, row, policy=ctx.policy)
     if change is RecordChange.MATCHED:
@@ -66,12 +50,9 @@ def _scan_dir(
     ctx: ScanContext, walked: WalkedDir
 ) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
     """Bring one walked directory's rows current, yielding as it goes.
-    An unlistable WalkedDir yields its ReadFailed, then AccessLost when the
-    manifest claims anything under it, and writes nothing.
-    dirs.upsert(walked.path) first; then one _scan_file per FileStat in
-    walked.files order; then every live file row in this dir whose name is not
-    in the WalkedDir is marked gone with started & yielded as RecordGone;
-    last, a ReadFailed for each Unreadable the WalkedDir carried."""
+    Unlistable: ReadFaild, then AccessLost if manifest claims subtree exists; no writes.
+    Otherwise: upsert the dir, scan each listed file, mark the recorded
+    files it no longer lists gone, then report its entry errors."""
     if walked.unlistable:
         yield from (ReadFailed(e.path, e) for e in walked.errors)
         claimed = ctx.manifest.claimed.counts(walked.path)
@@ -114,49 +95,34 @@ def update_from_walk(
 
 def scan(
     manifest: Manifest,
+    tally: ScanTally,
     *,
     policy: HashingPolicy = HashingPolicy.NEEDED,
     bits: int = DEFAULT_BITS,
     batch_size: int = 256,
     on_progress: Callable[[int], None] | None = None,
 ) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | Summary]:
-    """Walk manifest's root and bring every row current, yielding records
-    as they happen and one Summary last.
-    started comes from scans.start(); rows commit every batch_size files.
-    The manifest's own file is excluded from the walk.
-    A WalkedDir whose own directory was unreadable is reported and skipped:
-    nothing under it is written or marked gone.
-    After the walk, each live dir not walked and not under an unreadable
-    dir is marked gone with its subtree; then scans.finish."""
+    """Walk manifest's root and bring every row current.
+    Yields each event as it happens, seen by tally, then tally's Summary.
+    Rows commit every batch_size writes; the manifest's own file is excluded.
+    What a walk step covers, and what is marked gone, is update_from_walk's."""
+    # Exclude the manifest's own file when it lives under root
     root = Path(manifest.meta.root)
     try:
         exclude = frozenset({to_rel(manifest.db.path, root)})
     except Err.NotUnderRoot:
         exclude = frozenset()
+
+    # Open the scan and fix what the run holds
     started = manifest.scans.start()
     hash_path = functools.partial(hash_file, root, bits=bits, on_progress=on_progress)
     ctx = ScanContext(manifest, started, policy, hash_path)
-    counts = {enum_member: 0 for enum_member in RecordChange}
-    errors = gone = 0
+
+    # Walk, counting every event, then close the scan row
     with manifest.commit_every(batch_size):
         for record in update_from_walk(ctx, walk(root, exclude)):
-            if isinstance(record, FileScanned):
-                counts[record.change] += 1
-            elif isinstance(record, RecordGone):
-                gone += 1
-            elif isinstance(record, ReadFailed):
-                errors += 1
+            tally.see(record)
             yield record
+        finished = manifest.scans.finish(started, tally.files_seen())
 
-        files_seen = sum(counts.values())
-        finished = manifest.scans.finish(started, files_seen)
-
-    yield Summary(
-        started,
-        finished,
-        counts[RecordChange.ADDED],
-        counts[RecordChange.UPDATED],
-        counts[RecordChange.MATCHED],
-        errors,
-        gone,
-    )
+    yield tally.summary(started, finished)

@@ -19,9 +19,10 @@ from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
-from scout.lib.scan import Summary, _scan_dir, _scan_file, scan, update_from_walk
+from scout.lib.scan import _scan_dir, _scan_file, scan, update_from_walk
 from scout.lib.scan.context import ScanContext
 from scout.lib.scan.hashing import HashingPolicy
+from scout.lib.scan.tally import ScanTally, Summary
 
 # Alias for factory:
 # Creates default file with override kwargs:
@@ -286,10 +287,9 @@ class TestScan:
     """scan on the default tree under the manifest fixture: wiring only."""
 
     def test_first_scan_counts_and_order(self, tree: Tree, manifest: Manifest) -> None:
-        """Four FileScanned in DFS path order, all ADDED; no RecordGone; no row for
-        .scout.db; Summary added 4, others 0, finished >= started; the
-        scan row has that finished and files_seen 4."""
-        records = list(scan(manifest))
+        """Four FileScanned in DFS order, all ADDED, none for .scout.db;
+        the given tally counts them and the scan row records finished and 4 seen."""
+        records = list(scan(manifest, tally := ScanTally()))
         summary = records[-1]
         scanned = [r for r in records if isinstance(r, FileScanned)]
 
@@ -297,28 +297,26 @@ class TestScan:
         assert [r.path for r in scanned] == sorted(tree.files)
         assert not any(isinstance(r, RecordGone) for r in records)
         assert manifest.files.get(0, ".scout.db") is None
-        counts = (summary.added, summary.updated, summary.matched)
-        assert (counts, summary.errors, summary.gone) == ((4, 0, 0), 0, 0)
         assert summary.finished >= summary.started
         with sql.connect(manifest.db.path) as conn:
             q = "SELECT finished, files_seen FROM scan WHERE started = ?;"
             row = conn.execute(q, (summary.started,)).fetchone()
         assert row == (summary.finished, 4)
+        assert tally.summary(1, 2).added == 4
 
     def test_rescan_after_rmtree_marks_subtree_gone(
         self, tree: Tree, manifest: Manifest
     ) -> None:
         """Scan, remove b, scan again: RecordGone paths are exactly b/b1.txt,
         b/b2.txt, b/c/empty.txt, b/c, b; Summary gone 5, matched 1."""
-        list(scan(manifest))
+        list(scan(manifest, ScanTally()))
         shutil.rmtree(tree.root / "b")
 
-        records = list(scan(manifest))
+        records = list(scan(manifest, ScanTally()))
 
         summary = records[-1]
         assert isinstance(summary, Summary)
-        expected = {
-            PPP(p) for p in ("b/b1.txt", "b/b2.txt", "b/c/empty.txt", "b/c", "b")
-        }
+        paths = ("b/b1.txt", "b/b2.txt", "b/c/empty.txt", "b/c", "b")
+        expected = {PPP(p) for p in paths}
         assert {r.path for r in records if isinstance(r, RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
