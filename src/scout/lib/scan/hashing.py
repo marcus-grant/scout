@@ -1,5 +1,5 @@
 # src/scout/lib/scan/hashing.py
-"""How a scan hashes files: the policy, and the step applying it.
+"""How a scan hashes files: the hash_policy, and the step applying it.
 Author: Marcus
 Created: 2026-10-02
 License: AGPL-3.0-or-later
@@ -8,7 +8,7 @@ License: AGPL-3.0-or-later
 from collections.abc import Callable
 from dataclasses import replace
 from enum import Enum
-from pathlib import Path
+from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.models import FileRecord, Hash
@@ -27,18 +27,18 @@ class HashingPolicy(Enum):
 
 def hash_record(
     record: FileRecord,
-    path: Path,
-    policy: HashingPolicy,
+    rel: PPP,
+    hash_policy: HashingPolicy,
     started: int,
-    hash_path: Callable[[Path], Hash | Err.Unreadable],
+    hash_path: Callable[[PPP], Hash | Err.Unreadable],
 ) -> FileRecord | Err.Unreadable:
-    """Return record ready to upsert under policy.
+    """Return record ready to upsert under hash_policy.
     OFF: record unchanged, with no hash.
-    Otherwise: record with hash_path(path) and hashed = started,
+    Otherwise: record with hash_path(rel) and hashed = started,
     or the Err.Unreadable hash_path answered."""
-    if policy is HashingPolicy.OFF:
+    if hash_policy is HashingPolicy.OFF:
         return record
-    h = hash_path(path)
+    h = hash_path(rel)
     if isinstance(h, Err.Unreadable):
         return h
     return replace(record, hash=h, hashed=started)

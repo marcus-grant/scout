@@ -18,16 +18,17 @@ from scout.cli.render import echo_porcelain
 from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
-from scout.lib.scan import Summary
+from scout.lib.scan import ScanOptions
 from scout.lib.scan import scan as lib_scan
 from scout.lib.scan.hashing import HashingPolicy
+from scout.lib.scan.tally import ScanTally, Summary
 
 
 def run_scan(
     path: Path,
     emit: Callable[[events.CliEvent], None],
     *,
-    policy: HashingPolicy = HashingPolicy.NEEDED,
+    hash_policy: HashingPolicy = HashingPolicy.NEEDED,
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
@@ -43,8 +44,8 @@ def run_scan(
     manifest.meta.write_fs_detail(detail)
 
     # Start the scan and iterate results to be mapped to CLI events
-    results = lib_scan(manifest, policy=policy, on_progress=on_progress)
-    for result in results:
+    opt = ScanOptions(hash_policy=hash_policy, on_progress=on_progress)
+    for result in lib_scan(manifest, ScanTally(), opt):
         match result:
             case FileScanned():
                 emit(events.ScanFile(result.path, result.record, result.change))
@@ -113,14 +114,14 @@ def scan(
     if no_hash and rehash:
         raise click.UsageError("--rehash cannot be used with --no-hash")
     if no_hash:
-        policy = HashingPolicy.OFF
+        hash_policy = HashingPolicy.OFF
     elif rehash:
-        policy = HashingPolicy.ALL
+        hash_policy = HashingPolicy.ALL
     else:
-        policy = HashingPolicy.NEEDED
+        hash_policy = HashingPolicy.NEEDED
     run_scan(
         path,
         _emitter(verbose, progress),
-        policy=policy,
+        hash_policy=hash_policy,
         on_progress=_bytes_progress if progress else None,
     )

@@ -15,12 +15,17 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
   - Ids cross these as Python values, never as joins into another
     repo's statement.
 - `lib/scan/`: the scan operation; yields typed events (`lib/event.py`).
-  - `__init__.py`: `scan`, the session, and its per-dir and per-file steps.
-  - `file_stats.py`, `missing.py`: pure reconciliations,
-    - records against stats, policy and walk coverage;
-    - they write nothing.
+  - `__init__.py`: `scan`, the session: it binds `walk` and `hash_file`,
+    opens the scan row and the commit window, and counts.
+    - `ScanOptions`: what an adapter decides before a run.
+    - `ScanContext`: what one run holds fixed, passed down.
+    - `update_from_walk`: the per-dir loop and the gone pass,
+      over walk output given as values.
+    - Each step ticks the manifest right after the row it writes.
+  - `reconcile.py`: pure reconciliations, records against stats,
+    policy and walk coverage; they write nothing.
   - `hashing.py`: `HashingPolicy` and `hash_record`, the hash step.
-  - `context.py`: `ScanContext`, what one run holds fixed.
+  - `tally.py`: `ScanTally` counts events; `Summary` is its frozen end.
   - These parts are likely shared by later operations;
     they live here provisionally, see ROADMAP `### verb-architecture`.
 - `cli/`: input, output, exit codes; renderers turn events into lines.

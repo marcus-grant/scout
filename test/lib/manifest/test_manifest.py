@@ -1,4 +1,4 @@
-# test/lib/manifest/test_init.py
+# test/lib/manifest/test_manifest.py
 """Pin Manifest, the composite over one .scout.db file.
 Author: Marcus
 Created: 2026-09-09

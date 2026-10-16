@@ -69,7 +69,7 @@ class TestRunScan:
         """hash False: every ScanFile has file.hash None."""
         seen: list[events.CliEvent] = []
 
-        run_scan(manifest.db.path, seen.append, policy=OFF, detail={})
+        run_scan(manifest.db.path, seen.append, hash_policy=OFF, detail={})
 
         file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
         assert len(file_scans) == 4

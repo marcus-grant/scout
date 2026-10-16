@@ -6,7 +6,6 @@ License: AGPL-3.0-or-later
 """
 
 import errno
-from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 from b3c32 import code_from_chunks
@@ -21,16 +20,16 @@ NEEDED = HashingPolicy.NEEDED
 
 # Plain record and path reused by every test; no disk backs them
 _RECORD = FileRecord(1, FileStat("a.txt", 5, 100))
-_PATH = Path("/x/a.txt")
+_PATH = PPP("a.txt")
 
 
 class TestHashRecord:
-    """hash_record under each policy, no disk."""
+    """hash_record under each hash_policy, no disk."""
 
     def test_off_returns_record_without_hashing(self) -> None:
         """Policy OFF: the record comes back unchanged and nothing is hashed."""
 
-        def never(_: Path) -> Hash | Err.Unreadable:
+        def never(_: PPP) -> Hash | Err.Unreadable:
             raise AssertionError("hash_path called under OFF")
 
         result = hash_record(_RECORD, _PATH, OFF, 7, never)

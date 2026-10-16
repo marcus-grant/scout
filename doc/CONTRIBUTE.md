@@ -103,7 +103,8 @@ Before writing tests, read the `conftest.py` files covering the area
 and the neighboring test modules.
 Fixtures are the zero-arg calls of factories with override kwargs; a
 test that rebuilds a factory's work inline is a duplicate.
-No pyfakefs; real files under `tmp_path`, and factory trees stay tiny.
+A test module is named for the source module it pins;
+a package's `__init__.py` is pinned in `test_<package>.py`.
 
 A test that is hard to arrange means the code is drawn wrong;
 redraw it before writing the test and plan the change before proceeding.
@@ -113,6 +114,13 @@ Seam parameter with real default is only for input that can't be passed as data.
 Monkeypatch only a system Scout does not control (OS, web endpoint),
 reached through an entry point that takes no arguments,
 like the CLI in an e2e test.
+
+A unit's tests pin its own duties; a caller's tests pin only wiring.
+A test that asserts a callee's duty through its caller is misplaced,
+and an arrangement that reaches through a layer to force one is a smell.
+A smell raised in review is a question about the design,
+answered by rereading the test and the code together,
+never by defending the test as written.
 
 ### Renderers
 
