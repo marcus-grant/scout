@@ -44,6 +44,11 @@ planned.
     - interaction with `gone` when patterns change.
 - Scan already skips its own repo file without this;
   - that is hard-coded, not a pattern.
+- Scan already skips its own repo file without this;
+  - that is hard-coded, not a repo-persisted pattern.
+  - `ScanOptions.exclude` and the `--exclude PATH` flag (`### scan-cli`)
+    take literal root-relative paths, no patterns; this section adds
+    the stored, pattern-based layer on top.
 
 ### comm
 
@@ -52,6 +57,21 @@ planned.
 - Stage role: a source, and a shortcut for `ls a | has b` when both sides
   are manifests. Content-level comparison; not `diff`, which is reserved
   for path-exact tree comparison.
+
+### test-db-reads
+
+- Hoist:
+  - `_committed(manifest, query)`
+  - `_ticked(manifest, act, query)`
+  - From `test/lib/scan/test_scan.py` to `test/factory.py`.
+  - Give `_committed` a `params` argument.
+- Replace every direct `sql.connect(manifest.db.path)` read in `test/`
+  with them: `test/lib/manifest/test_manifest.py`,
+  `test/lib/manifest/test_service.py`,
+  the four repo modules under `test/lib/manifest/repo/`,
+  `test/cli/subcmd/test_run_scan.py`, `test/test_factory.py`,
+  and the two e2e modules.
+- Pure test cleanup; no source change. After v0.1.0.
 
 ### status
 

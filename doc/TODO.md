@@ -86,68 +86,62 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-session
+### scan-interface
 
-- `git checkout -b ref/scan-session`, from `main` after
-  `ref/scan-missing-dirs` merges.
-- `ScanTally` and `Summary` in `src/scout/lib/scan/tally.py`:
-  - `see(event)` before each yield; `summary(started, finished)`
-    freezes it; one instance per run;
-  - `scan(..., tally=None)`: an adapter injects it for live progress,
-    consumed by `### scan-cli`.
-- `ScanOptions` in `src/scout/lib/scan/options.py`, frozen:
-  - `policy` (`HashingPolicy`), `bits`, `batch_size`, `on_progress`;
-  - unpacked by `scan` into the `ScanContext` it builds;
-    no reconciliation ever sees it.
-  - beside `bits` and `batch_size`, a bare `policy` misreads:
-    rename it to `hashing` (candidate name) in `ScanOptions`,
-    in `ScanContext`, and as the parameter of
-    `reconcile_file_stat` and `hash_record`;
-    the enum `HashingPolicy` keeps its name.
-- `update_from_walk` takes the `Manifest`, an iterable of `WalkedDir`
-  and the settings it needs; runs the per-directory loop, then the
-  missing-dirs pass; calls `manifest.wrote()` after each file write.
-- `scan` reduced to the session: exclude its own file,
-  `scans.start`, `commit_every(batch_size)` around
-  `update_from_walk(manifest, walk(root, exclude), ...)`,
-  `scans.finish`, the `Summary` yield.
-- `test/lib/scan/` tests:
-  - the `TestScan` cases that monkeypatch `os.scandir` or `walk`
-    pass constructed `WalkedDir` values to `update_from_walk`;
-  - `test_abort_keeps_committed_batches` drops its `hash_file`
-    monkeypatch once the session takes the hash callable as input;
-  - `test_rescan_after_rmtree_marks_subtree_gone` stays real-disk.
-- The fs-detail refresh and its `detail=` seam stay in `run_scan`.
-- Doc commit: `doc/architecture.md` gains the operation anatomy and
-  the provisional-home tension, pointing to ROADMAP.
+Split from `scan-cli` on 2026-10-16: the lib-to-CLI boundary only,
+no terminal mechanics.
+
+- `git checkout -b ref/scan-interface`, from `main` after
+  `ref/scan-session` merges.
+- `cli/event.py` holds the `CliEvent` family only;
+  `subcmd/*` is flag parsing and wiring only.
+- Event naming, two grammars, no renames:
+  cli `<Verb><Fact>` (`ScanFile`), lib subject + past participle
+  (`FileScanned`); the translation reads as a visible grammar shift.
+- The translation is a pure function, lib event in, `CliEvent` out
+  (name provisional); `outcome` becomes `change` at `ScanFile`;
+  an unknown lib event raises, as in `porcelain`
+  (today's `match` in `run_scan` drops it silently);
+  tested with one constructed lib event per case, no scan, no tree,
+  no patch; the `AccessLost` to `ScanAccessLost` case shipped untested
+  in `ref/scan-missing-dirs` and gets its test here.
+- The Click callback builds the `ScanOptions` itself and `run_scan`
+  takes it whole, dropping its `hash_policy` and `on_progress` parameters.
+- `--exclude PATH`, repeatable, no short form (grep, tar and rsync
+  agree on the long name only): root-relative literal paths, fed to
+  `ScanOptions.exclude`; the stored pattern layer stays ROADMAP `### ignore`.
+- `run_scan` shrinks to open manifest, wire emitter, iterate;
+  its tests keep one wiring case, a real scan ending in `ScanFinished`;
+  `test_unreadable_maps_to_scan_error` and its `os.scandir` patch go,
+  covered by the translation's cases.
+- Gap from `ref/scan-session`: no test pins that an aborted scan leaves
+  the scan row's `finished` null (`test_abort_keeps_committed_batches`
+  was dropped); add one real-disk case to `TestScan` here.
+- Doc commit: `doc/architecture.md` gains the translation boundary.
 - Pln commit: delete this section.
 
 ### scan-cli
 
-CLI architecture settled 2026-09-22 (discussion round two):
->**NOTE**: This task is likely too big for one PR, plan a split if needed
+Split from the old `scan-cli` on 2026-10-16: output and terminal
+handling only; the lib boundary is `### scan-interface`.
 
+- `git checkout -b ft/scan-cli`, from `main` after
+  `ref/scan-interface` merges.
 - Module map, one role per module:
-  - `cli/event.py` — the `CliEvent` family only;
-  - `cli/render/` — a package now: `porcelain.py`, shared `Output`
+  - `cli/render/`, a package now: `porcelain.py`, shared `Output`
     (later the `Renderer` protocol and `select_renderer` from the
     Renderer section below); future `rich.py`, `json.py` siblings;
-  - `cli/emit.py` — the emitter object: a pure router between the
+  - `cli/emit.py`, the emitter object: a pure router between the
     renderer and the progress sinks (verbosity policy lives here;
     no counting, no terminal mechanics);
-  - `cli/progress.py` — the status-line object, the only module
-    that knows what a carriage return is;
-  - `subcmd/*` — flag parsing and wiring only.
-- Event naming: two grammars, no renames —
-  - cli events are `<Verb><Fact>` (`ScanFile`, `ScanGone`);
-  - lib events are subject + past participle (`FileScanned`);
-  - the translate layer reads as a visible grammar shift.
+  - `cli/progress.py`, the status-line object, the only module
+    that knows what a carriage return is.
 - The manifest is THE primary operand:
   - first positional on every verb, default `"."`;
-  - all interpretation in `Manifest.open` (resolve, dir →
+  - all interpretation in `Manifest.open` (resolve, dir to
     `.scout.db`); positional meaning never depends on disk content;
   - eliding it with later operands means typing `.`
-    (`scout ls . doc/finance`) — accepted friction;
+    (`scout ls . doc/finance`), accepted friction;
   - `-r`/`--repo` kept as an explicit override to dogfood both
     modes; flag wins when both are given (most intentional wins),
     disagreement gets a stderr note; loser removed on evidence;
@@ -163,21 +157,6 @@ CLI architecture settled 2026-09-22 (discussion round two):
   - independent and freely composed; humans often want both.
 - Single-letter args pair with a long alias where no collision:
   `-v`/`--verbose`, `-p`/`--progress`.
-- Translate layer updated to the lib `Event` family;
-  - `outcome` to `change` at the `ScanFile` mapping;
-  - `run_scan` shrinks to open manifest, wire emitter, iterate.
-  - the translation leaves `run_scan` as a pure function,
-    lib event in, `CliEvent` out (name provisional);
-    - an unknown lib event raises, as in `porcelain`;
-      today's `match` in `run_scan` drops it silently;
-    - tested with one constructed lib event per case,
-      no scan, no tree, no patch;
-    - the `AccessLost` to `ScanAccessLost` case shipped untested
-      in `ref/scan-missing-dirs` and gets its test here.
-  - `run_scan`'s tests in `test/cli/subcmd/test_run_scan.py`
-    keep one wiring case: a real scan ending in `ScanFinished`;
-    - `test_unreadable_maps_to_scan_error` and its
-      `os.scandir` patch go, covered by the translation's cases.
 - Known bug: `_emitter`'s `--progress` count increments on every
   `ScanGone`, which includes swept dir paths, so "N files" overcounts;
   the status line reading `ScanTally` replaces that count.
@@ -198,7 +177,8 @@ CLI architecture settled 2026-09-22 (discussion round two):
     the terminal handling around them; Rich later replaces it
     behind the same `log`/`status` seams.
 - Doc commit: `doc/architecture.md` gains the adapter architecture,
-  as settled by this PR's preceding discussion round.
+  as settled by the 2026-09-22 discussion round.
+- Pln commit: delete this section.
 
 ### Stamp v0.1.0
 
