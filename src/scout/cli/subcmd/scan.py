@@ -8,6 +8,7 @@ License: AGPL-3.0-or-later
 import itertools
 import sys
 from collections.abc import Callable, Mapping
+from dataclasses import astuple
 from pathlib import Path
 
 import click
@@ -24,6 +25,24 @@ from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
 
 
+def _translate_event(
+    event: FileScanned | RecordGone | ReadFailed | AccessLost | Summary,
+) -> events.CliEvent:
+    """Return the CliEvent for one lib scan event; raise TypeError if unknown."""
+    match event:
+        case FileScanned():
+            return events.ScanFile(event.path, event.record, event.change)
+        case RecordGone():
+            return events.ScanGone(event.path)
+        case ReadFailed():
+            return events.ScanError(event.path, event.error)
+        case AccessLost():
+            return events.ScanAccessLost(event.path)
+        case Summary():
+            return events.ScanFinished(*astuple(event))
+    raise TypeError(f"no CliEvent translation for scan event: {type(event)}")
+
+
 def run_scan(
     path: Path,
     emit: Callable[[events.CliEvent], None],
@@ -32,11 +51,8 @@ def run_scan(
     on_progress: Callable[[int], None] | None = None,
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
-    """Open the manifest at path (a directory means its DEFAULT_NAME),
-    refresh the fs detail rows, then run scan and emit one event per record:
-    Scanned to ScanFile, Gone, to ScanGone,
-    Unreadable to ScanError, AccessLost to ScanAccessLost, Summary to ScanFinished.
-    Detail replaces fs_meta.read_all(root) when given, for tests."""
+    """Open the manifest at path, refresh its fs detail, scan, and emit each event
+    translated to its CliEvent; detail, when given, stands in for fs_meta.read_all."""
     # Open and update manifest with fs meta details
     manifest = Manifest.open(path)
     root = Path(manifest.meta.root)
@@ -46,27 +62,7 @@ def run_scan(
     # Start the scan and iterate results to be mapped to CLI events
     opt = ScanOptions(hash_policy=hash_policy, on_progress=on_progress)
     for result in lib_scan(manifest, ScanTally(), opt):
-        match result:
-            case FileScanned():
-                emit(events.ScanFile(result.path, result.record, result.change))
-            case RecordGone():
-                emit(events.ScanGone(result.path))
-            case ReadFailed():
-                emit(events.ScanError(result.path, result.error))
-            case AccessLost():
-                emit(events.ScanAccessLost(result.path))
-            case Summary():
-                emit(
-                    events.ScanFinished(
-                        result.started,
-                        result.finished,
-                        result.added,
-                        result.updated,
-                        result.matched,
-                        result.errors,
-                        result.gone,
-                    )
-                )
+        emit(_translate_event(result))
 
 
 def _emitter(verbose: bool, progress: bool) -> Callable[[events.CliEvent], None]:

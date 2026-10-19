@@ -6,8 +6,6 @@ Created: 2026-09-21
 License: AGPL-3.0-or-later
 """
 
-import errno
-import os
 import sqlite3 as sql
 import sys
 from pathlib import Path
@@ -18,10 +16,14 @@ import pytest
 from click.testing import CliRunner, Result
 
 import scout.cli.event as events
+import scout.lib.error as Err
 from scout.cli import main
-from scout.cli.subcmd.scan import _bytes_progress, run_scan
+from scout.cli.subcmd.scan import _bytes_progress, _translate_event, run_scan
+from scout.lib.event import AccessLost, Event, FileScanned, ReadFailed, RecordGone
 from scout.lib.manifest import Manifest
+from scout.lib.models import RecordChange
 from scout.lib.scan.hashing import HashingPolicy
+from scout.lib.scan.tally import Summary
 
 # The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path), which is
 #   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
@@ -33,6 +35,45 @@ Tree = factory.Tree
 OFF = HashingPolicy.OFF
 NEEDED = HashingPolicy.NEEDED
 ALL = HashingPolicy.ALL
+# Alias for type of _translate_events arg for events it translates
+_EVT = FileScanned | RecordGone | ReadFailed | AccessLost | Summary
+
+
+class TestTranslateEvent:
+    """_translate_event on one constructed lib event per case."""
+
+    def act(self, e: _EVT) -> events.CliEvent:
+        """Test ACT phase aliasing/shortening the function being tested."""
+        return _translate_event(e)
+
+    def test_file_scanned_is_scan_file(self) -> None:
+        """FileScanned becomes ScanFile with its path, record and change."""
+        record = factory.mk_file_record()
+        fields = (PPP("a.txt"), record, RecordChange.ADDED)
+        assert self.act(FileScanned(*fields)) == events.ScanFile(*fields)
+
+    def test_record_gone_is_scan_gone(self) -> None:
+        """RecordGone becomes ScanGone with its path."""
+        assert self.act(RecordGone(p := PPP("a.txt"))) == events.ScanGone(p)
+
+    def test_read_failed_is_scan_error(self) -> None:
+        """ReadFailed becomes ScanError with its path and error."""
+        err = Err.Unreadable("x", p := PPP("a.txt"), errno=70)
+        assert self.act(ReadFailed(p, err)) == events.ScanError(p, err)
+
+    def test_access_lost_is_scan_access_lost(self) -> None:
+        """AccessLost becomes ScanAccessLost with its path."""
+        assert self.act(AccessLost(p := PPP("a.txt"))) == events.ScanAccessLost(p)
+
+    def test_summary_is_scan_finished(self) -> None:
+        """Summary becomes ScanFinished with every count and both timestamps."""
+        args = (1, 2, 3, 4, 5, 6, 7)
+        assert self.act(Summary(*args)) == events.ScanFinished(*args)
+
+    def test_unknown_event_raises(self) -> None:
+        """An Event with no case raises TypeError."""
+        with pytest.raises(TypeError, match=r"scout\.lib\.event\.Event"):
+            self.act(Event())  # type: ignore
 
 
 class TestRunScan:
@@ -68,41 +109,11 @@ class TestRunScan:
     def test_no_hash_reaches_the_rows(self, tree: Tree, manifest: Manifest) -> None:
         """hash False: every ScanFile has file.hash None."""
         seen: list[events.CliEvent] = []
-
         run_scan(manifest.db.path, seen.append, hash_policy=OFF, detail={})
 
         file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
         assert len(file_scans) == 4
         assert all(e.file.hash is None for e in file_scans)
-
-    def test_gone_maps_to_scan_gone(self, tree: Tree, manifest: Manifest) -> None:
-        """Run, delete a.txt, run again: seen holds ScanGone(a.txt)."""
-        seen: list[events.CliEvent] = []
-        run_scan(manifest.db.path, lambda _: None, detail={})
-        (tree.root / "a.txt").unlink()
-
-        run_scan(manifest.db.path, seen.append, detail={})
-
-        assert events.ScanGone(PPP("a.txt")) in seen
-
-    def test_unreadable_maps_to_scan_error(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """os.scandir failing on b: seen holds one ScanError whose path is b."""
-        seen: list[events.CliEvent] = []
-        real = os.scandir
-
-        def fake(p):
-            if Path(p) == tree.root / "b":
-                raise PermissionError(errno.EACCES, "Permission denied")
-            return real(p)
-
-        monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
-
-        run_scan(manifest.db.path, seen.append, detail={})
-
-        errors = [e for e in seen if isinstance(e, events.ScanError)]
-        assert [e.path for e in errors] == [PPP("b")]
 
     def test_relative_path_excludes_own_manifest(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
@@ -112,7 +123,6 @@ class TestRunScan:
         seen: list[events.CliEvent] = []
 
         run_scan(Path("."), seen.append, detail={})
-
         paths = [e.path for e in seen if isinstance(e, events.ScanFile)]
         assert PPP(".scout.db") not in paths
 
