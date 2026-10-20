@@ -7,7 +7,6 @@ License: AGPL-3.0-or-later
 """
 
 import sys
-from pathlib import Path
 from pathlib import PurePosixPath as PPP
 from unittest.mock import Mock
 
@@ -109,17 +108,6 @@ class TestRunScan:
         file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
         assert len(file_scans) == 4
         assert all(e.file.hash is None for e in file_scans)
-
-    def test_relative_path_excludes_own_manifest(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """With cwd at the root and path ".", no ScanFile names .scout.db."""
-        monkeypatch.chdir(tree.root)
-        seen: list[events.CliEvent] = []
-
-        run_scan(Path("."), ScanOptions(), lambda _: seen.append)
-        paths = [e.path for e in seen if isinstance(e, events.ScanFile)]
-        assert PPP(".scout.db") not in paths
 
 
 class TestScanCommand:

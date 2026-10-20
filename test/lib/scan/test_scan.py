@@ -338,3 +338,15 @@ class TestScan:
         list(scan(manifest, ScanTally(), ScanOptions(exclude=frozenset({PPP("b")}))))
         query = "SELECT count(*) FROM dir WHERE path = 'b';"
         assert _committed(manifest, query) == (0,)
+
+    def test_own_manifest_is_not_scanned(self, tree: Tree, manifest: Manifest) -> None:
+        """A scan records no file row for the manifest's own .scout.db."""
+        list(scan(manifest, ScanTally()))
+        query = "SELECT count(*) FROM file WHERE name = '.scout.db';"
+        assert _committed(manifest, query) == (0,)
+
+    def test_abort_leaves_finished_null(self, tree: Tree, manifest: Manifest) -> None:
+        """A scan closed after its first event leaves its scan row unfinished."""
+        next(scan_iter := scan(manifest, ScanTally()))
+        scan_iter.close()
+        assert _committed(manifest, "SELECT finished FROM scan;") == (None,)

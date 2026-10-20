@@ -6,7 +6,7 @@ License: AGPL-3.0-or-later
 """
 
 import functools
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
@@ -121,9 +121,12 @@ def update_from_walk(
             yield RecordGone(path)
 
 
+_SCANRESULT = FileScanned | RecordGone | ReadFailed | AccessLost | Summary
+
+
 def scan(
     manifest: Manifest, tally: ScanTally, opt: ScanOptions = DEFAULT_OPTIONS
-) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | Summary]:
+) -> Generator[_SCANRESULT, None, None]:
     """Walk manifest's root and bring every row current.
     Yields each event as it happens, seen by tally, then tally's Summary.
     Rows commit every batch_size writes; the manifest's own file is excluded.
