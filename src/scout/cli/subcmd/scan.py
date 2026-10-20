@@ -7,7 +7,7 @@ License: AGPL-3.0-or-later
 
 import itertools
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import astuple
 from pathlib import Path
 
@@ -45,23 +45,20 @@ def _translate_event(
 
 def run_scan(
     path: Path,
-    emit: Callable[[events.CliEvent], None],
-    *,
-    hash_policy: HashingPolicy = HashingPolicy.NEEDED,
-    on_progress: Callable[[int], None] | None = None,
-    detail: Mapping[str, str | None] | None = None,
+    opt: ScanOptions,
+    make_emit: Callable[[ScanTally], Callable[[events.CliEvent], None]],
 ) -> None:
-    """Open the manifest at path, refresh its fs detail, scan, and emit each event
-    translated to its CliEvent; detail, when given, stands in for fs_meta.read_all."""
+    """Open the manifest at path, refresh its fs detail, scan it with opt,
+    and emit each event translated to its CliEvent through make_emit(tally)."""
     # Open and update manifest with fs meta details
     manifest = Manifest.open(path)
     root = Path(manifest.meta.root)
-    detail = detail if detail is not None else fs_meta.read_all(root)
-    manifest.meta.write_fs_detail(detail)
+    manifest.meta.write_fs_detail(fs_meta.read_all(root))
 
-    # Start the scan and iterate results to be mapped to CLI events
-    opt = ScanOptions(hash_policy=hash_policy, on_progress=on_progress)
-    for result in lib_scan(manifest, ScanTally(), opt):
+    # Scan and emit each lib event as its CliEvent, sharing one tally:
+    # lib_scan counts into it, and the emitter make_emit builds reads it
+    emit = make_emit(tally := ScanTally())
+    for result in lib_scan(manifest, tally, opt):
         emit(_translate_event(result))
 
 
@@ -115,9 +112,5 @@ def scan(
         hash_policy = HashingPolicy.ALL
     else:
         hash_policy = HashingPolicy.NEEDED
-    run_scan(
-        path,
-        _emitter(verbose, progress),
-        hash_policy=hash_policy,
-        on_progress=_bytes_progress if progress else None,
-    )
+    opt = ScanOptions(hash_policy, on_progress=_bytes_progress if progress else None)
+    run_scan(path, opt, lambda _: _emitter(verbose, progress))
