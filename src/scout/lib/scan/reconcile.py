@@ -42,7 +42,7 @@ class WalkedPathSets:
         return self.unreadable.isdisjoint(path.parents)
 
 
-def reconcile_missing_files(
+def missing_files(
     walked: WalkedDir, records: Iterable[FileRecord]
 ) -> tuple[str, ...]:
     """Return the names of records missing from walked, in record order.

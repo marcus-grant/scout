@@ -89,7 +89,7 @@ def _scan_dir(
     for st in walked.files:
         yield _scan_file(ctx, d.id, walked.path, st, by_name.get(st.name))
 
-    for name in reconcile.reconcile_missing_files(walked, records):
+    for name in reconcile.missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         ctx.manifest.wrote()
         yield RecordGone(walked.path / name)
