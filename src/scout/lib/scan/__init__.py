@@ -12,7 +12,13 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
+from scout.lib.event import (
+    AccessLost,
+    FileScanned,
+    ReadFailed,
+    RecordExcluded,
+    RecordGone,
+)
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
@@ -72,7 +78,7 @@ def _scan_file(
 
 def _scan_dir(
     ctx: ScanContext, walked: WalkedDir
-) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded]:
     """Bring one walked directory's rows current, yielding as it goes.
     Unlistable: ReadFaild, then AccessLost if manifest claims subtree exists; no writes.
     Otherwise: upsert the dir, scan each listed file, mark the recorded
@@ -83,6 +89,7 @@ def _scan_dir(
         if claimed.dirs or claimed.files:
             yield AccessLost(walked.path)
         return
+
     d = ctx.manifest.dirs.upsert(walked.path)
     records = ctx.manifest.files.in_dir(d.id)
     by_name = {r.stat.name: r for r in records}
@@ -93,12 +100,17 @@ def _scan_dir(
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         ctx.manifest.wrote()
         yield RecordGone(walked.path / name)
+
+    for n in walked.excluded:
+        if n in by_name or ctx.manifest.dirs.get(walked.path / n):
+            yield RecordExcluded(walked.path / n)
+
     yield from (ReadFailed(e.path, e) for e in walked.errors)
 
 
 def update_from_walk(
     ctx: ScanContext, walked_dirs: Iterable[WalkedDir]
-) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost]:
+) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded]:
     """Bring the manifest current with one walk's output, yielding as it goes.
     Runs _scan_dir on each WalkedDir in order;
     then each recorded dir the walk confirms absent is marked gone with its subtree,
@@ -117,7 +129,9 @@ def update_from_walk(
             yield RecordGone(path)
 
 
-_SCANRESULT = FileScanned | RecordGone | ReadFailed | AccessLost | Summary
+_SCANRESULT = (
+    FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded | Summary
+)
 
 
 def scan(

@@ -18,7 +18,14 @@ import scout.cli.event as events
 import scout.lib.error as Err
 from scout.cli import main
 from scout.cli.subcmd.scan import _bytes_progress, _translate_event, run_scan
-from scout.lib.event import AccessLost, Event, FileScanned, ReadFailed, RecordGone
+from scout.lib.event import (
+    AccessLost,
+    Event,
+    FileScanned,
+    ReadFailed,
+    RecordExcluded,
+    RecordGone,
+)
 from scout.lib.manifest import Manifest
 from scout.lib.models import RecordChange
 from scout.lib.scan import ScanOptions
@@ -36,7 +43,7 @@ OFF = HashingPolicy.OFF
 NEEDED = HashingPolicy.NEEDED
 ALL = HashingPolicy.ALL
 # Alias for type of _translate_events arg for events it translates
-_EVT = FileScanned | RecordGone | ReadFailed | AccessLost | Summary
+_EVT = FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded | Summary
 
 
 class TestTranslateEvent:
@@ -64,6 +71,10 @@ class TestTranslateEvent:
     def test_access_lost_is_scan_access_lost(self) -> None:
         """AccessLost becomes ScanAccessLost with its path."""
         assert self.act(AccessLost(p := PPP("a.txt"))) == events.ScanAccessLost(p)
+
+    def test_record_excluded_is_scan_excluded(self) -> None:
+        """RecordExcluded becomes ScanExcluded with its path."""
+        assert self.act(RecordExcluded(p := PPP("a.txt"))) == events.ScanExcluded(p)
 
     def test_summary_is_scan_finished(self) -> None:
         """Summary becomes ScanFinished with every count and both timestamps."""

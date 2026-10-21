@@ -15,7 +15,13 @@ import factory
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
-from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
+from scout.lib.event import (
+    AccessLost,
+    FileScanned,
+    ReadFailed,
+    RecordExcluded,
+    RecordGone,
+)
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
@@ -192,7 +198,6 @@ class TestScanDir:
         walked = WalkedDir(PPP("b/c"), (), (), (unreadable,))
 
         records = list(_scan_dir(_ctx(manifest), walked))
-
         assert manifest.dirs.get(PPP("b/c")) is not None
         assert records == [ReadFailed(PPP("b/c"), unreadable)]
 
@@ -204,7 +209,6 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
 
         records = list(_scan_dir(_ctx(manifest), walked))
-
         assert records == [ReadFailed(PPP("b"), err), AccessLost(PPP("b"))]
 
     def test_unlistable_without_claims_reports_only_read_failed(
@@ -215,8 +219,33 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
 
         records = list(_scan_dir(_ctx(manifest), walked))
-
         assert records == [ReadFailed(PPP("b"), err)]
+
+    def test_excluded_file_with_row_is_reported(self, manifest: Manifest) -> None:
+        """An excluded name with a file row in the dir yields RecordExcluded."""
+        d = manifest.dirs.upsert(PPP("b"))
+        manifest.files.upsert(mk_frec(dir_id=d.id, name="x.txt"))
+        walked = WalkedDir(PPP("b"), (), (), (), excluded=("x.txt",))
+
+        records = list(_scan_dir(_ctx(manifest), walked))
+        assert records == [RecordExcluded(PPP("b/x.txt"))]
+
+    def test_excluded_dir_with_claims_is_reported(self, manifest: Manifest) -> None:
+        """An excluded subdir with rows claimed under it yields RecordExcluded."""
+        manifest.dirs.upsert(PPP("b"))
+        manifest.dirs.upsert(PPP("b/c"))
+        walked = WalkedDir(PPP("b"), (), (), (), excluded=("c",))
+
+        records = list(_scan_dir(_ctx(manifest), walked))
+        assert records == [RecordExcluded(PPP("b/c"))]
+
+    def test_excluded_without_rows_is_silent(self, manifest: Manifest) -> None:
+        """An excluded name the manifest has no rows for yields nothing."""
+        manifest.dirs.upsert(PPP("b"))
+        walked = WalkedDir(PPP("b"), (), (), (), excluded=("new.txt",))
+
+        records = list(_scan_dir(_ctx(manifest), walked))
+        assert records == []
 
     def test_gone_mark_ticks_the_manifest(self, manifest: Manifest) -> None:
         """A file marked gone is committed on tick that follows it."""

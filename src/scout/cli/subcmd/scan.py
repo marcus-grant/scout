@@ -16,7 +16,13 @@ import click
 import scout.cli.event as events
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
-from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
+from scout.lib.event import (
+    AccessLost,
+    FileScanned,
+    ReadFailed,
+    RecordExcluded,
+    RecordGone,
+)
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 from scout.lib.scan import ScanOptions
@@ -26,7 +32,12 @@ from scout.lib.scan.tally import ScanTally, Summary
 
 
 def _translate_event(
-    event: FileScanned | RecordGone | ReadFailed | AccessLost | Summary,
+    event: FileScanned
+    | RecordGone
+    | ReadFailed
+    | AccessLost
+    | RecordExcluded
+    | Summary,
 ) -> events.CliEvent:
     """Return the CliEvent for one lib scan event; raise TypeError if unknown."""
     match event:
@@ -38,6 +49,8 @@ def _translate_event(
             return events.ScanError(event.path, event.error)
         case AccessLost():
             return events.ScanAccessLost(event.path)
+        case RecordExcluded():
+            return events.ScanExcluded(event.path)
         case Summary():
             return events.ScanFinished(*astuple(event))
     raise TypeError(f"no CliEvent translation for scan event: {type(event)}")

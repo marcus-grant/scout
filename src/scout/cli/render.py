@@ -37,6 +37,11 @@ def _scan_gone(event: events.ScanGone) -> Output:
     return Output(out=(f"gone {event.path}",))
 
 
+def _scan_excluded(event: events.ScanExcluded) -> Output:
+    """One out line: excluded, a space, the path."""
+    return Output(out=(f"excluded {event.path}",))
+
+
 def _scan_error(event: events.ScanError) -> Output:
     """One err line: the path, a colon, the error's message."""
     return Output(err=(f"{event.path}: {event.error}",))
@@ -69,6 +74,8 @@ def porcelain(event: events.CliEvent) -> Output:
             return _scan_file(event)
         case events.ScanGone():
             return _scan_gone(event)
+        case events.ScanExcluded():
+            return _scan_excluded(event)
         case events.ScanError():
             return _scan_error(event)
         case events.ScanAccessLost():

@@ -35,6 +35,13 @@ class RecordGone(Event):
 
 
 @dataclass(frozen=True)
+class RecordExcluded(Event):
+    """One recorded path the run left untouched because it was excluded."""
+
+    path: PPP
+
+
+@dataclass(frozen=True)
 class ReadFailed(Event):
     """A path that could not be listed, stated or read, and why."""
 
