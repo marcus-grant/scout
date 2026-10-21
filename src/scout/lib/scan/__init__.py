@@ -133,8 +133,15 @@ def scan(
     Yields each event as it happens, seen by tally, then tally's Summary.
     Rows commit every batch_size writes; the manifest's own file is excluded.
     What a walk step covers, and what is marked gone, is update_from_walk's."""
-    # Exclude the manifest's own file when it lives under root
     root = Path(manifest.meta.root)
+
+    # Refuse an exclude that names nothing, before the scan row opens
+    for path in opt.exclude:
+        if not (root / path).exists(follow_symlinks=False):
+            msg = f"exclude path not found under root: {root / path}"
+            raise Err.ExcludeMissing(msg, path=path)
+
+    # Exclude the manifest's own file when it lives under root
     try:
         exclude = opt.exclude | frozenset({to_rel(manifest.db.path, root)})
     except Err.NotUnderRoot:

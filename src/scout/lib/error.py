@@ -117,6 +117,10 @@ class TargetNotDir(PathDomain):
         super().__init__(msg, path)
 
 
+class ExcludeMissing(PathDomain):
+    """An exclude path names nothing under the scanned root."""
+
+
 ### Scan Domain
 
 

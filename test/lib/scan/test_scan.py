@@ -12,23 +12,25 @@ from collections.abc import Callable
 from pathlib import PurePosixPath as PPP
 
 import factory
+import pytest
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
 from scout.lib import event
+from scout.lib import scan as mod_scan
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
-from scout.lib.scan import (
-    ScanContext,
-    ScanOptions,
-    _scan_dir,
-    _scan_file,
-    scan,
-    update_from_walk,
-)
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
+
+# Alias for module in test to shorten imports and invokes:
+ScanContext = mod_scan.ScanContext
+ScanOptions = mod_scan.ScanOptions
+_scan_dir = mod_scan._scan_dir
+_scan_file = mod_scan._scan_file
+scan = mod_scan.scan
+update_from_walk = mod_scan.update_from_walk
 
 # Alias for factory:
 # Creates default file with override kwargs:
@@ -42,8 +44,8 @@ ADDED = RecordChange.ADDED
 MATCHED = RecordChange.MATCHED
 UPDATED = RecordChange.UPDATED
 
-# TODO: DELETME
-Tree = factory.Tree  # type: ignore[assignment]
+# Alias for the Tree fixture which has some created file trees
+Tree = factory.Tree
 
 
 def _fake_hash(rel: PPP) -> Hash:
@@ -384,3 +386,10 @@ class TestScan:
         dir_query = "SELECT count(*) FROM dir WHERE gone IS NOT NULL;"
         assert _committed(manifest, file_query) == (0,)
         assert _committed(manifest, dir_query) == (0,)
+
+    def test_missing_exclude_is_refused(self, tree: Tree, manifest: Manifest) -> None:
+        """An exclude naming nothing under root raises before a scan row opens."""
+        opt = ScanOptions(exclude=frozenset({PPP("nope")}))
+        with pytest.raises(Err.ExcludeMissing, match="nope"):
+            list(scan(manifest, ScanTally(), opt))
+        assert _committed(manifest, "SELECT count(*) FROM scan;") == (0,)
