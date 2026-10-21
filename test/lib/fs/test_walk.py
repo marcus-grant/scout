@@ -11,12 +11,20 @@ from contextlib import nullcontext
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import factory
 import pytest
 
 import scout.lib.error as Err
-from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, _read_dir, walk
+from scout.lib.fs.walk import (
+    FileStat,
+    WalkedDir,
+    WalkedPathSets,
+    _read_dir,
+    _read_entry,
+    walk,
+)
 
 # tree: Tree is a fixture that is the default case of mk_tree
 # Its shape from tmp_path as root is:
@@ -115,39 +123,57 @@ class TestWalkedPathSets:
         assert not WalkedPathSets(excluded={PPP("x")}).absent(PPP("x"))
 
 
+class TestReadEntry:
+    """_read_entry on mocked os.DirEntry values, no disk."""
+
+    def _entry(self, name: str, kind: str = "file", err: int | None = None) -> Mock:
+        """A mocked DirEntry of kind "dir", "file" or "link"; stat fails with err if set."""
+        (m := Mock(spec=os.DirEntry)).name = name
+        m.is_dir.return_value, m.is_file.return_value = kind == "dir", kind == "file"
+        m.stat.return_value = Mock(st_size=5, st_mtime_ns=9)
+        m.stat.side_effect = None if err is None else OSError(err, os.strerror(err))
+        return m
+
+    def test_dir_entry_is_its_name(self) -> None:
+        """A directory entry reads as its name."""
+        assert _read_entry(self._entry("c", "dir"), PPP("b/c")) == "c"
+
+    def test_file_entry_is_its_stat(self) -> None:
+        """A file entry reads as FileStat(name, size, mtime_ns)."""
+        ent = self._entry(n := "a.txt", "file")
+        assert _read_entry(ent, PPP(n)) == FileStat(n, 5, 9)
+
+    def test_symlink_entry_is_dropped(self) -> None:
+        """An entry that is neither dir nor file reads as None."""
+        assert _read_entry(self._entry("link", "link"), PPP("link")) is None
+
+    def test_failed_stat_is_unreadable(self) -> None:
+        """A stat failing with EIO reads as Unreadable at the entry's path."""
+        read = _read_entry(self._entry("b1.txt", err=errno.EIO), PPP("b"))
+        assert isinstance(read, Err.Unreadable)
+        assert (read.path, read.errno) == (PPP("b/b1.txt"), errno.EIO)
+
+    def test_vanished_entry_is_dropped(self) -> None:
+        """A stat failing with ENOENT reads as None."""
+        assert _read_entry(self._entry("b1.txt", err=errno.ENOENT), PPP("b")) is None
+
+
 class TestReadDir:
     """_read_dir reads one directory into one WalkedDir."""
 
-    def test_holds_file_stats_in_name_order(self, tree: Tree) -> None:
-        """Reading b gives files FileStat(b1.txt, 5, mtime) and
-        FileStat(b2.txt, 5, mtime) in name order, where each mtime equals
-        the file's st_mtime_ns."""
+    def test_reads_entries_in_name_order(self, tree: Tree) -> None:
+        """Read b gives files' stats & subdir in name order; . gives subdirs (b, d)."""
         b1_path, b2_path = tree.root / "b/b1.txt", tree.root / "b/b2.txt"
         b1_stat = FileStat("b1.txt", 5, b1_path.stat().st_mtime_ns)
         b2_stat = FileStat("b2.txt", 5, b2_path.stat().st_mtime_ns)
 
         b_walked = _read_dir(tree.root, PPP("b"))
         assert b_walked.files == (b1_stat, b2_stat)
-
-    def test_holds_subdir_names_in_name_order(self, tree: Tree) -> None:
-        """Reading '.' (root) gives subdirs ("b", "d"); reading b gives ("c",)."""
+        assert b_walked.subdirs == ("c",)
         assert _read_dir(tree.root, PPP(".")).subdirs == ("b", "d")
-        assert _read_dir(tree.root, PPP("b")).subdirs == ("c",)
 
-    def test_omits_excluded_files_and_dirs(self, tree: Tree) -> None:
-        """Reading . with ./.scout.db excluded gives no .scout.db in files;
-        reading b with b/c excluded gives subdirs ()."""
-        factory.mk_file(tree.root, ".scout.db", b"manifest")
-        exclude = frozenset({PPP(".scout.db"), PPP("b/c")})
-
-        walked_root = _read_dir(tree.root, PPP("."), exclude=exclude)
-        walked_b = _read_dir(tree.root, PPP("b"), exclude=exclude)
-
-        assert all(f.name != ".scout.db" for f in walked_root.files)
-        assert walked_b.subdirs == ()
-
-    def test_reports_excluded_entries(self, tree: Tree) -> None:
-        """Skipped entries are named in excluded: .scout.db at ., c at b."""
+    def test_excluded_entries_are_named_not_read(self, tree: Tree) -> None:
+        """Excluding .scout.db and b/c: both named in excluded, neither is read."""
         factory.mk_file(tree.root, ".scout.db", b"manifest")
         exclude = frozenset({PPP(".scout.db"), PPP("b/c")})
 
@@ -156,6 +182,8 @@ class TestReadDir:
 
         assert walked_root.excluded == (".scout.db",)
         assert walked_b.excluded == ("c",)
+        assert all(f.name != ".scout.db" for f in walked_root.files)
+        assert walked_b.subdirs == ()
 
     def test_omits_symlinks(self, tree: Tree) -> None:
         """Reading '.' with a symlink to file & symlink to directory, gives neither:
@@ -182,32 +210,17 @@ class TestReadDir:
         assert (walked.subdirs, walked.files) == ((), ())
         assert [(e.path, e.errno) for e in walked.errors] == [(PPP("b"), errno.EACCES)]
 
-    def test_failing_entry_is_reported(
+    def test_entry_error_lands_in_errors(
         self, tree: Tree, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Reading b when b1.txt's stat fails with EIO gives files with only
-        b2.txt, one error carrying path b/b1.txt and errno.EIO, and a
-        WalkedDir that is not unlistable."""
+        """b1.txt's stat failing with EIO lands in errors; b2.txt is still read."""
         _fail_stat(monkeypatch, tree.root, "b/b1.txt", errno.EIO)
-
         walked = _read_dir(tree.root, PPP("b"))
 
         assert [f.name for f in walked.files] == ["b2.txt"]
         errors = [(e.path, e.errno) for e in walked.errors]
         assert errors == [(PPP("b/b1.txt"), errno.EIO)]
         assert not walked.unlistable
-
-    def test_vanished_entry_is_left_out_unreported(
-        self, tree: Tree, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Reading b when b1.txt's stat fails with ENOENT gives files with
-        only b2.txt and no errors: the entry vanished after the listing."""
-        _fail_stat(monkeypatch, tree.root, "b/b1.txt", errno.ENOENT)
-
-        walked = _read_dir(tree.root, PPP("b"))
-
-        assert [f.name for f in walked.files] == ["b2.txt"]
-        assert walked.errors == ()
 
 
 class TestWalk:

@@ -70,48 +70,42 @@ def _unreadable(e: OSError, path: PPP) -> Err.Unreadable:
     return Err.Unreadable(msg, path=path, errno=e.errno)
 
 
+def _read_entry(ent: os.DirEntry, rel: PPP) -> str | FileStat | Err.Unreadable | None:
+    """Read one entry: a subdir's name, a file's stat, its error,
+    or None for a symlink or an entry that vanished after the listing."""
+    try:
+        if ent.is_dir(follow_symlinks=False):
+            return ent.name
+        if ent.is_file(follow_symlinks=False):
+            return FileStat(ent.name, (st := ent.stat()).st_size, st.st_mtime_ns)
+        return None
+    except OSError as e:
+        return _unreadable(e, rel / ent.name) if e.errno != errno.ENOENT else None
+
+
 def _read_dir(
     root: Path,
     rel: PPP,
     exclude: frozenset[PPP] = frozenset(),
 ) -> WalkedDir:
-    """One step of the walk: list root / rel with os.scandir,
-    entries in name order, & return what was seen as a WalkedDir:
-    subdirectory names & file stats, skipping symlinks & files in exclude.
-    If the directory cannot be listed, return it flagged unlistable,
-    with its one Unreadable in errors."""
+    """One step of the walk: list root / rel in name order into a WalkedDir,
+    naming excluded entries and reading the rest; an unlistable dir is flagged."""
     try:  # First check that the directory can be scanned
         with os.scandir(root / rel) as it:
             entries = sorted(it, key=lambda e: e.name)
     except OSError as e:  # If not, mark unlistable & return sparse WalkedDir
         return WalkedDir(rel, (), (), (_unreadable(e, rel),), unlistable=True)
 
-    # Prepare to loop over scandir 'entries' & accumulate info about it
-    child_dir_names: list[str] = []
-    child_files: list[FileStat] = []
-    excluded_names: list[str] = []
-    errors: tuple[Err.Unreadable, ...] = ()
-    for ent in entries:
-        ent_rel = rel / ent.name
-        if is_excluded(ent_rel, exclude):
-            excluded_names.append(ent.name)
-            continue  # If entry is excluded, skip entirely
-        try:  # Individual entries may fail at stat; if so report & skip
-            if ent.is_dir(follow_symlinks=False):
-                child_dir_names.append(ent.name)
-            elif ent.is_file(follow_symlinks=False):
-                stat = ent.stat()
-                child_files.append(FileStat(ent.name, stat.st_size, stat.st_mtime_ns))
-        except OSError as e:
-            # ENOENT: it vanished after the listing; left out, scan marks it gone later.
-            if e.errno != errno.ENOENT:
-                errors += (_unreadable(e, ent_rel),)
+    # Name the excluded entries, read the rest, and file each answer by kind
+    excluded = tuple(e.name for e in entries if is_excluded(rel / e.name, exclude))
+    skip_set = set(excluded)
+    read = tuple(_read_entry(e, rel) for e in entries if e.name not in skip_set)
     return WalkedDir(
         rel,
-        tuple(child_dir_names),
-        tuple(child_files),
-        errors,
-        excluded=tuple(excluded_names),
+        tuple(e for e in read if isinstance(e, str)),
+        tuple(e for e in read if isinstance(e, FileStat)),
+        tuple(e for e in read if isinstance(e, Err.Unreadable)),
+        excluded=excluded,
     )
 
 
