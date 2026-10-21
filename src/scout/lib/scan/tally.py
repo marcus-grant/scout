@@ -7,7 +7,7 @@ License: AGPL-3.0-or-later
 
 from dataclasses import dataclass
 
-import scout.lib.event as events
+from scout.lib import event
 from scout.lib.models import RecordChange
 
 
@@ -34,13 +34,13 @@ class ScanTally:
         self._errors = 0
         self._gone = 0
 
-    def see(self, event: events.Event) -> None:
+    def see(self, evt: event.Event) -> None:
         """Count one event: FileScanned by its change, RecordGone, ReadFailed."""
-        if isinstance(event, events.FileScanned):
-            self._counts[event.change] += 1
-        elif isinstance(event, events.RecordGone):
+        if isinstance(evt, event.FileScanned):
+            self._counts[evt.change] += 1
+        elif isinstance(evt, event.RecordGone):
             self._gone += 1
-        elif isinstance(event, events.ReadFailed):
+        elif isinstance(evt, event.ReadFailed):
             self._errors += 1
 
     def summary(self, started: int, finished: int) -> Summary:

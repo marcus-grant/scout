@@ -15,13 +15,7 @@ import factory
 from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
-from scout.lib.event import (
-    AccessLost,
-    FileScanned,
-    ReadFailed,
-    RecordExcluded,
-    RecordGone,
-)
+from scout.lib import event
 from scout.lib.fs.walk import WalkedDir
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, Hash, RecordChange
@@ -89,7 +83,7 @@ class TestScanFile:
             st = mk_stat(name="a.txt")
             result = _scan_file(_ctx(manifest), 0, PPP("."), st, None)
 
-        assert isinstance(result, FileScanned)
+        assert isinstance(result, event.FileScanned)
         assert manifest.files.get(0, "a.txt") == result.record
         assert result.record.hash == _fake_hash(PPP("a.txt"))
         assert result.record.hashed == 7
@@ -104,7 +98,7 @@ class TestScanFile:
 
         result = _scan_file(_ctx(manifest), 0, PPP("."), st, stored)
 
-        assert isinstance(result, FileScanned)
+        assert isinstance(result, event.FileScanned)
         assert result.record == stored
         assert manifest.files.get(0, "a.txt") == stored
 
@@ -117,7 +111,7 @@ class TestScanFile:
 
         act = _scan_file(_ctx(manifest, OFF), 0, PPP("."), st, stored)
 
-        assert isinstance(act, FileScanned)
+        assert isinstance(act, event.FileScanned)
         assert act.record.hash is None
         assert act.record.hashed is None
         assert act.record.stat.size == st.size
@@ -133,7 +127,7 @@ class TestScanFile:
 
         act = _scan_file(_ctx(manifest, hash_path=unreadable), 0, PPP("."), st, None)
 
-        assert isinstance(act, ReadFailed)
+        assert isinstance(act, event.ReadFailed)
         assert act.path == PPP("a.txt")
         assert act.error.path == act.path
         assert act.error.errno == errno.EACCES
@@ -160,7 +154,7 @@ class TestScanDir:
         records = list(_scan_dir(_ctx(manifest), walked))
 
         assert manifest.dirs.get(PPP("b")) is not None
-        assert [type(r) for r in records] == [FileScanned, FileScanned]
+        assert [type(r) for r in records] == [event.FileScanned, event.FileScanned]
         assert [r.path for r in records] == [PPP("b/b1.txt"), PPP("b/b2.txt")]
 
     def test_missing_name_is_marked_gone(self, manifest: Manifest) -> None:
@@ -173,7 +167,7 @@ class TestScanDir:
         records = list(_scan_dir(_ctx(manifest), walked))
 
         assert len(records) == 3
-        assert records[-1] == RecordGone(PPP("b/old.txt"))
+        assert records[-1] == event.RecordGone(PPP("b/old.txt"))
         q = "SELECT gone FROM file WHERE name = 'old.txt';"
         assert _committed(manifest, q) == (7,)
 
@@ -187,7 +181,7 @@ class TestScanDir:
 
         records = list(_scan_dir(_ctx(manifest), walked))
 
-        assert not any(isinstance(r, RecordGone) for r in records)
+        assert not any(isinstance(r, event.RecordGone) for r in records)
         q = "SELECT gone FROM file WHERE name = 'b1.txt';"
         assert _committed(manifest, q) == (None,)
 
@@ -199,7 +193,7 @@ class TestScanDir:
 
         records = list(_scan_dir(_ctx(manifest), walked))
         assert manifest.dirs.get(PPP("b/c")) is not None
-        assert records == [ReadFailed(PPP("b/c"), unreadable)]
+        assert records == [event.ReadFailed(PPP("b/c"), unreadable)]
 
     def test_unlistable_with_claims_reports_lost(self, manifest: Manifest) -> None:
         """An unlistable b with a file claimed in it: its ReadFailed, then AccessLost."""
@@ -209,7 +203,7 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
 
         records = list(_scan_dir(_ctx(manifest), walked))
-        assert records == [ReadFailed(PPP("b"), err), AccessLost(PPP("b"))]
+        assert records == [event.ReadFailed(PPP("b"), err), event.AccessLost(PPP("b"))]
 
     def test_unlistable_without_claims_reports_only_read_failed(
         self, manifest: Manifest
@@ -219,7 +213,7 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
 
         records = list(_scan_dir(_ctx(manifest), walked))
-        assert records == [ReadFailed(PPP("b"), err)]
+        assert records == [event.ReadFailed(PPP("b"), err)]
 
     def test_excluded_file_with_row_is_reported(self, manifest: Manifest) -> None:
         """An excluded name with a file row in the dir yields RecordExcluded."""
@@ -228,7 +222,7 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (), excluded=("x.txt",))
 
         records = list(_scan_dir(_ctx(manifest), walked))
-        assert records == [RecordExcluded(PPP("b/x.txt"))]
+        assert records == [event.RecordExcluded(PPP("b/x.txt"))]
 
     def test_excluded_dir_with_claims_is_reported(self, manifest: Manifest) -> None:
         """An excluded subdir with rows claimed under it yields RecordExcluded."""
@@ -237,7 +231,7 @@ class TestScanDir:
         walked = WalkedDir(PPP("b"), (), (), (), excluded=("c",))
 
         records = list(_scan_dir(_ctx(manifest), walked))
-        assert records == [RecordExcluded(PPP("b/c"))]
+        assert records == [event.RecordExcluded(PPP("b/c"))]
 
     def test_excluded_without_rows_is_silent(self, manifest: Manifest) -> None:
         """An excluded name the manifest has no rows for yields nothing."""
@@ -279,7 +273,7 @@ class TestUpdateFromWalk:
         walked = WalkedDir(PPP("b"), (), (), (err,), unlistable=True)
 
         records = list(update_from_walk(_ctx(manifest), [walked]))
-        assert not any(isinstance(r, RecordGone) for r in records)
+        assert not any(isinstance(r, event.RecordGone) for r in records)
         assert self._gone_counts(manifest) == (0, 0)
 
     def test_failed_subdir_entry_keeps_its_subtree(self, manifest: Manifest) -> None:
@@ -290,7 +284,7 @@ class TestUpdateFromWalk:
         walked = WalkedDir(PPP("."), (), (), (unreadable,))
 
         records = list(update_from_walk(_ctx(manifest), [walked]))
-        assert not any(isinstance(r, RecordGone) for r in records)
+        assert not any(isinstance(r, event.RecordGone) for r in records)
         assert self._gone_counts(manifest) == (0, 0)
 
     def test_walked_file_is_scanned(self, manifest: Manifest) -> None:
@@ -298,7 +292,8 @@ class TestUpdateFromWalk:
         walked = WalkedDir(PPP("."), (), (mk_stat(name="a.txt"),), ())
 
         records = list(update_from_walk(_ctx(manifest), [walked]))
-        assert [r.path for r in records if isinstance(r, FileScanned)] == [PPP("a.txt")]
+        records_by_path = [r.path for r in records if isinstance(r, event.FileScanned)]
+        assert records_by_path == [PPP("a.txt")]
 
     def test_unwalked_dir_is_marked_gone(self, manifest: Manifest) -> None:
         """A recorded dir b absent from a walk of the root yields RecordGone for b."""
@@ -306,7 +301,7 @@ class TestUpdateFromWalk:
         walked = WalkedDir(PPP("."), (), (), ())
 
         records = list(update_from_walk(_ctx(manifest), [walked]))
-        assert records == [RecordGone(PPP("b"))]
+        assert records == [event.RecordGone(PPP("b"))]
 
     def test_gone_subtree_ticks_the_manifest(self, manifest: Manifest) -> None:
         """A dir marked gone by the gone pass is committed on tick that follows it."""
@@ -326,11 +321,11 @@ class TestScan:
         the given tally counts them and the scan row records finished and 4 seen."""
         records = list(scan(manifest, tally := ScanTally()))
         summary = records[-1]
-        scanned = [r for r in records if isinstance(r, FileScanned)]
+        scanned = [r for r in records if isinstance(r, event.FileScanned)]
 
         assert isinstance(summary, Summary)
         assert [r.path for r in scanned] == sorted(tree.files)
-        assert not any(isinstance(r, RecordGone) for r in records)
+        assert not any(isinstance(r, event.RecordGone) for r in records)
         assert manifest.files.get(0, ".scout.db") is None
         assert summary.finished >= summary.started
         with sql.connect(manifest.db.path) as conn:
@@ -353,7 +348,7 @@ class TestScan:
         assert isinstance(summary, Summary)
         paths = ("b/b1.txt", "b/b2.txt", "b/c/empty.txt", "b/c", "b")
         expected = {PPP(p) for p in paths}
-        assert {r.path for r in records if isinstance(r, RecordGone)} == expected
+        assert {r.path for r in records if isinstance(r, event.RecordGone)} == expected
         assert (summary.gone, summary.matched) == (5, 1)
 
     def test_options_reach_the_context(self, tree: Tree, manifest: Manifest) -> None:

@@ -51,30 +51,31 @@ DEFAULT_OPTIONS = ScanOptions()
 def _scan_file(
     ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat, row: FileRecord | None
 ) -> event.FileScanned | event.ReadFailed:
-    """Bring one file's row current and say what was done.
-    MATCHED writes nothing; ADDED and UPDATED hash under hash_policy and upsert.
-    An unreadable file comes back as ReadFailed with nothing written."""
+    """Bring one file's row current and say what was done;
+    a match writes nothing, and an unreadable file writes nothing either."""
+    # Decide what the stat proves; a match keeps its row as it is
     rel = dir_path / stat.name
     change = reconcile.change(stat, row, hash_policy=ctx.hash_policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return event.FileScanned(rel, row, change)
 
+    # Build the fresh record, hashed as the policy asks
     fresh = FileRecord(dir_id, stat)
     prepared = hash_record(fresh, rel, ctx.hash_policy, ctx.started, ctx.hash_path)
     if isinstance(prepared, Err.Unreadable):
         return event.ReadFailed(rel, prepared)
+
+    # Write it and tick the manifest in the step that wrote
     upserted = ctx.manifest.files.upsert(prepared)
     ctx.manifest.wrote()
-
     return event.FileScanned(rel, upserted, change)
 
 
 def _scan_dir(ctx: ScanContext, walked: WalkedDir) -> Iterator[event.ScanEvent]:
     """Bring one walked directory's rows current, yielding as it goes.
-    Unlistable: ReadFaild, then AccessLost if manifest claims subtree exists; no writes.
-    Otherwise: upsert the dir, scan each listed file, mark the recorded
-    files it no longer lists gone, then report its entry errors."""
+    An unlistable dir is only reported; a listed one is written, then reported."""
+    # Unlistable: nothing was seen, so report the failure and any lost claims
     if walked.unlistable:
         yield from (event.ReadFailed(e.path, e) for e in walked.errors)
         claimed = ctx.manifest.claimed.counts(walked.path)
@@ -82,21 +83,25 @@ def _scan_dir(ctx: ScanContext, walked: WalkedDir) -> Iterator[event.ScanEvent]:
             yield event.AccessLost(walked.path)
         return
 
+    # Record the dir, then scan each listed file against its row
     d = ctx.manifest.dirs.upsert(walked.path)
     records = ctx.manifest.files.in_dir(d.id)
     by_name = {r.stat.name: r for r in records}
     for st in walked.files:
         yield _scan_file(ctx, d.id, walked.path, st, by_name.get(st.name))
 
+    # Mark the recorded files the listing no longer has gone
     for name in reconcile.missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         ctx.manifest.wrote()
         yield event.RecordGone(walked.path / name)
 
+    # Report excluded names the manifest still has rows for, untouched
     for n in walked.excluded:
         if n in by_name or ctx.manifest.dirs.get(walked.path / n):
             yield event.RecordExcluded(walked.path / n)
 
+    # Report each entry that could not be read, last
     yield from (event.ReadFailed(e.path, e) for e in walked.errors)
 
 
