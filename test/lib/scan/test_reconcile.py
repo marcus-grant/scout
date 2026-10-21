@@ -13,9 +13,10 @@ from b3c32 import code_from_chunks
 
 import scout.lib.error as Err
 from scout.lib import models
-from scout.lib.fs.walk import WalkedDir, WalkedPathSets
+from scout.lib.fs.walk import WalkedDir
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.reconcile import (
+    WalkedPathSets,
     reconcile_file_stat,
     reconcile_missing_dirs,
     reconcile_missing_files,
@@ -36,6 +37,52 @@ _HASH = models.Hash(code_from_chunks([b"a"], models.DEFAULT_BITS))
 _HASHED = models.FileRecord(0, _ST, _HASH, 1)
 # Same but for unhashed
 _UNHASHED = models.FileRecord(0, _ST)
+
+
+class TestWalkedPathSets:
+    """WalkedPathSets.see over constructed WalkedDir values."""
+
+    def test_records_walked_path(self) -> None:
+        """A dir with no errors adds its path to walked only."""
+        walked = WalkedPathSets()
+        walked.add(WalkedDir(PPP("a"), (), (), ()))
+
+        assert walked.walked == {PPP("a")}
+        assert walked.unreadable == set()
+
+    def test_records_excluded_paths(self) -> None:
+        """A dir's excluded names land in excluded as paths under it."""
+        walked = WalkedPathSets()
+        walked.add(WalkedDir(PPP("b"), (), (), (), excluded=("c",)))
+        assert walked.excluded == {PPP("b/c")}
+
+    def test_records_error_paths_as_unreadable(self) -> None:
+        """Each error's path is added to unreadable."""
+        err = Err.Unreadable("denied", path=PPP("a/x"), errno=13)
+        walk_with_error, walked = WalkedDir(PPP("a"), (), (), (err,)), WalkedPathSets()
+
+        walked.add(walk_with_error)
+        assert walked.unreadable == {PPP("a/x")}
+
+    def test_unwalked_path_is_absent(self) -> None:
+        """A path in neither set and under no unreadable path is absent."""
+        assert WalkedPathSets().absent(PPP("a"))
+
+    def test_walked_path_is_not_absent(self) -> None:
+        """A walked path is not absent."""
+        assert not WalkedPathSets(walked={PPP("a")}).absent(PPP("a"))
+
+    def test_unreadable_path_is_not_absent(self) -> None:
+        """An unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).absent(PPP("a"))
+
+    def test_path_under_unreadable_is_not_absent(self) -> None:
+        """A path under an unreadable path is not absent."""
+        assert not WalkedPathSets(unreadable={PPP("a")}).absent(PPP("a/b"))
+
+    def test_excluded_path_is_not_absent(self) -> None:
+        """An excluded path is not confirmed absent as per util.is_excluded."""
+        assert not WalkedPathSets(excluded={PPP("x")}).absent(PPP("x"))
 
 
 class TestReconcileMissingFiles:

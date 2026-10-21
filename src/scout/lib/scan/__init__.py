@@ -14,15 +14,11 @@ from pathlib import PurePosixPath as PPP
 import scout.lib.error as Err
 from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
 from scout.lib.fs.hash import hash_file
-from scout.lib.fs.walk import FileStat, WalkedDir, WalkedPathSets, walk
+from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
 from scout.lib.models import DEFAULT_BITS, FileRecord, Hash, RecordChange
+from scout.lib.scan import reconcile
 from scout.lib.scan.hashing import HashingPolicy, hash_record
-from scout.lib.scan.reconcile import (
-    reconcile_file_stat,
-    reconcile_missing_dirs,
-    reconcile_missing_files,
-)
 from scout.lib.scan.tally import ScanTally, Summary
 from scout.lib.util import to_rel
 
@@ -59,7 +55,7 @@ def _scan_file(
     MATCHED writes nothing; ADDED and UPDATED hash under hash_policy and upsert.
     An unreadable file comes back as ReadFailed with nothing written."""
     rel = dir_path / stat.name
-    change = reconcile_file_stat(stat, row, hash_policy=ctx.hash_policy)
+    change = reconcile.reconcile_file_stat(stat, row, hash_policy=ctx.hash_policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(rel, row, change)
@@ -93,7 +89,7 @@ def _scan_dir(
     for st in walked.files:
         yield _scan_file(ctx, d.id, walked.path, st, by_name.get(st.name))
 
-    for name in reconcile_missing_files(walked, records):
+    for name in reconcile.reconcile_missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         ctx.manifest.wrote()
         yield RecordGone(walked.path / name)
@@ -108,14 +104,14 @@ def update_from_walk(
     then each recorded dir the walk confirms absent is marked gone with its subtree,
     one RecordGone per path."""
     # Go through each walked dir, add to sets to track & yeild with _scan_dir of walked
-    walked_sets = WalkedPathSets()
+    walked_sets = reconcile.WalkedPathSets()
     for walked in walked_dirs:
         walked_sets.add(walked)
         yield from _scan_dir(ctx, walked)
 
     # Determine missing dirs & mark them gone; yield RecordGone for each
     records = ctx.manifest.dirs.descendants(PPP("."))
-    for missing in reconcile_missing_dirs(walked_sets, records):
+    for missing in reconcile.reconcile_missing_dirs(walked_sets, records):
         for path in ctx.manifest.gone_subtree.mark(missing, ctx.started):
             ctx.manifest.wrote()
             yield RecordGone(path)
