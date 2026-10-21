@@ -53,7 +53,7 @@ class WalkedPathSets:
         for err in walked.errors:
             self.unreadable.add(err.path)
 
-    def confirms_absent(self, path: PPP) -> bool:
+    def absent(self, path: PPP) -> bool:
         """True when the walk proves path absent: not walked, not unreadable,
         and under no unreadable path."""
         if is_excluded(path, self.excluded):

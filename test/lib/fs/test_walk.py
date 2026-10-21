@@ -220,20 +220,20 @@ class TestWalkedPathSets:
 
     def test_unwalked_path_is_absent(self) -> None:
         """A path in neither set and under no unreadable path is absent."""
-        assert WalkedPathSets().confirms_absent(PPP("a"))
+        assert WalkedPathSets().absent(PPP("a"))
 
     def test_walked_path_is_not_absent(self) -> None:
         """A walked path is not absent."""
-        assert not WalkedPathSets(walked={PPP("a")}).confirms_absent(PPP("a"))
+        assert not WalkedPathSets(walked={PPP("a")}).absent(PPP("a"))
 
     def test_unreadable_path_is_not_absent(self) -> None:
         """An unreadable path is not absent."""
-        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a"))
+        assert not WalkedPathSets(unreadable={PPP("a")}).absent(PPP("a"))
 
     def test_path_under_unreadable_is_not_absent(self) -> None:
         """A path under an unreadable path is not absent."""
-        assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a/b"))
+        assert not WalkedPathSets(unreadable={PPP("a")}).absent(PPP("a/b"))
 
     def test_excluded_path_is_not_absent(self) -> None:
         """An excluded path is not confirmed absent as per util.is_excluded."""
-        assert not WalkedPathSets(excluded={PPP("x")}).confirms_absent(PPP("x"))
+        assert not WalkedPathSets(excluded={PPP("x")}).absent(PPP("x"))

@@ -30,7 +30,7 @@ def reconcile_missing_dirs(
     walked_sets: WalkedPathSets, records: Iterable[DirRecord]
 ) -> tuple[PPP, ...]:
     """Return the paths of records the walk confirms absent, in record order."""
-    return tuple(r.path for r in records if walked_sets.confirms_absent(r.path))
+    return tuple(r.path for r in records if walked_sets.absent(r.path))
 
 
 def reconcile_file_stat(
