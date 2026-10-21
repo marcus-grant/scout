@@ -119,13 +119,13 @@ class TestMissingDirs:
         assert rec.missing_dirs(walked_sets, records) == (records[1].path,)
 
 
-class TestReconcileFileStat:
-    """reconcile_file_stat over every outcome, no fixture and no disk."""
+class TestChange:
+    """change over every outcome, no fixture and no disk."""
 
     @pytest.mark.parametrize("hash_policy", [OFF, NEED, ALL])
     def test_no_record_is_added(self, hash_policy: HashingPolicy) -> None:
         """No record: ADDED, whatever the hashing hash_policy."""
-        assert rec.reconcile_file_stat(_ST, None, hash_policy=hash_policy) == ADDED
+        assert rec.change(_ST, None, hash_policy=hash_policy) == ADDED
 
     @pytest.mark.parametrize("hash_policy", [OFF, NEED, ALL])
     @pytest.mark.parametrize("stored", [{"size": 6}, {"mtime": 101}])
@@ -136,20 +136,20 @@ class TestReconcileFileStat:
     ) -> None:
         """A record whose stat differs in size or mtime: UPDATED."""
         record = models.FileRecord(0, replace(_ST, **stored))
-        assert rec.reconcile_file_stat(_ST, record, hash_policy=hash_policy) == UPDATED
+        assert rec.change(_ST, record, hash_policy=hash_policy) == UPDATED
 
     def test_rehash_of_a_match_is_updated(self) -> None:
         """A matching hashed record with rehash set: UPDATED."""
-        assert rec.reconcile_file_stat(_ST, _HASHED, hash_policy=ALL) == UPDATED
+        assert rec.change(_ST, _HASHED, hash_policy=ALL) == UPDATED
 
     def test_unhashed_match_is_updated_when_hashing(self) -> None:
         """A matching record with no hash, hashing on: UPDATED."""
-        assert rec.reconcile_file_stat(_ST, _UNHASHED, hash_policy=NEED) == UPDATED
+        assert rec.change(_ST, _UNHASHED, hash_policy=NEED) == UPDATED
 
     def test_unhashed_match_is_matched_without_hashing(self) -> None:
         """A matching record with no hash, hashing off: MATCHED."""
-        assert rec.reconcile_file_stat(_ST, _UNHASHED, hash_policy=OFF) == MATCHED
+        assert rec.change(_ST, _UNHASHED, hash_policy=OFF) == MATCHED
 
     def test_hashed_match_is_matched(self) -> None:
         """A matching hashed record, hashing on, no rehash: MATCHED."""
-        assert rec.reconcile_file_stat(_ST, _HASHED, hash_policy=NEED) == MATCHED
+        assert rec.change(_ST, _HASHED, hash_policy=NEED) == MATCHED

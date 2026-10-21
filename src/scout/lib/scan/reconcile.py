@@ -42,9 +42,7 @@ class WalkedPathSets:
         return self.unreadable.isdisjoint(path.parents)
 
 
-def missing_files(
-    walked: WalkedDir, records: Iterable[FileRecord]
-) -> tuple[str, ...]:
+def missing_files(walked: WalkedDir, records: Iterable[FileRecord]) -> tuple[str, ...]:
     """Return the names of records missing from walked, in record order.
     A name is present when it is among walked.files or walked.errors;
     a failed entry was listed, so it exists and only its stat is unknown.
@@ -62,10 +60,8 @@ def missing_dirs(
     return tuple(r.path for r in records if walked_sets.absent(r.path))
 
 
-def reconcile_file_stat(
-    stat: FileStat,
-    record: FileRecord | None,
-    hash_policy: HashingPolicy,
+def change(
+    stat: FileStat, record: FileRecord | None, hash_policy: HashingPolicy
 ) -> RecordChange:
     """What record needs given stat and hash_policy; pure, writes nothing.
     ADDED with no record; UPDATED when the stat differs or the policy
@@ -74,9 +70,9 @@ def reconcile_file_stat(
     _NEED, _ALL = HashingPolicy.NEEDED, HashingPolicy.ALL  # Shortened aliases
 
     # Classify determines change type; only a match can be changed by the hash policy
-    change = RecordChange.classify(stat, record)
-    if change != RecordChange.MATCHED:
-        return change
+    classified = RecordChange.classify(stat, record)
+    if classified != RecordChange.MATCHED:
+        return classified
 
     # Logic for which RecordChange to return when the stat matches and we have a record
     assert record is not None, "MATCHED state can only happen with a record existing"

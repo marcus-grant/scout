@@ -55,7 +55,7 @@ def _scan_file(
     MATCHED writes nothing; ADDED and UPDATED hash under hash_policy and upsert.
     An unreadable file comes back as ReadFailed with nothing written."""
     rel = dir_path / stat.name
-    change = reconcile.reconcile_file_stat(stat, row, hash_policy=ctx.hash_policy)
+    change = reconcile.change(stat, row, hash_policy=ctx.hash_policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
         return FileScanned(rel, row, change)
