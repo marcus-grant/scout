@@ -2,6 +2,7 @@
 """Walk a tree in sorted DFS order, yielding one WalkedDir per directory.
 Author: Marcus
 Created: 2026-09-17
+Revised: [2026-10-21]
 License: AGPL-3.0-or-later
 """
 

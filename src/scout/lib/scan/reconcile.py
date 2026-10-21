@@ -2,6 +2,7 @@
 """Decide which records are missing from what a FS walk saw.
 Author: Marcus
 Created: 2026-10-15
+Revised: [2026-10-21]
 License: AGPL-3.0-or-later
 """
 
@@ -44,8 +45,8 @@ class WalkedPathSets:
 
 def missing_files(walked: WalkedDir, records: Iterable[FileRecord]) -> tuple[str, ...]:
     """Return the names of records missing from walked, in record order.
-    A name is present when it is among walked.files or walked.errors;
-    a failed entry was listed, so it exists and only its stat is unknown.
+    A name is present when it is among walked.files, walked.errors or
+    walked.excluded: failed and excluded entries were listed, so they exist.
     Pure: takes values, writes nothing."""
     stated = {st.name for st in walked.files}
     failed = {e.path.name for e in walked.errors}
