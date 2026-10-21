@@ -350,3 +350,13 @@ class TestScan:
         next(scan_iter := scan(manifest, ScanTally()))
         scan_iter.close()
         assert _committed(manifest, "SELECT finished FROM scan;") == (None,)
+
+    def test_excluded_rescan_keeps_rows(self, tree: Tree, manifest: Manifest) -> None:
+        """A rescan with b excluded marks nothing gone: b's rows stay as recorded."""
+        list(scan(manifest, ScanTally()))
+        list(scan(manifest, ScanTally(), ScanOptions(exclude=frozenset({PPP("b")}))))
+
+        file_query = "SELECT count(*) FROM file WHERE gone IS NOT NULL;"
+        dir_query = "SELECT count(*) FROM dir WHERE gone IS NOT NULL;"
+        assert _committed(manifest, file_query) == (0,)
+        assert _committed(manifest, dir_query) == (0,)

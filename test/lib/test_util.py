@@ -13,7 +13,7 @@ import pytest
 from assertion import assert_err_fields
 
 import scout.lib.error as Err
-from scout.lib.util import to_rel
+from scout.lib.util import is_excluded, to_rel
 
 
 class TestToRel:
@@ -49,3 +49,20 @@ class TestToRel:
     def test_root_itself_is_dot(self, tmp_path: Path) -> None:
         """root maps to PPP('.'), the root dir row's path."""
         assert to_rel(tmp_path, tmp_path) == PPP(".")
+
+
+class TestIsExcluded:
+    """is_excluded on plain PPP values, no disk."""
+
+    def test_listed_path_is_excluded(self) -> None:
+        """A path in exclude is excluded."""
+        assert is_excluded(PPP("a"), frozenset({PPP("a")}))
+
+    def test_path_under_listed_dir_is_excluded(self) -> None:
+        """A path below an excluded directory is excluded."""
+        assert is_excluded(PPP("a/b/c"), frozenset({PPP("a")}))
+
+    def test_sibling_sharing_a_prefix_is_not_excluded(self) -> None:
+        """With b excluded, ba and a.txt are not."""
+        assert not is_excluded(PPP("ba"), frozenset({PPP("b")}))
+        assert not is_excluded(PPP("a.txt"), frozenset({PPP("b")}))

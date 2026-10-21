@@ -20,7 +20,9 @@ def reconcile_missing_files(
     A name is present when it is among walked.files or walked.errors;
     a failed entry was listed, so it exists and only its stat is unknown.
     Pure: takes values, writes nothing."""
-    present = {st.name for st in walked.files} | {e.path.name for e in walked.errors}
+    stated = {st.name for st in walked.files}
+    failed = {e.path.name for e in walked.errors}
+    present = stated | failed | set(walked.excluded)
     return tuple(r.stat.name for r in records if r.stat.name not in present)
 
 

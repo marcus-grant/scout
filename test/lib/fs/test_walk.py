@@ -100,6 +100,17 @@ class TestReadDir:
         assert all(f.name != ".scout.db" for f in walked_root.files)
         assert walked_b.subdirs == ()
 
+    def test_reports_excluded_entries(self, tree: Tree) -> None:
+        """Skipped entries are named in excluded: .scout.db at ., c at b."""
+        factory.mk_file(tree.root, ".scout.db", b"manifest")
+        exclude = frozenset({PPP(".scout.db"), PPP("b/c")})
+
+        walked_root = _read_dir(tree.root, PPP("."), exclude=exclude)
+        walked_b = _read_dir(tree.root, PPP("b"), exclude=exclude)
+
+        assert walked_root.excluded == (".scout.db",)
+        assert walked_b.excluded == ("c",)
+
     def test_omits_symlinks(self, tree: Tree) -> None:
         """Reading '.' with a symlink to file & symlink to directory, gives neither:
         link.txt is not in files, linkc not in subdirs."""
@@ -188,17 +199,23 @@ class TestWalkedPathSets:
     def test_records_walked_path(self) -> None:
         """A dir with no errors adds its path to walked only."""
         walked = WalkedPathSets()
-        walked.add(WalkedDir(PPP("a"), (), (), ()))
 
+        walked.add(WalkedDir(PPP("a"), (), (), ()))
         assert walked.walked == {PPP("a")}
         assert walked.unreadable == set()
+
+    def test_records_excluded_paths(self) -> None:
+        """A dir's excluded names land in excluded as paths under it."""
+        walked = WalkedPathSets()
+        walked.add(WalkedDir(PPP("b"), (), (), (), excluded=("c",)))
+        assert walked.excluded == {PPP("b/c")}
 
     def test_records_error_paths_as_unreadable(self) -> None:
         """Each error's path is added to unreadable."""
         err = Err.Unreadable("denied", path=PPP("a/x"), errno=13)
         walk_with_error, walked = WalkedDir(PPP("a"), (), (), (err,)), WalkedPathSets()
-        walked.add(walk_with_error)
 
+        walked.add(walk_with_error)
         assert walked.unreadable == {PPP("a/x")}
 
     def test_unwalked_path_is_absent(self) -> None:
@@ -216,3 +233,7 @@ class TestWalkedPathSets:
     def test_path_under_unreadable_is_not_absent(self) -> None:
         """A path under an unreadable path is not absent."""
         assert not WalkedPathSets(unreadable={PPP("a")}).confirms_absent(PPP("a/b"))
+
+    def test_excluded_path_is_not_absent(self) -> None:
+        """An excluded path is not confirmed absent as per util.is_excluded."""
+        assert not WalkedPathSets(excluded={PPP("x")}).confirms_absent(PPP("x"))

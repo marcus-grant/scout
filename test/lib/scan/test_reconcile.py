@@ -43,10 +43,10 @@ class TestReconcileMissingFiles:
 
     def test_unlisted_record_is_missing(self) -> None:
         """A record not listed in the WalkedDir is missing; a listed one is not."""
-        walked = WalkedDir(PPP("b"), (), (models.FileStat("a.txt", 5, 100),), ())
+        walked = WalkedDir(PPP("b"), (), (models.FileStat("a.txt", 5, 9),), ())
         records = [
-            models.FileRecord(1, models.FileStat("a.txt", 5, 100)),
-            models.FileRecord(1, models.FileStat("old.txt", 5, 100)),
+            models.FileRecord(1, models.FileStat("a.txt", 5, 9)),
+            models.FileRecord(1, models.FileStat("old.txt", 5, 9)),
         ]
 
         assert reconcile_missing_files(walked, records) == ("old.txt",)
@@ -55,8 +55,13 @@ class TestReconcileMissingFiles:
         """A record whose entry failed in the WalkedDir is not missing."""
         errs = (Err.Unreadable("Permission denied", path=PPP("b/a.txt"), errno=13),)
         walked = WalkedDir(PPP("b"), (), (), errs)
-        records = [models.FileRecord(1, models.FileStat("a.txt", 5, 100))]
+        records = [models.FileRecord(1, models.FileStat("a.txt", 5, 9))]
+        assert reconcile_missing_files(walked, records) == ()
 
+    def test_excluded_entry_is_not_missing(self) -> None:
+        """A record whose entry was excluded in the WalkedDir is not missing."""
+        walked = WalkedDir(PPP("b"), (), (), (), excluded=("a.txt",))
+        records = [models.FileRecord(1, models.FileStat("a.txt", 5, 9))]
         assert reconcile_missing_files(walked, records) == ()
 
 

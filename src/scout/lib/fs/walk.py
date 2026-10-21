@@ -14,6 +14,7 @@ from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.models import FileStat
+from scout.lib.util import is_excluded
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class WalkedDir:
     unlistable is True when this directory itself could not be listed; its
     subdirs and files are then empty because nothing inside it could be seen,
     not because it holds nothing, and errors holds that one failure.
+    excluded names the entries skipped because exclude covers them.
     """
 
     path: PPP
@@ -31,25 +33,31 @@ class WalkedDir:
     files: tuple[FileStat, ...]
     errors: tuple[Err.Unreadable, ...]
     unlistable: bool = False
+    excluded: tuple[str, ...] = ()
 
 
 @dataclass
 class WalkedPathSets:
-    """What one walk covered:
-    every walked dir's path, and every path that could not be listed or read."""
+    """What one walk covered: every walked dir's path,
+    every path that could not be listed or read, and every path excluded."""
 
     walked: set[PPP] = field(default_factory=set)
     unreadable: set[PPP] = field(default_factory=set)
+    excluded: set[PPP] = field(default_factory=set)
 
     def add(self, walked: WalkedDir) -> None:
-        """Add walked's path to walked, and each error's path to unreadable."""
+        """Add walked's path to walked, each error's path to unreadable,
+        each excluded entry's path to excluded."""
         self.walked.add(walked.path)
+        self.excluded.update(walked.path / name for name in walked.excluded)
         for err in walked.errors:
             self.unreadable.add(err.path)
 
     def confirms_absent(self, path: PPP) -> bool:
         """True when the walk proves path absent: not walked, not unreadable,
         and under no unreadable path."""
+        if is_excluded(path, self.excluded):
+            return False
         if path in self.walked or path in self.unreadable:
             return False
         return self.unreadable.isdisjoint(path.parents)
@@ -81,10 +89,12 @@ def _read_dir(
     # Prepare to loop over scandir 'entries' & accumulate info about it
     child_dir_names: list[str] = []
     child_files: list[FileStat] = []
+    excluded_names: list[str] = []
     errors: tuple[Err.Unreadable, ...] = ()
     for ent in entries:
         ent_rel = rel / ent.name
-        if ent_rel in exclude:
+        if is_excluded(ent_rel, exclude):
+            excluded_names.append(ent.name)
             continue  # If entry is excluded, skip entirely
         try:  # Individual entries may fail at stat; if so report & skip
             if ent.is_dir(follow_symlinks=False):
@@ -96,7 +106,13 @@ def _read_dir(
             # ENOENT: it vanished after the listing; left out, scan marks it gone later.
             if e.errno != errno.ENOENT:
                 errors += (_unreadable(e, ent_rel),)
-    return WalkedDir(rel, tuple(child_dir_names), tuple(child_files), errors)
+    return WalkedDir(
+        rel,
+        tuple(child_dir_names),
+        tuple(child_files),
+        errors,
+        excluded=tuple(excluded_names),
+    )
 
 
 def walk(root: Path, exclude: frozenset[PPP] = frozenset()) -> Iterator[WalkedDir]:

@@ -5,6 +5,7 @@ Created: 2026-09-15
 License: AGPL-3.0-or-later
 """
 
+from collections.abc import Set as AbstractSet
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
@@ -27,3 +28,8 @@ def to_rel(path: Path | str, root: Path) -> PPP:
     if ".." in _path.parts:
         raise _make_rel_err(_path, root)
     return PPP(rel_str)
+
+
+def is_excluded(rel: PPP, exclude: AbstractSet[PPP]) -> bool:
+    """True when rel, or a directory above it, is in exclude."""
+    return rel in exclude or any(p in exclude for p in rel.parents)
