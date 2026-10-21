@@ -14,18 +14,11 @@ import factory
 import pytest
 from click.testing import CliRunner, Result
 
-import scout.cli.event as events
 import scout.lib.error as Err
+from scout.cli import event as cli_event
 from scout.cli import main
 from scout.cli.subcmd.scan import _bytes_progress, _translate_event, run_scan
-from scout.lib.event import (
-    AccessLost,
-    Event,
-    FileScanned,
-    ReadFailed,
-    RecordExcluded,
-    RecordGone,
-)
+from scout.lib import event as lib_event
 from scout.lib.manifest import Manifest
 from scout.lib.models import RecordChange
 from scout.lib.scan import ScanOptions
@@ -42,14 +35,14 @@ Tree = factory.Tree
 OFF = HashingPolicy.OFF
 NEEDED = HashingPolicy.NEEDED
 ALL = HashingPolicy.ALL
-# Alias for type of _translate_events arg for events it translates
-_EVT = FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded | Summary
+
+CliEvent = cli_event.CliEvent
 
 
 class TestTranslateEvent:
     """_translate_event on one constructed lib event per case."""
 
-    def act(self, e: _EVT) -> events.CliEvent:
+    def act(self, e: lib_event.ScanEvent | Summary) -> CliEvent:
         """Test ACT phase aliasing/shortening the function being tested."""
         return _translate_event(e)
 
@@ -57,34 +50,36 @@ class TestTranslateEvent:
         """FileScanned becomes ScanFile with its path, record and change."""
         record = factory.mk_file_record()
         fields = (PPP("a.txt"), record, RecordChange.ADDED)
-        assert self.act(FileScanned(*fields)) == events.ScanFile(*fields)
+        assert self.act(lib_event.FileScanned(*fields)) == cli_event.ScanFile(*fields)
 
     def test_record_gone_is_scan_gone(self) -> None:
         """RecordGone becomes ScanGone with its path."""
-        assert self.act(RecordGone(p := PPP("a.txt"))) == events.ScanGone(p)
+        assert self.act(lib_event.RecordGone(p := PPP("a.py"))) == cli_event.ScanGone(p)
 
     def test_read_failed_is_scan_error(self) -> None:
         """ReadFailed becomes ScanError with its path and error."""
         err = Err.Unreadable("x", p := PPP("a.txt"), errno=70)
-        assert self.act(ReadFailed(p, err)) == events.ScanError(p, err)
+        assert self.act(lib_event.ReadFailed(p, err)) == cli_event.ScanError(p, err)
 
     def test_access_lost_is_scan_access_lost(self) -> None:
         """AccessLost becomes ScanAccessLost with its path."""
-        assert self.act(AccessLost(p := PPP("a.txt"))) == events.ScanAccessLost(p)
+        evt = lib_event.AccessLost(p := PPP("a.txt"))
+        assert self.act(evt) == cli_event.ScanAccessLost(p)
 
     def test_record_excluded_is_scan_excluded(self) -> None:
         """RecordExcluded becomes ScanExcluded with its path."""
-        assert self.act(RecordExcluded(p := PPP("a.txt"))) == events.ScanExcluded(p)
+        evt = lib_event.RecordExcluded(p := PPP("a.txt"))
+        assert self.act(evt) == cli_event.ScanExcluded(p)
 
     def test_summary_is_scan_finished(self) -> None:
         """Summary becomes ScanFinished with every count and both timestamps."""
         args = (1, 2, 3, 4, 5, 6, 7)
-        assert self.act(Summary(*args)) == events.ScanFinished(*args)
+        assert self.act(Summary(*args)) == cli_event.ScanFinished(*args)
 
     def test_unknown_event_raises(self) -> None:
         """An Event with no case raises TypeError."""
         with pytest.raises(TypeError, match=r"scout\.lib\.event\.Event"):
-            self.act(Event())  # type: ignore
+            self.act(lib_event.Event())  # type: ignore
 
 
 class TestRunScan:
@@ -93,11 +88,10 @@ class TestRunScan:
     def test_emits_one_event_per_record(self, tree: Tree, manifest: Manifest) -> None:
         """Four ScanFile in DFS order then one ScanFinished with added 4;
         no ScanGone, no ScanError."""
-        seen: list[events.CliEvent] = []
-
+        seen: list[CliEvent] = []
         run_scan(manifest.db.path, ScanOptions(), lambda _: seen.append)
 
-        expect = [events.ScanFile] * 4 + [events.ScanFinished]
+        expect = [cli_event.ScanFile] * 4 + [cli_event.ScanFinished]
         assert [type(evt) for evt in seen] == expect
 
     def test_detail_reaches_meta(
@@ -113,10 +107,10 @@ class TestRunScan:
 
     def test_options_reach_the_scan(self, tree: Tree, manifest: Manifest) -> None:
         """The opt given to run_scan is the one scan runs with: OFF leaves hashes null."""
-        seen: list[events.CliEvent] = []
+        seen: list[CliEvent] = []
         run_scan(manifest.db.path, ScanOptions(OFF), lambda _: seen.append)
 
-        file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
+        file_scans = [e for e in seen if isinstance(e, cli_event.ScanFile)]
         assert len(file_scans) == 4
         assert all(e.file.hash is None for e in file_scans)
 

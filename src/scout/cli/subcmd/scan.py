@@ -13,16 +13,10 @@ from pathlib import Path
 
 import click
 
-import scout.cli.event as events
+from scout.cli import event as cli_event
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
-from scout.lib.event import (
-    AccessLost,
-    FileScanned,
-    ReadFailed,
-    RecordExcluded,
-    RecordGone,
-)
+from scout.lib import event as lib_event
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 from scout.lib.scan import ScanOptions
@@ -30,36 +24,31 @@ from scout.lib.scan import scan as lib_scan
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
 
+CliEvent = cli_event.CliEvent
 
-def _translate_event(
-    event: FileScanned
-    | RecordGone
-    | ReadFailed
-    | AccessLost
-    | RecordExcluded
-    | Summary,
-) -> events.CliEvent:
+
+def _translate_event(event: lib_event.ScanEvent | Summary) -> CliEvent:
     """Return the CliEvent for one lib scan event; raise TypeError if unknown."""
     match event:
-        case FileScanned():
-            return events.ScanFile(event.path, event.record, event.change)
-        case RecordGone():
-            return events.ScanGone(event.path)
-        case ReadFailed():
-            return events.ScanError(event.path, event.error)
-        case AccessLost():
-            return events.ScanAccessLost(event.path)
-        case RecordExcluded():
-            return events.ScanExcluded(event.path)
+        case lib_event.FileScanned():
+            return cli_event.ScanFile(event.path, event.record, event.change)
+        case lib_event.RecordGone():
+            return cli_event.ScanGone(event.path)
+        case lib_event.ReadFailed():
+            return cli_event.ScanError(event.path, event.error)
+        case lib_event.AccessLost():
+            return cli_event.ScanAccessLost(event.path)
+        case lib_event.RecordExcluded():
+            return cli_event.ScanExcluded(event.path)
         case Summary():
-            return events.ScanFinished(*astuple(event))
+            return cli_event.ScanFinished(*astuple(event))
     raise TypeError(f"no CliEvent translation for scan event: {type(event)}")
 
 
 def run_scan(
     path: Path,
     opt: ScanOptions,
-    make_emit: Callable[[ScanTally], Callable[[events.CliEvent], None]],
+    make_emit: Callable[[ScanTally], Callable[[CliEvent], None]],
 ) -> None:
     """Open the manifest at path, refresh its fs detail, scan it with opt,
     and emit each event translated to its CliEvent through make_emit(tally)."""
@@ -75,18 +64,18 @@ def run_scan(
         emit(_translate_event(result))
 
 
-def _emitter(verbose: bool, progress: bool) -> Callable[[events.CliEvent], None]:
+def _emitter(verbose: bool, progress: bool) -> Callable[[cli_event.CliEvent], None]:
     """Build the emit for the command: echo every event through porcelain,
     except ScanFile which is echoed only when verbose; when progress is set,
     also write one 'N files' line to stderr per ScanFile and ScanGone."""
     done = 0
 
-    def emit(event: events.CliEvent) -> None:
+    def emit(event: CliEvent) -> None:
         nonlocal done
-        if progress and isinstance(event, (events.ScanFile, events.ScanGone)):
+        if progress and isinstance(event, (cli_event.ScanFile, cli_event.ScanGone)):
             done += 1
             click.echo(f"{done} files", err=True)
-        if isinstance(event, events.ScanFile) and not verbose:
+        if isinstance(event, cli_event.ScanFile) and not verbose:
             return
         echo_porcelain(event)
 

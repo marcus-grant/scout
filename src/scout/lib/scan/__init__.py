@@ -12,13 +12,7 @@ from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
-from scout.lib.event import (
-    AccessLost,
-    FileScanned,
-    ReadFailed,
-    RecordExcluded,
-    RecordGone,
-)
+from scout.lib import event
 from scout.lib.fs.hash import hash_file
 from scout.lib.fs.walk import FileStat, WalkedDir, walk
 from scout.lib.manifest import Manifest
@@ -56,7 +50,7 @@ DEFAULT_OPTIONS = ScanOptions()
 
 def _scan_file(
     ctx: ScanContext, dir_id: int, dir_path: PPP, stat: FileStat, row: FileRecord | None
-) -> FileScanned | ReadFailed:
+) -> event.FileScanned | event.ReadFailed:
     """Bring one file's row current and say what was done.
     MATCHED writes nothing; ADDED and UPDATED hash under hash_policy and upsert.
     An unreadable file comes back as ReadFailed with nothing written."""
@@ -64,30 +58,28 @@ def _scan_file(
     change = reconcile.change(stat, row, hash_policy=ctx.hash_policy)
     if change is RecordChange.MATCHED:
         assert row is not None, "MATCHED implies a row"
-        return FileScanned(rel, row, change)
+        return event.FileScanned(rel, row, change)
 
     fresh = FileRecord(dir_id, stat)
     prepared = hash_record(fresh, rel, ctx.hash_policy, ctx.started, ctx.hash_path)
     if isinstance(prepared, Err.Unreadable):
-        return ReadFailed(rel, prepared)
+        return event.ReadFailed(rel, prepared)
     upserted = ctx.manifest.files.upsert(prepared)
     ctx.manifest.wrote()
 
-    return FileScanned(rel, upserted, change)
+    return event.FileScanned(rel, upserted, change)
 
 
-def _scan_dir(
-    ctx: ScanContext, walked: WalkedDir
-) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded]:
+def _scan_dir(ctx: ScanContext, walked: WalkedDir) -> Iterator[event.ScanEvent]:
     """Bring one walked directory's rows current, yielding as it goes.
     Unlistable: ReadFaild, then AccessLost if manifest claims subtree exists; no writes.
     Otherwise: upsert the dir, scan each listed file, mark the recorded
     files it no longer lists gone, then report its entry errors."""
     if walked.unlistable:
-        yield from (ReadFailed(e.path, e) for e in walked.errors)
+        yield from (event.ReadFailed(e.path, e) for e in walked.errors)
         claimed = ctx.manifest.claimed.counts(walked.path)
         if claimed.dirs or claimed.files:
-            yield AccessLost(walked.path)
+            yield event.AccessLost(walked.path)
         return
 
     d = ctx.manifest.dirs.upsert(walked.path)
@@ -99,18 +91,18 @@ def _scan_dir(
     for name in reconcile.missing_files(walked, records):
         ctx.manifest.files.mark_gone_one(d.id, name, ctx.started)
         ctx.manifest.wrote()
-        yield RecordGone(walked.path / name)
+        yield event.RecordGone(walked.path / name)
 
     for n in walked.excluded:
         if n in by_name or ctx.manifest.dirs.get(walked.path / n):
-            yield RecordExcluded(walked.path / n)
+            yield event.RecordExcluded(walked.path / n)
 
-    yield from (ReadFailed(e.path, e) for e in walked.errors)
+    yield from (event.ReadFailed(e.path, e) for e in walked.errors)
 
 
 def update_from_walk(
     ctx: ScanContext, walked_dirs: Iterable[WalkedDir]
-) -> Iterator[FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded]:
+) -> Iterator[event.ScanEvent]:
     """Bring the manifest current with one walk's output, yielding as it goes.
     Runs _scan_dir on each WalkedDir in order;
     then each recorded dir the walk confirms absent is marked gone with its subtree,
@@ -126,17 +118,12 @@ def update_from_walk(
     for missing in reconcile.missing_dirs(walked_sets, records):
         for path in ctx.manifest.gone_subtree.mark(missing, ctx.started):
             ctx.manifest.wrote()
-            yield RecordGone(path)
-
-
-_SCANRESULT = (
-    FileScanned | RecordGone | ReadFailed | AccessLost | RecordExcluded | Summary
-)
+            yield event.RecordGone(path)
 
 
 def scan(
     manifest: Manifest, tally: ScanTally, opt: ScanOptions = DEFAULT_OPTIONS
-) -> Generator[_SCANRESULT, None, None]:
+) -> Generator[event.ScanEvent | Summary, None, None]:
     """Walk manifest's root and bring every row current.
     Yields each event as it happens, seen by tally, then tally's Summary.
     Rows commit every batch_size writes; the manifest's own file is excluded.

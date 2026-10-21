@@ -54,3 +54,7 @@ class AccessLost(Event):
     """An unlistable dir with records claimed under it: its root-relative path."""
 
     path: PPP
+
+
+# Every event a scan yields before its Summary, and the tally sees each one.
+ScanEvent = FileScanned | RecordGone | RecordExcluded | ReadFailed | AccessLost
