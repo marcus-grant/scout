@@ -86,40 +86,6 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-interface
-
-Split from `scan-cli` on 2026-10-16: the lib-to-CLI boundary only,
-no terminal mechanics.
-
-- `git checkout -b ref/scan-interface`, from `main` after
-  `ref/scan-session` merges.
-- `cli/event.py` holds the `CliEvent` family only;
-  `subcmd/*` is flag parsing and wiring only.
-- Event naming, two grammars, no renames:
-  cli `<Verb><Fact>` (`ScanFile`), lib subject + past participle
-  (`FileScanned`); the translation reads as a visible grammar shift.
-- The translation is a pure function, lib event in, `CliEvent` out
-  (name provisional); `outcome` becomes `change` at `ScanFile`;
-  an unknown lib event raises, as in `porcelain`
-  (today's `match` in `run_scan` drops it silently);
-  tested with one constructed lib event per case, no scan, no tree,
-  no patch; the `AccessLost` to `ScanAccessLost` case shipped untested
-  in `ref/scan-missing-dirs` and gets its test here.
-- The Click callback builds the `ScanOptions` itself and `run_scan`
-  takes it whole, dropping its `hash_policy` and `on_progress` parameters.
-- `--exclude PATH`, repeatable, no short form (grep, tar and rsync
-  agree on the long name only): root-relative literal paths, fed to
-  `ScanOptions.exclude`; the stored pattern layer stays ROADMAP `### ignore`.
-- `run_scan` shrinks to open manifest, wire emitter, iterate;
-  its tests keep one wiring case, a real scan ending in `ScanFinished`;
-  `test_unreadable_maps_to_scan_error` and its `os.scandir` patch go,
-  covered by the translation's cases.
-- Gap from `ref/scan-session`: no test pins that an aborted scan leaves
-  the scan row's `finished` null (`test_abort_keeps_committed_batches`
-  was dropped); add one real-disk case to `TestScan` here.
-- Doc commit: `doc/architecture.md` gains the translation boundary.
-- Pln commit: delete this section.
-
 ### scan-cli
 
 Split from the old `scan-cli` on 2026-10-16: output and terminal
@@ -176,6 +142,19 @@ handling only; the lib boundary is `### scan-interface`.
   - porcelain rule stands: renderers produce lines; this object is
     the terminal handling around them; Rich later replaces it
     behind the same `log`/`status` seams.
+- Gaps from `ref/scan-interface`:
+  - `run_scan(path, opt, make_emit)`: the tally `make_emit` receives
+    has no reader yet; the `cli/emit.py` constructor becomes `make_emit`
+    and hands that tally to the status line.
+  - `-v` and `--progress` reach the emitter inside the callback's closure;
+    pass a frozen display choice instead if that wiring is tested as data.
+  - `TestScanCommand._invoke`, `test_default_prints_summary_only`,
+    `test_verbose_prints_file_lines` and `test_progress_writes_file_counts`
+    pin `_emitter`; they move to `cli/emit.py`'s tests when it replaces it.
+  - Module-name imports: `event` for one module, `lib_event` and
+    `cli_event` where both meet; CLI modules still import `events`,
+    `test/lib/scan/test_scan.py` rebinds names from `mod_scan`,
+    and `import scout.lib.error as Err` gets the same convention.
 - Doc commit: `doc/architecture.md` gains the adapter architecture,
   as settled by the 2026-09-22 discussion round.
 - Pln commit: delete this section.
