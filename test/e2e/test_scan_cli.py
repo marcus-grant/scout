@@ -227,6 +227,12 @@ class TestScan:
         for path in tree.files:
             assert third[path].hash == first[path].hash
             assert third[path].hashed == started
+        fourth_run = _scan(tree.root, "--exclude", "b")
+
+        excluded_matched = "added 0 updated 0 matched 1 gone 0 errors 0"
+        assert fourth_run.out == ("excluded b", excluded_matched)
+        assert fourth_run.err == ()
+        assert _files(db) == third
 
     def test_scan_without_manifest_fails(self, tree: Tree) -> None:
         """Scan a tree never initialized: nonzero exit, empty stdout, one

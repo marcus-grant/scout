@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import astuple
 from pathlib import Path
+from pathlib import PurePosixPath as PPP
 
 import click
 
@@ -96,14 +97,23 @@ def _bytes_progress(done: int) -> None:
         click.echo(f"{done} bytes", err=True)
 
 
+_HELP_SCAN_EXCLUDE = "Skip PATH under the root; repeatable"
+
+
 @scout_command("scan")
 @click.argument("path", type=click.Path(path_type=Path), default=".")
 @click.option("--no-hash", is_flag=True, help="Stat only; leave hashes untouched.")
 @click.option("--rehash", is_flag=True, help="Hash every file, matching or not.")
 @click.option("-v", "--verbose", is_flag=True, help="One line per file.")
 @click.option("--progress", is_flag=True, help="Files done and bytes on stderr.")
+@click.option("--exclude", multiple=True, metavar="PATH", help=_HELP_SCAN_EXCLUDE)
 def scan(
-    path: Path, no_hash: bool, rehash: bool, verbose: bool, progress: bool
+    path: Path,
+    no_hash: bool,
+    rehash: bool,
+    verbose: bool,
+    progress: bool,
+    exclude: tuple[str, ...],
 ) -> None:
     """Bring the manifest at PATH current with its root; PATH may be the root."""
     if no_hash and rehash:
@@ -114,5 +124,10 @@ def scan(
         hash_policy = HashingPolicy.ALL
     else:
         hash_policy = HashingPolicy.NEEDED
-    opt = ScanOptions(hash_policy, on_progress=_bytes_progress if progress else None)
+    prog = _bytes_progress if progress else None
+    for p in exclude:
+        if ".." in PPP(p).parts:
+            raise click.UsageError(f"--exclude {p} reaches outside the root")
+    excluded_rels = frozenset(PPP(p.lstrip("/")) for p in exclude)
+    opt = ScanOptions(hash_policy, on_progress=prog, exclude=excluded_rels)
     run_scan(path, opt, lambda _: _emitter(verbose, progress))

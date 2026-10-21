@@ -172,6 +172,25 @@ class TestScanCommand:
         """--rehash passes ScanOptions with hash_policy ALL."""
         assert self._options(monkeypatch, "--rehash").hash_policy == ALL
 
+    def test_excludes_reach_options(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Each --exclude PATH lands in ScanOptions.exclude as a PPP."""
+        argv = ("--exclude", "a", "--exclude", "b/c")
+        expect = frozenset({PPP("a"), PPP("b/c")})
+        assert self._options(monkeypatch, *argv).exclude == expect
+
+    def test_leading_slash_anchors_at_root(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--exclude /video is the root-relative video."""
+        argv, expect = ("--exclude", "/video"), frozenset({PPP("video")})
+        assert self._options(monkeypatch, *argv).exclude == expect
+
+    def test_dotdot_exclude_is_usage_error(self) -> None:
+        """--exclude ../x exits 2 naming the path."""
+        result = CliRunner().invoke(main, ["scan", "--exclude", "../x"])
+        assert result.exit_code == 2
+        assert "../x" in result.stderr
+
 
 class TestBytesProgress:
     """_bytes_progress writes a bytes line, or a spinner on a terminal."""
