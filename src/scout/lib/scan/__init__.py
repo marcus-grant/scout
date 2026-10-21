@@ -111,7 +111,7 @@ def update_from_walk(
 
     # Determine missing dirs & mark them gone; yield RecordGone for each
     records = ctx.manifest.dirs.descendants(PPP("."))
-    for missing in reconcile.reconcile_missing_dirs(walked_sets, records):
+    for missing in reconcile.missing_dirs(walked_sets, records):
         for path in ctx.manifest.gone_subtree.mark(missing, ctx.started):
             ctx.manifest.wrote()
             yield RecordGone(path)

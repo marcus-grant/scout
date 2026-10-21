@@ -108,15 +108,15 @@ class TestMissingFiles:
         assert rec.missing_files(walked, records) == ()
 
 
-class TestReconcileMissingDirs:
-    """reconcile_missing_dirs, no fixture and no disk."""
+class TestMissingDirs:
+    """missing_dirs, no fixture and no disk."""
 
     def test_unwalked_record_is_missing(self) -> None:
         """A record whose path was not walked is returned, in record order."""
         walked_sets = rec.WalkedPathSets(walked={PPP("a")})
         records = [models.DirRecord(1, PPP("a")), models.DirRecord(2, PPP("b"))]
 
-        assert rec.reconcile_missing_dirs(walked_sets, records) == (records[1].path,)
+        assert rec.missing_dirs(walked_sets, records) == (records[1].path,)
 
 
 class TestReconcileFileStat:
