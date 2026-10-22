@@ -84,15 +84,19 @@ A parameter that exists only to branch behavior is a missing type.
 Test-driven development is the default for any change that alters
 behavior.
 
-The rhythm for a PR is e2e first:
+The rhythm for a PR states its acceptance first:
 
-1. Write the e2e test for the PR's feature, marked skip.
-   It touches only the CLI (`CliRunner`, in-process) and the DB file
-   (`sqlite3`), never `scout.lib` internals.
-2. Identify the unit tests it depends on.
-   Green them red-green-refactor, one behavior at a time.
-3. Unskip the e2e test.
-   It going green is the PR's acceptance step.
+1. Plan the e2e claim the PR's feature adds, as a new test or as an
+   extension to an existing one, by name.
+   An e2e test touches only the CLI (`CliRunner`, in-process) and the
+   DB file (`sqlite3`), never `scout.lib` internals.
+2. Green the unit tests it depends on, red-green-refactor,
+   one behavior at a time.
+3. Write the e2e claim in the commit that makes it pass.
+   A PR that only restructures adds none;
+   the existing e2e tests guard it unchanged.
+
+e2e tests confirm a whole flow; they are never a behavior's only coverage.
 
 Red-green-refactor is a working rhythm, not a commit boundary.
 Every commit leaves the suite green.

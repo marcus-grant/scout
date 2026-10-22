@@ -76,6 +76,10 @@ class TestPorcelainScan:
         """ScanGone(b/x.txt) renders out ("gone b/x.txt",)."""
         assert porcelain(events.ScanGone(PPP("b/x.txt"))).out == ("gone b/x.txt",)
 
+    def test_excluded_line(self) -> None:
+        """ScanExcluded(b/c) renders out ("excluded b/c",)."""
+        assert porcelain(events.ScanExcluded(PPP("b/c"))).out == ("excluded b/c",)
+
     def test_error_line(self) -> None:
         """ScanError(b/c, Unreadable("Permission denied")) renders err
         ("b/c: Permission denied",) and empty out."""

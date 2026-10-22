@@ -2,18 +2,20 @@
 """Walk a tree in sorted DFS order, yielding one WalkedDir per directory.
 Author: Marcus
 Created: 2026-09-17
+Revised: [2026-10-21]
 License: AGPL-3.0-or-later
 """
 
 import errno
 import os
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
 
 import scout.lib.error as Err
 from scout.lib.models import FileStat
+from scout.lib.util import is_excluded
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,7 @@ class WalkedDir:
     unlistable is True when this directory itself could not be listed; its
     subdirs and files are then empty because nothing inside it could be seen,
     not because it holds nothing, and errors holds that one failure.
+    excluded names the entries skipped because exclude covers them.
     """
 
     path: PPP
@@ -31,28 +34,7 @@ class WalkedDir:
     files: tuple[FileStat, ...]
     errors: tuple[Err.Unreadable, ...]
     unlistable: bool = False
-
-
-@dataclass
-class WalkedPathSets:
-    """What one walk covered:
-    every walked dir's path, and every path that could not be listed or read."""
-
-    walked: set[PPP] = field(default_factory=set)
-    unreadable: set[PPP] = field(default_factory=set)
-
-    def add(self, walked: WalkedDir) -> None:
-        """Add walked's path to walked, and each error's path to unreadable."""
-        self.walked.add(walked.path)
-        for err in walked.errors:
-            self.unreadable.add(err.path)
-
-    def confirms_absent(self, path: PPP) -> bool:
-        """True when the walk proves path absent: not walked, not unreadable,
-        and under no unreadable path."""
-        if path in self.walked or path in self.unreadable:
-            return False
-        return self.unreadable.isdisjoint(path.parents)
+    excluded: tuple[str, ...] = ()
 
 
 def _unreadable(e: OSError, path: PPP) -> Err.Unreadable:
@@ -62,41 +44,43 @@ def _unreadable(e: OSError, path: PPP) -> Err.Unreadable:
     return Err.Unreadable(msg, path=path, errno=e.errno)
 
 
+def _read_entry(ent: os.DirEntry, rel: PPP) -> str | FileStat | Err.Unreadable | None:
+    """Read one entry: a subdir's name, a file's stat, its error,
+    or None for a symlink or an entry that vanished after the listing."""
+    try:
+        if ent.is_dir(follow_symlinks=False):
+            return ent.name
+        if ent.is_file(follow_symlinks=False):
+            return FileStat(ent.name, (st := ent.stat()).st_size, st.st_mtime_ns)
+        return None
+    except OSError as e:
+        return _unreadable(e, rel / ent.name) if e.errno != errno.ENOENT else None
+
+
 def _read_dir(
     root: Path,
     rel: PPP,
     exclude: frozenset[PPP] = frozenset(),
 ) -> WalkedDir:
-    """One step of the walk: list root / rel with os.scandir,
-    entries in name order, & return what was seen as a WalkedDir:
-    subdirectory names & file stats, skipping symlinks & files in exclude.
-    If the directory cannot be listed, return it flagged unlistable,
-    with its one Unreadable in errors."""
+    """One step of the walk: list root / rel in name order into a WalkedDir,
+    naming excluded entries and reading the rest; an unlistable dir is flagged."""
     try:  # First check that the directory can be scanned
         with os.scandir(root / rel) as it:
             entries = sorted(it, key=lambda e: e.name)
     except OSError as e:  # If not, mark unlistable & return sparse WalkedDir
         return WalkedDir(rel, (), (), (_unreadable(e, rel),), unlistable=True)
 
-    # Prepare to loop over scandir 'entries' & accumulate info about it
-    child_dir_names: list[str] = []
-    child_files: list[FileStat] = []
-    errors: tuple[Err.Unreadable, ...] = ()
-    for ent in entries:
-        ent_rel = rel / ent.name
-        if ent_rel in exclude:
-            continue  # If entry is excluded, skip entirely
-        try:  # Individual entries may fail at stat; if so report & skip
-            if ent.is_dir(follow_symlinks=False):
-                child_dir_names.append(ent.name)
-            elif ent.is_file(follow_symlinks=False):
-                stat = ent.stat()
-                child_files.append(FileStat(ent.name, stat.st_size, stat.st_mtime_ns))
-        except OSError as e:
-            # ENOENT: it vanished after the listing; left out, scan marks it gone later.
-            if e.errno != errno.ENOENT:
-                errors += (_unreadable(e, ent_rel),)
-    return WalkedDir(rel, tuple(child_dir_names), tuple(child_files), errors)
+    # Name the excluded entries, read the rest, and file each answer by kind
+    excluded = tuple(e.name for e in entries if is_excluded(rel / e.name, exclude))
+    skip_set = set(excluded)
+    read = tuple(_read_entry(e, rel) for e in entries if e.name not in skip_set)
+    return WalkedDir(
+        rel,
+        tuple(e for e in read if isinstance(e, str)),
+        tuple(e for e in read if isinstance(e, FileStat)),
+        tuple(e for e in read if isinstance(e, Err.Unreadable)),
+        excluded=excluded,
+    )
 
 
 def walk(root: Path, exclude: frozenset[PPP] = frozenset()) -> Iterator[WalkedDir]:

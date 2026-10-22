@@ -6,22 +6,24 @@ Created: 2026-09-21
 License: AGPL-3.0-or-later
 """
 
-import errno
-import os
-import sqlite3 as sql
 import sys
-from pathlib import Path
 from pathlib import PurePosixPath as PPP
+from unittest.mock import Mock
 
 import factory
 import pytest
 from click.testing import CliRunner, Result
 
-import scout.cli.event as events
+import scout.lib.error as Err
+from scout.cli import event as cli_event
 from scout.cli import main
-from scout.cli.subcmd.scan import _bytes_progress, run_scan
+from scout.cli.subcmd.scan import _bytes_progress, _translate_event, run_scan
+from scout.lib import event as lib_event
 from scout.lib.manifest import Manifest
+from scout.lib.models import RecordChange
+from scout.lib.scan import ScanOptions
 from scout.lib.scan.hashing import HashingPolicy
+from scout.lib.scan.tally import Summary
 
 # The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path), which is
 #   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
@@ -34,6 +36,51 @@ OFF = HashingPolicy.OFF
 NEEDED = HashingPolicy.NEEDED
 ALL = HashingPolicy.ALL
 
+CliEvent = cli_event.CliEvent
+
+
+class TestTranslateEvent:
+    """_translate_event on one constructed lib event per case."""
+
+    def act(self, e: lib_event.ScanEvent | Summary) -> CliEvent:
+        """Test ACT phase aliasing/shortening the function being tested."""
+        return _translate_event(e)
+
+    def test_file_scanned_is_scan_file(self) -> None:
+        """FileScanned becomes ScanFile with its path, record and change."""
+        record = factory.mk_file_record()
+        fields = (PPP("a.txt"), record, RecordChange.ADDED)
+        assert self.act(lib_event.FileScanned(*fields)) == cli_event.ScanFile(*fields)
+
+    def test_record_gone_is_scan_gone(self) -> None:
+        """RecordGone becomes ScanGone with its path."""
+        assert self.act(lib_event.RecordGone(p := PPP("a.py"))) == cli_event.ScanGone(p)
+
+    def test_read_failed_is_scan_error(self) -> None:
+        """ReadFailed becomes ScanError with its path and error."""
+        err = Err.Unreadable("x", p := PPP("a.txt"), errno=70)
+        assert self.act(lib_event.ReadFailed(p, err)) == cli_event.ScanError(p, err)
+
+    def test_access_lost_is_scan_access_lost(self) -> None:
+        """AccessLost becomes ScanAccessLost with its path."""
+        evt = lib_event.AccessLost(p := PPP("a.txt"))
+        assert self.act(evt) == cli_event.ScanAccessLost(p)
+
+    def test_record_excluded_is_scan_excluded(self) -> None:
+        """RecordExcluded becomes ScanExcluded with its path."""
+        evt = lib_event.RecordExcluded(p := PPP("a.txt"))
+        assert self.act(evt) == cli_event.ScanExcluded(p)
+
+    def test_summary_is_scan_finished(self) -> None:
+        """Summary becomes ScanFinished with every count and both timestamps."""
+        args = (1, 2, 3, 4, 5, 6, 7)
+        assert self.act(Summary(*args)) == cli_event.ScanFinished(*args)
+
+    def test_unknown_event_raises(self) -> None:
+        """An Event with no case raises TypeError."""
+        with pytest.raises(TypeError, match=r"scout\.lib\.event\.Event"):
+            self.act(lib_event.Event())  # type: ignore
+
 
 class TestRunScan:
     """run_scan on the default tree under the manifest fixture."""
@@ -41,80 +88,31 @@ class TestRunScan:
     def test_emits_one_event_per_record(self, tree: Tree, manifest: Manifest) -> None:
         """Four ScanFile in DFS order then one ScanFinished with added 4;
         no ScanGone, no ScanError."""
-        seen: list[events.CliEvent] = []
+        seen: list[CliEvent] = []
+        run_scan(manifest.db.path, ScanOptions(), lambda _: seen.append)
 
-        run_scan(manifest.db.path, seen.append, detail={})  # {} turns off fs meta
-
-        expect = [events.ScanFile] * 4 + [events.ScanFinished]
+        expect = [cli_event.ScanFile] * 4 + [cli_event.ScanFinished]
         assert [type(evt) for evt in seen] == expect
 
     def test_detail_reaches_meta(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """detail {"hostname": "h"} is readable from meta after the run, and
-        fs_meta.read_all is not called when detail is given."""
+        """What fs_meta.read_all returns for the root is written to meta."""
+        _ = tree  # Shutup LSPs, need side-effect of tree without referencing it
+        patch_str = "scout.cli.subcmd.scan.fs_meta.read_all"
+        monkeypatch.setattr(patch_str, lambda _: {"hostname": "h"})
 
-        def forbidden(*_args, **_kwargs):
-            _, _ = _args, _kwargs  # Shut up LSPs
-            raise AssertionError("read_all called with detail given")
-
-        _ = tree  # Shutup LSPs, need side-effect of tree though we don't reference it
-        monkeypatch.setattr("scout.cli.subcmd.scan.fs_meta.read_all", forbidden)
-
-        run_scan(manifest.db.path, lambda _: None, detail={"hostname": "h"})
-
+        run_scan(manifest.db.path, ScanOptions(), lambda _: lambda _: None)
         assert Manifest.open(manifest.db.path).meta.hostname == "h"
 
-    def test_no_hash_reaches_the_rows(self, tree: Tree, manifest: Manifest) -> None:
-        """hash False: every ScanFile has file.hash None."""
-        seen: list[events.CliEvent] = []
+    def test_options_reach_the_scan(self, tree: Tree, manifest: Manifest) -> None:
+        """The opt given to run_scan is the one scan runs with: OFF leaves hashes null."""
+        seen: list[CliEvent] = []
+        run_scan(manifest.db.path, ScanOptions(OFF), lambda _: seen.append)
 
-        run_scan(manifest.db.path, seen.append, hash_policy=OFF, detail={})
-
-        file_scans = [e for e in seen if isinstance(e, events.ScanFile)]
+        file_scans = [e for e in seen if isinstance(e, cli_event.ScanFile)]
         assert len(file_scans) == 4
         assert all(e.file.hash is None for e in file_scans)
-
-    def test_gone_maps_to_scan_gone(self, tree: Tree, manifest: Manifest) -> None:
-        """Run, delete a.txt, run again: seen holds ScanGone(a.txt)."""
-        seen: list[events.CliEvent] = []
-        run_scan(manifest.db.path, lambda _: None, detail={})
-        (tree.root / "a.txt").unlink()
-
-        run_scan(manifest.db.path, seen.append, detail={})
-
-        assert events.ScanGone(PPP("a.txt")) in seen
-
-    def test_unreadable_maps_to_scan_error(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """os.scandir failing on b: seen holds one ScanError whose path is b."""
-        seen: list[events.CliEvent] = []
-        real = os.scandir
-
-        def fake(p):
-            if Path(p) == tree.root / "b":
-                raise PermissionError(errno.EACCES, "Permission denied")
-            return real(p)
-
-        monkeypatch.setattr("scout.lib.fs.walk.os.scandir", fake)
-
-        run_scan(manifest.db.path, seen.append, detail={})
-
-        errors = [e for e in seen if isinstance(e, events.ScanError)]
-        assert [e.path for e in errors] == [PPP("b")]
-
-    def test_relative_path_excludes_own_manifest(
-        self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """With cwd at the root and path ".", no ScanFile names .scout.db."""
-        monkeypatch.chdir(tree.root)
-        seen: list[events.CliEvent] = []
-
-        run_scan(Path("."), seen.append, detail={})
-
-        paths = [e.path for e in seen if isinstance(e, events.ScanFile)]
-        assert PPP(".scout.db") not in paths
 
 
 class TestScanCommand:
@@ -126,6 +124,14 @@ class TestScanCommand:
         result = CliRunner().invoke(main, ["init", str(tree.root)])
         assert result.exit_code == 0, result.output
         return CliRunner().invoke(main, ["scan", str(tree.root), *argv])
+
+    def _options(self, monkeypatch: pytest.MonkeyPatch, *argv: str) -> ScanOptions:
+        """Invoke scan with argv and run_scan patched; return the options it got."""
+        run = Mock()
+        monkeypatch.setattr("scout.cli.subcmd.scan.run_scan", run)
+        result = CliRunner().invoke(main, ["scan", *argv])
+        assert result.exit_code == 0, result.output
+        return run.call_args.args[1]
 
     def test_default_prints_summary_only(self, tree: Tree) -> None:
         """init then scan: stdout is exactly the one ScanFinished line."""
@@ -143,9 +149,12 @@ class TestScanCommand:
         assert lines[:4] == [f"added {p}" for p in sorted(tree.files)]
         assert lines[4].startswith(f"added {len(tree.files)}")
 
-    def test_rehash_with_no_hash_is_usage_error(self, tree: Tree) -> None:
-        """scan --rehash --no-hash exits 2."""
-        assert self._invoke(tree, ["--rehash", "--no-hash"]).exit_code == 2
+    def test_rehash_with_no_hash_is_usage_error(self) -> None:
+        """scan --rehash --no-hash exits 2 naming the conflict."""
+        argv = ["scan", "--rehash", "--no-hash"]
+        result = CliRunner().invoke(main, argv)
+        assert result.exit_code == 2, f"expected exit 2, got {result}"
+        assert "--rehash cannot be used with --no-hash" in result.stderr
 
     def test_progress_writes_file_counts(self, tree: Tree) -> None:
         """scan --progress: output contains '1 files' through '4 files'."""
@@ -155,22 +164,32 @@ class TestScanCommand:
         counts = [s for s in result.stderr.splitlines() if s.endswith("files")]
         assert counts == [f"{n} files" for n in (1, 2, 3, 4)]
 
-    def test_no_hash_leaves_hashes_null(self, tree: Tree) -> None:
-        """scan --no-hash: every file row has hash NULL."""
-        result = self._invoke(tree, ["--no-hash"])
+    def test_no_hash_is_policy_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--no-hash passes ScanOptions with hash_policy OFF."""
+        assert self._options(monkeypatch, "--no-hash").hash_policy == OFF
 
-        assert result.exit_code == 0, result.output
-        with sql.connect(tree.root / ".scout.db") as conn:
-            q = "SELECT count(*) FROM file WHERE hash IS NOT NULL;"
-            assert conn.execute(q).fetchone() == (0,)
+    def test_rehash_is_policy_all(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--rehash passes ScanOptions with hash_policy ALL."""
+        assert self._options(monkeypatch, "--rehash").hash_policy == ALL
 
-    def test_rehash_updates_matching_rows(self, tree: Tree) -> None:
-        """scan, then scan --rehash: the second summary says updated 4."""
-        self._invoke(tree, [])
-        result = CliRunner().invoke(main, ["scan", str(tree.root), "--rehash"])
+    def test_excludes_reach_options(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Each --exclude PATH lands in ScanOptions.exclude as a PPP."""
+        argv = ("--exclude", "a", "--exclude", "b/c")
+        expect = frozenset({PPP("a"), PPP("b/c")})
+        assert self._options(monkeypatch, *argv).exclude == expect
 
-        assert result.exit_code == 0, result.output
-        assert result.stdout.startswith("added 0 updated 4 ")
+    def test_leading_slash_anchors_at_root(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--exclude /video is the root-relative video."""
+        argv, expect = ("--exclude", "/video"), frozenset({PPP("video")})
+        assert self._options(monkeypatch, *argv).exclude == expect
+
+    def test_dotdot_exclude_is_usage_error(self) -> None:
+        """--exclude ../x exits 2 naming the path."""
+        result = CliRunner().invoke(main, ["scan", "--exclude", "../x"])
+        assert result.exit_code == 2
+        assert "../x" in result.stderr
 
 
 class TestBytesProgress:

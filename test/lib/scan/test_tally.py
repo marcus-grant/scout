@@ -11,7 +11,7 @@ import factory
 import pytest
 
 import scout.lib.error as Err
-import scout.lib.event as events
+from scout.lib import event
 from scout.lib.models import RecordChange
 from scout.lib.scan.tally import ScanTally, Summary
 
@@ -28,26 +28,26 @@ class TestScanTally:
     def test_file_scanned_counts_by_change(self, tally: ScanTally) -> None:
         """One FileScanned per change gives added, updated, matched of 1 each."""
         for change in RecordChange:
-            tally.see(events.FileScanned(PPP("a.txt"), mk_frec(), change))
+            tally.see(event.FileScanned(PPP("a.txt"), mk_frec(), change))
 
         assert tally.summary(1, 2) == Summary(1, 2, 1, 1, 1, 0, 0)
 
     def test_gone_and_errors_count(self, tally: ScanTally) -> None:
         """A RecordGone counts as gone; a ReadFailed counts as an error."""
-        tally.see(events.RecordGone(PPP("b")))
+        tally.see(event.RecordGone(PPP("b")))
         err = Err.Unreadable("denied", path=PPP("c"), errno=13)
-        tally.see(events.ReadFailed(PPP("c"), err))
+        tally.see(event.ReadFailed(PPP("c"), err))
         assert tally.summary(1, 2) == Summary(1, 2, 0, 0, 0, 1, 1)
 
     def test_access_lost_counts_nothing(self, tally: ScanTally) -> None:
         """An AccessLost changes no count."""
-        tally.see(events.AccessLost(PPP("b")))
+        tally.see(event.AccessLost(PPP("b")))
         assert tally.summary(1, 2) == Summary(1, 2, 0, 0, 0, 0, 0)
 
     def test_files_seen_sums_every_change(self, tally: ScanTally) -> None:
         """files_seen is the sum of added, updated and matched."""
         for change in RecordChange:
-            tally.see(events.FileScanned(PPP("a.txt"), mk_frec(), change))
+            tally.see(event.FileScanned(PPP("a.txt"), mk_frec(), change))
 
-        tally.see(events.RecordGone(PPP("b")))
+        tally.see(event.RecordGone(PPP("b")))
         assert tally.files_seen() == 3

@@ -59,6 +59,13 @@ class ScanAccessLost(CliEvent):
 
 
 @dataclass(frozen=True)
+class ScanExcluded(CliEvent):
+    """One recorded path the scan left untouched because it was excluded."""
+
+    path: PPP
+
+
+@dataclass(frozen=True)
 class ScanFinished(CliEvent):
     """A scan ended: its window and the count per outcome, errors, gone."""
 

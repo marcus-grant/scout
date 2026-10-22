@@ -39,16 +39,21 @@ planned.
 - Ignore patterns for scan:
   - likely one `ignore` table with its repo;
     - patterns applied by the scanner at walk time.
+- Glob excludes are required here, beside the literal paths that exist:
+  - `ScanOptions.exclude` and `scan --exclude PATH` take literal
+    root-relative paths, no patterns;
+  - a pattern changes only `util.is_excluded`; the walk already reports
+    what it skipped, so reconciliation and `RecordExcluded` need nothing.
 - Needs a pattern language decision;
   - *(gitignore syntax or globs)* and management verbs;
-    - interaction with `gone` when patterns change.
-- Scan already skips its own repo file without this;
-  - that is hard-coded, not a pattern.
+    - interaction with `gone` when patterns change;
+    - the syntax is where root-relative versus `pwd`-relative paths
+      get revisited (git's `:/` is the precedent).
+- A scan row should record what it excluded;
+  - today the manifest cannot tell an excluded subtree from a current one;
+  - that is a schema change.
 - Scan already skips its own repo file without this;
   - that is hard-coded, not a repo-persisted pattern.
-  - `ScanOptions.exclude` and the `--exclude PATH` flag (`### scan-cli`)
-    take literal root-relative paths, no patterns; this section adds
-    the stored, pattern-based layer on top.
 
 ### comm
 
@@ -111,6 +116,18 @@ planned.
   - When to adopt weighs the measured burden against the change's
     complexity and other priorities.
 
+### rel-path
+
+- Stored paths are `PurePosixPath` by convention only;
+  a type of its own would carry what the convention leaves to callers:
+  - validation, root-relative with no `..`, as `DirRepo._check` does now;
+  - resolution against a root to a `Path` for fs actions;
+  - the path functions now in `util` (`to_rel`, `is_excluded`).
+- Candidate names: `Rel`, `RelPath`, `RelativePath`; undecided.
+- Sub-class `PurePosixPath` is clean only on Python 3.12 and later,
+  through `with_segments`; before that, derived paths lose the subclass.
+- `PPP` is in every repo, event and test, so this is its own PR.
+
 ### comment
 
 - `scout comment [repo] [TEXT]`: get-set verb like `scout root`.
@@ -130,6 +147,14 @@ planned.
   given on the CLI, so an interrupted run picks up where the budget
   left off.
 
+### scan-steps
+
+- A second simplifying pass over `src/scout/lib/scan/`, mid-dogfooding:
+  - handlers for each step of `_scan_dir`, from what dogfooding shows
+    is hard to follow or to change;
+  - the unlistable branch is the first candidate, since it shares
+    no state with the listed path.
+
 ### observation-log
 
 - A possible table: one row per file per scan with its outcome, and
@@ -143,12 +168,13 @@ planned.
 
 - Scan is all-encompassing and needed early, so parts later operations
   are likely to share are built inside `src/scout/lib/scan/` first.
-  - Grouped by subject (`file_stats.py`, `missing.py`),
-    - each a reconciliation that writes nothing;
+  - The reconciliations live in `reconcile.py`, a stage per module;
+    - each writes nothing;
       - writes stay repo calls in scan's steps, no apply function; provisional.
-  - Walk coverage, `WalkedPathSets`, lives beside the walk
-    in `src/scout/lib/fs/walk.py`.
-  - Lib events are lib-wide from the start, in `src/scout/lib/event.py`.
+  - Walk coverage, `WalkedPathSets`, lives in `reconcile.py` with them,
+    since it reads no disk and only reconciliation asks it.
+  - Lib events are lib-wide from the start, in `src/scout/lib/event.py`,
+    with each verb's union named beside them (`ScanEvent`).
 - Grouping by subject is expected to get in the way once `ls`, `has`,
   `diff`, `comm` or `status` arrive.
   - Each of those starts by deciding what moves out of scan's package
@@ -159,6 +185,18 @@ planned.
   - "verb" is used for the lib layer across the docs and code, so the
     rename is decided once, for all of them;
   - where shared reconciliations, applies and events finally live.
+
+### nested-manifests
+
+- Needed early after MVP; behavior undecided between:
+  - excluding a nested manifest's whole subtree by default;
+  - or using every nested manifest along with the parent,
+    each operating only within its own subtree.
+- Either starts from the walk noticing a nested root;
+  - the walk-reported exclusion from `ref/scan-interface` is that seam.
+- Today only the scanning manifest's own `.scout.db` is excluded;
+  - a nested `.scout.db` is scanned as an ordinary file,
+    rehashed whenever it changes.
 
 ### progress
 

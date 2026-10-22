@@ -7,15 +7,17 @@ License: AGPL-3.0-or-later
 
 import itertools
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
+from dataclasses import astuple
 from pathlib import Path
+from pathlib import PurePosixPath as PPP
 
 import click
 
-import scout.cli.event as events
+from scout.cli import event as cli_event
 from scout.cli.command import scout_command
 from scout.cli.render import echo_porcelain
-from scout.lib.event import AccessLost, FileScanned, ReadFailed, RecordGone
+from scout.lib import event as lib_event
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 from scout.lib.scan import ScanOptions
@@ -23,64 +25,58 @@ from scout.lib.scan import scan as lib_scan
 from scout.lib.scan.hashing import HashingPolicy
 from scout.lib.scan.tally import ScanTally, Summary
 
+CliEvent = cli_event.CliEvent
+
+
+def _translate_event(event: lib_event.ScanEvent | Summary) -> CliEvent:
+    """Return the CliEvent for one lib scan event; raise TypeError if unknown."""
+    match event:
+        case lib_event.FileScanned():
+            return cli_event.ScanFile(event.path, event.record, event.change)
+        case lib_event.RecordGone():
+            return cli_event.ScanGone(event.path)
+        case lib_event.ReadFailed():
+            return cli_event.ScanError(event.path, event.error)
+        case lib_event.AccessLost():
+            return cli_event.ScanAccessLost(event.path)
+        case lib_event.RecordExcluded():
+            return cli_event.ScanExcluded(event.path)
+        case Summary():
+            return cli_event.ScanFinished(*astuple(event))
+    raise TypeError(f"no CliEvent translation for scan event: {type(event)}")
+
 
 def run_scan(
     path: Path,
-    emit: Callable[[events.CliEvent], None],
-    *,
-    hash_policy: HashingPolicy = HashingPolicy.NEEDED,
-    on_progress: Callable[[int], None] | None = None,
-    detail: Mapping[str, str | None] | None = None,
+    opt: ScanOptions,
+    make_emit: Callable[[ScanTally], Callable[[CliEvent], None]],
 ) -> None:
-    """Open the manifest at path (a directory means its DEFAULT_NAME),
-    refresh the fs detail rows, then run scan and emit one event per record:
-    Scanned to ScanFile, Gone, to ScanGone,
-    Unreadable to ScanError, AccessLost to ScanAccessLost, Summary to ScanFinished.
-    Detail replaces fs_meta.read_all(root) when given, for tests."""
+    """Open the manifest at path, refresh its fs detail, scan it with opt,
+    and emit each event translated to its CliEvent through make_emit(tally)."""
     # Open and update manifest with fs meta details
     manifest = Manifest.open(path)
     root = Path(manifest.meta.root)
-    detail = detail if detail is not None else fs_meta.read_all(root)
-    manifest.meta.write_fs_detail(detail)
+    manifest.meta.write_fs_detail(fs_meta.read_all(root))
 
-    # Start the scan and iterate results to be mapped to CLI events
-    opt = ScanOptions(hash_policy=hash_policy, on_progress=on_progress)
-    for result in lib_scan(manifest, ScanTally(), opt):
-        match result:
-            case FileScanned():
-                emit(events.ScanFile(result.path, result.record, result.change))
-            case RecordGone():
-                emit(events.ScanGone(result.path))
-            case ReadFailed():
-                emit(events.ScanError(result.path, result.error))
-            case AccessLost():
-                emit(events.ScanAccessLost(result.path))
-            case Summary():
-                emit(
-                    events.ScanFinished(
-                        result.started,
-                        result.finished,
-                        result.added,
-                        result.updated,
-                        result.matched,
-                        result.errors,
-                        result.gone,
-                    )
-                )
+    # Scan and emit each lib event as its CliEvent, sharing one tally:
+    # lib_scan counts into it, and the emitter make_emit builds reads it
+    emit = make_emit(tally := ScanTally())
+    for result in lib_scan(manifest, tally, opt):
+        emit(_translate_event(result))
 
 
-def _emitter(verbose: bool, progress: bool) -> Callable[[events.CliEvent], None]:
+def _emitter(verbose: bool, progress: bool) -> Callable[[cli_event.CliEvent], None]:
     """Build the emit for the command: echo every event through porcelain,
     except ScanFile which is echoed only when verbose; when progress is set,
     also write one 'N files' line to stderr per ScanFile and ScanGone."""
     done = 0
 
-    def emit(event: events.CliEvent) -> None:
+    def emit(event: CliEvent) -> None:
         nonlocal done
-        if progress and isinstance(event, (events.ScanFile, events.ScanGone)):
+        if progress and isinstance(event, (cli_event.ScanFile, cli_event.ScanGone)):
             done += 1
             click.echo(f"{done} files", err=True)
-        if isinstance(event, events.ScanFile) and not verbose:
+        if isinstance(event, cli_event.ScanFile) and not verbose:
             return
         echo_porcelain(event)
 
@@ -101,14 +97,23 @@ def _bytes_progress(done: int) -> None:
         click.echo(f"{done} bytes", err=True)
 
 
+_HELP_SCAN_EXCLUDE = "Skip PATH under the root; repeatable"
+
+
 @scout_command("scan")
 @click.argument("path", type=click.Path(path_type=Path), default=".")
 @click.option("--no-hash", is_flag=True, help="Stat only; leave hashes untouched.")
 @click.option("--rehash", is_flag=True, help="Hash every file, matching or not.")
 @click.option("-v", "--verbose", is_flag=True, help="One line per file.")
 @click.option("--progress", is_flag=True, help="Files done and bytes on stderr.")
+@click.option("--exclude", multiple=True, metavar="PATH", help=_HELP_SCAN_EXCLUDE)
 def scan(
-    path: Path, no_hash: bool, rehash: bool, verbose: bool, progress: bool
+    path: Path,
+    no_hash: bool,
+    rehash: bool,
+    verbose: bool,
+    progress: bool,
+    exclude: tuple[str, ...],
 ) -> None:
     """Bring the manifest at PATH current with its root; PATH may be the root."""
     if no_hash and rehash:
@@ -119,9 +124,10 @@ def scan(
         hash_policy = HashingPolicy.ALL
     else:
         hash_policy = HashingPolicy.NEEDED
-    run_scan(
-        path,
-        _emitter(verbose, progress),
-        hash_policy=hash_policy,
-        on_progress=_bytes_progress if progress else None,
-    )
+    prog = _bytes_progress if progress else None
+    for p in exclude:
+        if ".." in PPP(p).parts:
+            raise click.UsageError(f"--exclude {p} reaches outside the root")
+    excluded_rels = frozenset(PPP(p.lstrip("/")) for p in exclude)
+    opt = ScanOptions(hash_policy, on_progress=prog, exclude=excluded_rels)
+    run_scan(path, opt, lambda _: _emitter(verbose, progress))
