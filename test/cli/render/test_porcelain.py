@@ -14,8 +14,7 @@ import pytest
 
 import scout.lib.error as Err
 from scout.cli import event
-from scout.cli.render import Output
-from scout.cli.render.porcelain import porcelain
+from scout.cli.render import Output, porcelain
 from scout.lib.models import RecordChange
 
 
@@ -35,32 +34,32 @@ class TestPorcelainInitDone:
     def test_success_wording(self) -> None:
         """The exact success line, fully literal, pinned once."""
         evt = event.InitDone(Path("/data/.scout.db"), Path("/data"), missing=())
-        assert porcelain(evt).out == (
+        assert porcelain.render(evt).out == (
             "Initialized scout manifest /data/.scout.db for /data",
         )
 
     def test_missing_wording(self) -> None:
         """The exact could-not-read line, fully literal, pinned once."""
         evt = event.InitDone(Path("/data/.scout.db"), Path("/data"), ("fs_uuid",))
-        assert porcelain(evt).err == ("could not read fs_uuid",)
+        assert porcelain.render(evt).err == ("could not read fs_uuid",)
 
     def test_success_has_no_err_lines(self) -> None:
         """Nothing missing means an empty err stream."""
         evt = event.InitDone(Path("/data/.scout.db"), Path("/data"), missing=())
-        assert porcelain(evt).err == ()
+        assert porcelain.render(evt).err == ()
 
     def test_missing_details_each_get_a_line(self) -> None:
         """One err line per missing entry, out unchanged, via templates."""
         repo = (root := Path("/data")) / ".scout.db"
         missing = ("fs_uuid", "hostname")
-        out = porcelain(event.InitDone(repo, root, missing))
+        out = porcelain.render(event.InitDone(repo, root, missing))
         assert out.out == self._expected_success_out(repo, root)
         assert out.err == self._expected_missing_err(missing)
 
     def test_unknown_event_raises(self) -> None:
         """An event type porcelain does not know raises, not silence."""
         with pytest.raises(TypeError):
-            porcelain(object())  # type: ignore[arg-type]
+            porcelain.render(object())  # type: ignore[arg-type]
 
 
 class TestPorcelainScan:
@@ -71,16 +70,16 @@ class TestPorcelainScan:
         args = (PPP("b/x.txt"), factory.mk_file_record(), RecordChange.ADDED)
         evt = event.ScanFile(*args)
 
-        assert porcelain(evt).out == ("added b/x.txt",)
-        assert porcelain(evt).err == ()
+        assert porcelain.render(evt).out == ("added b/x.txt",)
+        assert porcelain.render(evt).err == ()
 
     def test_gone_line(self) -> None:
         """ScanGone(b/x.txt) renders out ("gone b/x.txt",)."""
-        assert porcelain(event.ScanGone(PPP("b/x.txt"))).out == ("gone b/x.txt",)
+        assert porcelain.render(event.ScanGone(PPP("b/x.txt"))).out == ("gone b/x.txt",)
 
     def test_excluded_line(self) -> None:
         """ScanExcluded(b/c) renders out ("excluded b/c",)."""
-        assert porcelain(event.ScanExcluded(PPP("b/c"))).out == ("excluded b/c",)
+        assert porcelain.render(event.ScanExcluded(PPP("b/c"))).out == ("excluded b/c",)
 
     def test_error_line(self) -> None:
         """ScanError(b/c, Unreadable("Permission denied")) renders err
@@ -88,12 +87,12 @@ class TestPorcelainScan:
         p, msg = PPP("b/c"), "Permission denied"
         evt = event.ScanError(p, Err.Unreadable(msg, path=p))
 
-        assert porcelain(evt) == Output(err=("b/c: Permission denied",))
+        assert porcelain.render(evt) == Output(err=("b/c: Permission denied",))
 
     def test_access_lost_line(self) -> None:
         """ScanAccessLost(b) renders err ("b: access lost",) and empty out."""
         evt = event.ScanAccessLost(PPP("b"))
-        assert porcelain(evt) == Output(err=("b: access lost",))
+        assert porcelain.render(evt) == Output(err=("b: access lost",))
 
     def test_finished_line(self) -> None:
         """ScanFinished with counts 4 1 2 3 0 renders out
@@ -101,4 +100,4 @@ class TestPorcelainScan:
         evt = event.ScanFinished(1, 2, added=4, updated=1, matched=2, errors=0, gone=3)
         msg = "added 4 updated 1 matched 2 gone 3 errors 0"
 
-        assert porcelain(evt) == Output(out=(msg,))
+        assert porcelain.render(evt) == Output(out=(msg,))

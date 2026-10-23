@@ -57,7 +57,7 @@ def _scan_finished(evt: event.ScanFinished) -> Output:
     return Output(out=(" ".join(parts),))
 
 
-def porcelain(evt: event.CliEvent) -> Output:
+def render(evt: event.CliEvent) -> Output:
     """Return the porcelain lines for event; raise on unknown event types."""
     match evt:
         case event.InitDone():
@@ -79,7 +79,7 @@ def porcelain(evt: event.CliEvent) -> Output:
 
 def echo_porcelain(evt: event.CliEvent) -> None:
     """Render event with porcelain and echo out and err lines."""
-    output = porcelain(evt)
+    output = render(evt)
     for line in output.out:
         click.echo(line)
     for line in output.err:
