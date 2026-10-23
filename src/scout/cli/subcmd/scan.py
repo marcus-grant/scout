@@ -16,7 +16,7 @@ import click
 
 from scout.cli import event as cli_event
 from scout.cli.command import scout_command
-from scout.cli.render import echo_porcelain
+from scout.cli.render.porcelain import echo_porcelain
 from scout.lib import event as lib_event
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
