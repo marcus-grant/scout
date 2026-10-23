@@ -47,9 +47,7 @@ def _translate_event(event: lib_event.ScanEvent | Summary) -> CliEvent:
 
 
 def run_scan(
-    path: Path,
-    opt: ScanOptions,
-    make_emit: Callable[[ScanTally], Callable[[CliEvent], None]],
+    path: Path, opt: ScanOptions, tally: ScanTally, emit: Callable[[CliEvent], None]
 ) -> None:
     """Open the manifest at path, refresh its fs detail, scan it with opt,
     and emit each event translated to its CliEvent through make_emit(tally)."""
@@ -58,9 +56,7 @@ def run_scan(
     root = Path(manifest.meta.root)
     manifest.meta.write_fs_detail(fs_meta.read_all(root))
 
-    # Scan and emit each lib event as its CliEvent, sharing one tally:
-    # lib_scan counts into it, and the emitter make_emit builds reads it
-    emit = make_emit(tally := ScanTally())
+    # Scan and emit each lib event as its CliEvent
     for result in lib_scan(manifest, tally, opt):
         emit(_translate_event(result))
 
@@ -130,4 +126,4 @@ def scan(
             raise click.UsageError(f"--exclude {p} reaches outside the root")
     excluded_rels = frozenset(PPP(p.lstrip("/")) for p in exclude)
     opt = ScanOptions(hash_policy, on_progress=prog, exclude=excluded_rels)
-    run_scan(path, opt, lambda _: _emitter(verbose, progress))
+    run_scan(path, opt, ScanTally(), _emitter(verbose, progress))

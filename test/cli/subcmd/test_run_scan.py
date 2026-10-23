@@ -23,7 +23,7 @@ from scout.lib.manifest import Manifest
 from scout.lib.models import RecordChange
 from scout.lib.scan import ScanOptions
 from scout.lib.scan.hashing import HashingPolicy
-from scout.lib.scan.tally import Summary
+from scout.lib.scan.tally import ScanTally, Summary
 
 # The tree fixture (test/conftest.py) is factory.mk_tree(tmp_path), which is
 #   files: a.txt "alpha", b/b1.txt "bravo", b/b2.txt "alpha", b/c/empty.txt ""
@@ -89,10 +89,15 @@ class TestRunScan:
         """Four ScanFile in DFS order then one ScanFinished with added 4;
         no ScanGone, no ScanError."""
         seen: list[CliEvent] = []
-        run_scan(manifest.db.path, ScanOptions(), lambda _: seen.append)
+        run_scan(manifest.db.path, ScanOptions(), ScanTally(), seen.append)
 
         expect = [cli_event.ScanFile] * 4 + [cli_event.ScanFinished]
         assert [type(evt) for evt in seen] == expect
+
+    def test_counts_into_the_given_tally(self, tree: Tree, manifest: Manifest) -> None:
+        """The tally passed to run_scan is the one the scan counts into."""
+        run_scan(manifest.db.path, ScanOptions(), tally := ScanTally(), lambda _: None)
+        assert tally.files_seen() == 4
 
     def test_detail_reaches_meta(
         self, tree: Tree, manifest: Manifest, monkeypatch: pytest.MonkeyPatch
@@ -102,13 +107,13 @@ class TestRunScan:
         patch_str = "scout.cli.subcmd.scan.fs_meta.read_all"
         monkeypatch.setattr(patch_str, lambda _: {"hostname": "h"})
 
-        run_scan(manifest.db.path, ScanOptions(), lambda _: lambda _: None)
+        run_scan(manifest.db.path, ScanOptions(), ScanTally(), lambda _: None)
         assert Manifest.open(manifest.db.path).meta.hostname == "h"
 
     def test_options_reach_the_scan(self, tree: Tree, manifest: Manifest) -> None:
         """The opt given to run_scan is the one scan runs with: OFF leaves hashes null."""
         seen: list[CliEvent] = []
-        run_scan(manifest.db.path, ScanOptions(OFF), lambda _: seen.append)
+        run_scan(manifest.db.path, ScanOptions(OFF), ScanTally(), seen.append)
 
         file_scans = [e for e in seen if isinstance(e, cli_event.ScanFile)]
         assert len(file_scans) == 4
