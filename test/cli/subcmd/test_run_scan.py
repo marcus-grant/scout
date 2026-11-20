@@ -7,6 +7,7 @@ License: AGPL-3.0-or-later
 """
 
 import sys
+from pathlib import Path
 from pathlib import PurePosixPath as PPP
 from unittest.mock import Mock
 
@@ -128,7 +129,7 @@ class TestScanCommand:
         Then runs and returns CliRunner.invoke(main, argv)"""
         result = CliRunner().invoke(main, ["init", str(tree.root)])
         assert result.exit_code == 0, result.output
-        return CliRunner().invoke(main, ["scan", str(tree.root), *argv])
+        return CliRunner().invoke(main, ["scan", "-r", str(tree.root), *argv])
 
     def _options(self, monkeypatch: pytest.MonkeyPatch, *argv: str) -> ScanOptions:
         """Invoke scan with argv and run_scan patched; return the options it got."""
@@ -195,6 +196,22 @@ class TestScanCommand:
         result = CliRunner().invoke(main, ["scan", "--exclude", "../x"])
         assert result.exit_code == 2
         assert "../x" in result.stderr
+
+    def test_repo_reaches_run_scan(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """-r PATH passes PATH to run_scan as the manifest to open."""
+        monkeypatch.setattr("scout.cli.subcmd.scan.run_scan", run := Mock())
+        result = CliRunner().invoke(main, ["scan", "-r", "x"])
+
+        assert result.exit_code == 0, result.output
+        assert run.call_args.args[0] == Path("x")
+
+    def test_repo_defaults_to_cwd(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without -r, run_scan is given Path(".") as the manifest to open."""
+        monkeypatch.setattr("scout.cli.subcmd.scan.run_scan", run := Mock())
+        result = CliRunner().invoke(main, ["scan"])
+
+        assert result.exit_code == 0, result.output
+        assert run.call_args.args[0] == Path(".")
 
 
 class TestBytesProgress:

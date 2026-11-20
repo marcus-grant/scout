@@ -93,7 +93,7 @@ def _scan(root: Path, *flags: str) -> Run:
     the Run; out and err are the streams split on newline with the
     trailing empty element dropped."""
     before = time.time_ns()
-    result = CliRunner().invoke(main, ["scan", str(root), *flags])
+    result = CliRunner().invoke(main, ["scan", "-r", str(root), *flags])
     after = time.time_ns()
     assert result.exit_code == 0, f"scout scan failed: {result.output}"
     return Run(
@@ -235,10 +235,10 @@ class TestScan:
         assert _files(db) == third
 
     def test_scan_without_manifest_fails(self, tree: Tree) -> None:
-        """Scan a tree never initialized: nonzero exit, empty stdout, one
+        """Scan a tree never initialized: exit 1, empty stdout, one
         line on stderr."""
-        result = CliRunner().invoke(main, ["scan", str(tree.root)])
+        result = CliRunner().invoke(main, ["scan", "-r", str(tree.root)])
 
-        assert result.exit_code != 0
+        assert result.exit_code == 1
         assert result.stdout == ""
         assert len(result.stderr.splitlines()) == 1
