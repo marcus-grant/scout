@@ -33,11 +33,15 @@ class ScanTally:
         self._counts = {enum_member: 0 for enum_member in RecordChange}
         self._errors = 0
         self._gone = 0
+        self._bytes_hashed = 0
 
     def see(self, evt: event.Event) -> None:
-        """Count one event: FileScanned by its change, RecordGone, ReadFailed."""
+        """Count one event: FileScanned by its change, and its size in hashed
+        bytes when it was hashed and not matched; RecordGone; ReadFailed."""
         if isinstance(evt, event.FileScanned):
             self._counts[evt.change] += 1
+            if evt.change is not RecordChange.MATCHED and evt.record.hash is not None:
+                self._bytes_hashed += evt.record.stat.size
         elif isinstance(evt, event.RecordGone):
             self._gone += 1
         elif isinstance(evt, event.ReadFailed):
@@ -58,3 +62,7 @@ class ScanTally:
     def files_seen(self) -> int:
         """How many files the scan saw: every FileScanned, whatever its change."""
         return sum(self._counts.values())
+
+    def bytes_hashed(self) -> int:
+        """How many bytes the scan hashed: the size of every file it hashed."""
+        return self._bytes_hashed

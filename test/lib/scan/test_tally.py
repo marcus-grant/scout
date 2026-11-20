@@ -12,7 +12,7 @@ import pytest
 
 import scout.lib.error as Err
 from scout.lib import event
-from scout.lib.models import RecordChange
+from scout.lib.models import Hash, RecordChange
 from scout.lib.scan.tally import ScanTally, Summary
 
 mk_frec = factory.mk_file_record
@@ -51,3 +51,22 @@ class TestScanTally:
 
         tally.see(event.RecordGone(PPP("b")))
         assert tally.files_seen() == 3
+
+    def test_bytes_hashed_counts_hashed_files(self, tally: ScanTally) -> None:
+        """An ADDED and an UPDATED hashed file add their sizes."""
+        h = Hash("A" * 24)
+        added = mk_frec(size=5, hash=h, hashed=1)
+        updated = mk_frec(size=7, hash=h, hashed=1)
+        tally.see(event.FileScanned(PPP("a"), added, RecordChange.ADDED))
+        tally.see(event.FileScanned(PPP("b"), updated, RecordChange.UPDATED))
+
+        assert tally.bytes_hashed() == 12
+
+    def test_bytes_hashed_skips_matched_and_unhashed(self, tally: ScanTally) -> None:
+        """A MATCHED file and an unhashed ADDED file add no bytes."""
+        matched = mk_frec(size=5, hash=Hash("A" * 24), hashed=1)
+        unhashed = mk_frec(size=7)
+        tally.see(event.FileScanned(PPP("a"), matched, RecordChange.MATCHED))
+        tally.see(event.FileScanned(PPP("b"), unhashed, RecordChange.ADDED))
+
+        assert tally.bytes_hashed() == 0
