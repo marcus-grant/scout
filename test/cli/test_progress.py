@@ -7,7 +7,9 @@ License: AGPL-3.0-or-later
 
 import io
 
-from scout.cli.progress import OutputSink
+import pytest
+
+from scout.cli.progress import OutputSink, _human_bytes
 from scout.cli.render import Output
 
 
@@ -49,3 +51,23 @@ class TestOutputSink:
         sink = OutputSink(io.StringIO(), io.StringIO())
         with sink as entered:
             assert entered is sink
+
+
+class TestHumanBytes:
+    """_human_bytes over fixed byte counts."""
+
+    @pytest.mark.parametrize(
+        ("n", "expected"),
+        [
+            pytest.param(0, "0B", id="zero"),
+            pytest.param(1023, "1023B", id="max-bytes"),
+            pytest.param(1024, "1.0KiB", id="one-kib"),
+            pytest.param(1536, "1.5KiB", id="one-and-half-kib"),
+            pytest.param(1024**2 - 1, "1.0MiB", id="rounds-up-to-mib"),
+            pytest.param(5 * 1024**4, "5.0TiB", id="five-tib"),
+            pytest.param(2048 * 1024**5, "2048.0PiB", id="pib-is-largest"),
+        ],
+    )
+    def test_human_bytes(self, n: int, expected: str) -> None:
+        """A byte count renders in its largest IEC unit, one decimal above B."""
+        assert _human_bytes(n) == expected

@@ -40,3 +40,16 @@ class OutputSink:
 
     def hashed(self, done: int) -> None:
         """No progress: nothing."""
+
+
+def _human_bytes(n: int) -> str:
+    """A byte count as B below 1024, else one decimal in KiB, MiB, GiB, TiB or PiB."""
+    if n < 1024:
+        return f"{n}B"
+    units = ("KiB", "MiB", "GiB", "TiB", "PiB")
+    value = n / 1024
+    unit = 0
+    while round(value, 1) >= 1024 and unit < len(units) - 1:
+        value /= 1024
+        unit += 1
+    return f"{value:.1f}{units[unit]}"
