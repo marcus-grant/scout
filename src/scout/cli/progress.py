@@ -87,6 +87,13 @@ class ProgressLines(OutputSink):
         self._err.flush()
 
 
+def open_sink(progress: bool, tally: ScanTally, out: TextIO, err: TextIO) -> OutputSink:
+    """Return the run's sink: plain without progress, ProgressLines with it."""
+    if progress:
+        return ProgressLines(tally, out, err)
+    return OutputSink(out, err)
+
+
 def _human_bytes(n: int) -> str:
     """A byte count as B below 1024, else one decimal in KiB, MiB, GiB, TiB or PiB."""
     if n < 1024:

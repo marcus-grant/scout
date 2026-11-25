@@ -17,6 +17,7 @@ from scout.cli.progress import (
     ProgressLines,
     _human_bytes,
     _progress_line,
+    open_sink,
 )
 from scout.cli.render import Output
 from scout.lib import event
@@ -154,6 +155,28 @@ class TestProgressLines:
         ProgressLines(ScanTally(), io.StringIO(), err, FakeClock()).status()
 
         assert err.flushed[-1:] == ["progress 0.0s files 0 - hashed 0B -\n"]
+
+
+class TestOpenSink:
+    """open_sink chooses the run's sink from the progress flag."""
+
+    def test_plain_without_progress(self) -> None:
+        """Without progress the sink is a plain OutputSink that writes to out."""
+        out = io.StringIO()
+        sink = open_sink(False, ScanTally(), out, io.StringIO())
+
+        assert type(sink) is OutputSink
+        sink.write(Output(out=("a",)))
+        assert out.getvalue() == "a\n"
+
+    def test_progress_lines_with_progress(self) -> None:
+        """With progress the sink is ProgressLines and status writes to err."""
+        err = io.StringIO()
+        sink = open_sink(True, ScanTally(), io.StringIO(), err)
+
+        assert isinstance(sink, ProgressLines)
+        sink.status()
+        assert len(err.getvalue().splitlines()) == 1
 
 
 class TestHumanBytes:
