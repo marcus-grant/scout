@@ -6,6 +6,7 @@ Created: 2026-11-20
 License: AGPL-3.0-or-later
 """
 
+import itertools
 import os
 import time
 from collections.abc import Callable
@@ -18,6 +19,7 @@ RATE_WARMUP_NS = 2 * 10**9
 LOG_INTERVAL_NS = 10 * 10**9
 STATUS_INTERVAL_NS = 500 * 10**6
 ERASE = "\r\x1b[K"
+SPINNER = "-\\|/"
 
 
 class OutputSink:
@@ -118,16 +120,27 @@ class StatusLine(OutputSink):
         self._interval_ns = interval_ns
         self._start = clock()
         self._last: int | None = None
+        self._spin = itertools.cycle(SPINNER)
+        self._slow: tuple[str, int] | None = None
 
     def __exit__(self, *exc: object) -> None:
         """Erase the status line and leave nothing drawn."""
         self._erase()
 
     def status(self) -> None:
-        """Draw the status line at the first call, then once per interval."""
+        """Draw the status line at the first call, then once per interval;
+        leaving slow-file mode draws at once."""
         now = self._clock()
-        if self._last is None or now - self._last >= self._interval_ns:
+        if self._slow is not None:
+            self._slow = None
             self._draw(now)
+        elif self._last is None or now - self._last >= self._interval_ns:
+            self._draw(now)
+
+    def hashed(self, done: int) -> None:
+        """Enter slow-file mode holding done, step the spinner, and draw at once."""
+        self._slow = (next(self._spin), done)
+        self._draw(self._clock())
 
     def write(self, output: Output) -> None:
         """Erase the status line, write output, then draw the status line again."""
@@ -145,6 +158,9 @@ class StatusLine(OutputSink):
         line = _progress_line(
             now - self._start, self._tally.files_seen(), self._tally.bytes_hashed()
         )
+        if self._slow is not None:
+            spin, done = self._slow
+            line += f" {spin} {_human_bytes(done)}"
         self._err.write(ERASE + line[: max(self._width() - 1, 0)])
         self._err.flush()
         self._last = now

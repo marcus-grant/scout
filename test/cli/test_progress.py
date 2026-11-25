@@ -232,6 +232,48 @@ class TestStatusLine:
 
         assert err.flushed[-1:] == [ERASE + L0]
 
+    def test_hashed_draws_spinner_and_bytes(self) -> None:
+        """A hashed call draws the line at once with a spinner and the bytes done."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+        sink.hashed(1024)
+
+        assert err.getvalue().endswith(ERASE + L0 + " - 1.0KiB")
+
+    def test_spinner_advances_per_hashed(self) -> None:
+        """Each hashed call steps the spinner one character."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+        sink.hashed(1024)
+        sink.hashed(2048)
+
+        expected = ERASE + L0 + " - 1.0KiB" + ERASE + L0 + " \\ 2.0KiB"
+        assert err.getvalue().endswith(expected)
+
+    def test_status_leaves_slow_mode_at_once(self) -> None:
+        """A status call after hashed redraws without the suffix, unthrottled."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+        sink.hashed(1024)
+        sink.status()
+
+        expected = ERASE + L0 + " - 1.0KiB" + ERASE + L0
+        assert err.getvalue().endswith(expected)
+
+    def test_write_keeps_slow_suffix(self) -> None:
+        """The redraw after a write keeps the spinner and bytes while slow."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+        sink.hashed(1024)
+        sink.write(Output(err=("e",)))
+
+        expected = ERASE + "e\n" + ERASE + L0 + " - 1.0KiB"
+        assert err.getvalue().endswith(expected)
+
 
 class TestTerminalWidth:
     """_terminal_width on a stream that is not a terminal."""
