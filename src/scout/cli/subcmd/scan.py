@@ -5,7 +5,6 @@ Created: 2026-09-21
 License: AGPL-3.0-or-later
 """
 
-import itertools
 import sys
 from collections.abc import Callable
 from dataclasses import astuple
@@ -16,7 +15,9 @@ import click
 
 from scout.cli import event as cli_event
 from scout.cli.command import scout_command
-from scout.cli.render.porcelain import echo_porcelain
+from scout.cli.emit import make_emit
+from scout.cli.progress import open_sink
+from scout.cli.render import porcelain
 from scout.lib import event as lib_event
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
@@ -49,8 +50,8 @@ def _translate_event(event: lib_event.ScanEvent | Summary) -> CliEvent:
 def run_scan(
     path: Path, opt: ScanOptions, tally: ScanTally, emit: Callable[[CliEvent], None]
 ) -> None:
-    """Open the manifest at path, refresh its fs detail, scan it with opt,
-    and emit each event translated to its CliEvent through make_emit(tally)."""
+    """Open the manifest at path, refresh its fs detail, scan it with opt
+    counting into tally, and emit each event translated to its CliEvent."""
     # Open and update manifest with fs meta details
     manifest = Manifest.open(path)
     root = Path(manifest.meta.root)
@@ -59,38 +60,6 @@ def run_scan(
     # Scan and emit each lib event as its CliEvent
     for result in lib_scan(manifest, tally, opt):
         emit(_translate_event(result))
-
-
-def _emitter(verbose: bool, progress: bool) -> Callable[[cli_event.CliEvent], None]:
-    """Build the emit for the command: echo every event through porcelain,
-    except ScanFile which is echoed only when verbose; when progress is set,
-    also write one 'N files' line to stderr per ScanFile and ScanGone."""
-    done = 0
-
-    def emit(event: CliEvent) -> None:
-        nonlocal done
-        if progress and isinstance(event, (cli_event.ScanFile, cli_event.ScanGone)):
-            done += 1
-            click.echo(f"{done} files", err=True)
-        if isinstance(event, cli_event.ScanFile) and not verbose:
-            return
-        echo_porcelain(event)
-
-    return emit
-
-
-_SPINNER = "-\\|/"
-_spin = itertools.cycle(_SPINNER)
-
-
-def _bytes_progress(done: int) -> None:
-    """The hashing callback under --progress:
-    when stderr is a terminal, overwrite one spinner character;
-    otherwise write 'done bytes' as a line."""
-    if sys.stderr.isatty():
-        click.echo(f"\r{next(_spin)}", err=True, nl=False)
-    else:
-        click.echo(f"{done} bytes", err=True)
 
 
 _HELP_SCAN_EXCLUDE = "Skip PATH under the root; repeatable"
@@ -107,7 +76,7 @@ _HELP_SCAN_EXCLUDE = "Skip PATH under the root; repeatable"
 @click.option("--no-hash", is_flag=True, help="Stat only; leave hashes untouched.")
 @click.option("--rehash", is_flag=True, help="Hash every file, matching or not.")
 @click.option("-v", "--verbose", is_flag=True, help="One line per file.")
-@click.option("--progress", is_flag=True, help="Files done and bytes on stderr.")
+@click.option("--progress", is_flag=True, help="Progress on stderr.")
 @click.option("--exclude", multiple=True, metavar="PATH", help=_HELP_SCAN_EXCLUDE)
 def scan(
     repo: Path,
@@ -126,10 +95,11 @@ def scan(
         hash_policy = HashingPolicy.ALL
     else:
         hash_policy = HashingPolicy.NEEDED
-    prog = _bytes_progress if progress else None
     for p in exclude:
         if ".." in PPP(p).parts:
             raise click.UsageError(f"--exclude {p} reaches outside the root")
     excluded_rels = frozenset(PPP(p.lstrip("/")) for p in exclude)
-    opt = ScanOptions(hash_policy, on_progress=prog, exclude=excluded_rels)
-    run_scan(repo, opt, ScanTally(), _emitter(verbose, progress))
+    tally = ScanTally()
+    with open_sink(progress, tally, sys.stdout, sys.stderr) as sink:
+        opt = ScanOptions(hash_policy, on_progress=sink.hashed, exclude=excluded_rels)
+        run_scan(repo, opt, tally, make_emit(verbose, porcelain.render, sink))

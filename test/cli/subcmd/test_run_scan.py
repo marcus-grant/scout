@@ -6,19 +6,21 @@ Created: 2026-09-21
 License: AGPL-3.0-or-later
 """
 
-import sys
 from pathlib import Path
 from pathlib import PurePosixPath as PPP
+from types import MethodType
 from unittest.mock import Mock
 
 import factory
 import pytest
-from click.testing import CliRunner, Result
+from click.testing import CliRunner
 
 import scout.lib.error as Err
 from scout.cli import event as cli_event
 from scout.cli import main
-from scout.cli.subcmd.scan import _bytes_progress, _translate_event, run_scan
+from scout.cli.emit import make_emit
+from scout.cli.progress import OutputSink, ProgressLines
+from scout.cli.subcmd.scan import _translate_event, run_scan
 from scout.lib import event as lib_event
 from scout.lib.manifest import Manifest
 from scout.lib.models import RecordChange
@@ -124,13 +126,6 @@ class TestRunScan:
 class TestScanCommand:
     """The scan command through CliRunner on an initialized default tree."""
 
-    def _invoke(self, tree: Tree, argv: list[str]) -> Result:
-        """Runs the init command on the passed tmp_path Tree.
-        Then runs and returns CliRunner.invoke(main, argv)"""
-        result = CliRunner().invoke(main, ["init", str(tree.root)])
-        assert result.exit_code == 0, result.output
-        return CliRunner().invoke(main, ["scan", "-r", str(tree.root), *argv])
-
     def _options(self, monkeypatch: pytest.MonkeyPatch, *argv: str) -> ScanOptions:
         """Invoke scan with argv and run_scan patched; return the options it got."""
         run = Mock()
@@ -139,21 +134,37 @@ class TestScanCommand:
         assert result.exit_code == 0, result.output
         return run.call_args.args[1]
 
-    def test_default_prints_summary_only(self, tree: Tree) -> None:
-        """init then scan: stdout is exactly the one ScanFinished line."""
-        result = self._invoke(tree, [])
-
+    def _verbose_arg(self, monkeypatch: pytest.MonkeyPatch, *argv: str) -> object:
+        """Invoke scan with argv, run_scan patched and make_emit spied on;
+        return the verbose argument make_emit got."""
+        monkeypatch.setattr("scout.cli.subcmd.scan.run_scan", Mock())
+        spy = Mock(wraps=make_emit)
+        monkeypatch.setattr("scout.cli.subcmd.scan.make_emit", spy)
+        result = CliRunner().invoke(main, ["scan", *argv])
         assert result.exit_code == 0, result.output
-        assert result.stdout == "added 4 updated 0 matched 0 gone 0 errors 0\n"
+        return spy.call_args.args[0]
 
-    def test_verbose_prints_file_lines(self, tree: Tree) -> None:
-        """scan -v: stdout has the four added lines before the summary."""
-        result = self._invoke(tree, ["-v"])
+    def test_verbose_reaches_make_emit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """-v passes True to make_emit as verbose."""
+        assert self._verbose_arg(monkeypatch, "-v") is True
 
-        lines = result.stdout.splitlines()
-        assert result.exit_code == 0, result.output
-        assert lines[:4] == [f"added {p}" for p in sorted(tree.files)]
-        assert lines[4].startswith(f"added {len(tree.files)}")
+    def test_default_is_not_verbose(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without -v, make_emit is given False as verbose."""
+        assert self._verbose_arg(monkeypatch) is False
+
+    def test_progress_picks_progress_lines(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """--progress hands the scan the hashed callback of a ProgressLines."""
+        opt = self._options(monkeypatch, "--progress")
+        assert isinstance(opt.on_progress, MethodType)
+        assert isinstance(opt.on_progress.__self__, ProgressLines)
+
+    def test_default_picks_plain_sink(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without --progress the hashed callback belongs to a plain OutputSink."""
+        opt = self._options(monkeypatch)
+        assert isinstance(opt.on_progress, MethodType)
+        assert type(opt.on_progress.__self__) is OutputSink
 
     def test_rehash_with_no_hash_is_usage_error(self) -> None:
         """scan --rehash --no-hash exits 2 naming the conflict."""
@@ -161,14 +172,6 @@ class TestScanCommand:
         result = CliRunner().invoke(main, argv)
         assert result.exit_code == 2, f"expected exit 2, got {result}"
         assert "--rehash cannot be used with --no-hash" in result.stderr
-
-    def test_progress_writes_file_counts(self, tree: Tree) -> None:
-        """scan --progress: output contains '1 files' through '4 files'."""
-        result = self._invoke(tree, ["--progress"])
-
-        assert result.exit_code == 0, result.output
-        counts = [s for s in result.stderr.splitlines() if s.endswith("files")]
-        assert counts == [f"{n} files" for n in (1, 2, 3, 4)]
 
     def test_no_hash_is_policy_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """--no-hash passes ScanOptions with hash_policy OFF."""
@@ -213,28 +216,3 @@ class TestScanCommand:
         assert result.exit_code == 0, result.output
         assert run.call_args.args[0] == Path(".")
 
-
-class TestBytesProgress:
-    """_bytes_progress writes a bytes line, or a spinner on a terminal."""
-
-    def test_writes_bytes_line_when_not_a_terminal(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """_bytes_progress(5) writes '5 bytes' and a newline to stderr."""
-        _bytes_progress(5)
-
-        assert capsys.readouterr().err == "5 bytes\n"
-
-    def test_spins_on_a_terminal(
-        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """With stderr a terminal, two calls write a carriage return and one
-        spinner character each, no newline, and the characters differ."""
-        monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
-
-        _bytes_progress(5)
-        _bytes_progress(6)
-
-        err = capsys.readouterr().err
-        assert err[0] == "\r" and err[2] == "\r" and len(err) == 4
-        assert err[1] != err[3]
