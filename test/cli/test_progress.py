@@ -6,11 +6,24 @@ License: AGPL-3.0-or-later
 """
 
 import io
+from pathlib import PurePosixPath as PPP
 
+import factory
 import pytest
 
-from scout.cli.progress import OutputSink, _human_bytes, _progress_line
+from scout.cli.progress import (
+    LOG_INTERVAL_NS,
+    OutputSink,
+    ProgressLines,
+    _human_bytes,
+    _progress_line,
+)
 from scout.cli.render import Output
+from scout.lib import event
+from scout.lib.models import Hash, RecordChange
+from scout.lib.scan.tally import ScanTally
+
+mk_frec = factory.mk_file_record
 
 
 class FlushRecordingIO(io.StringIO):
@@ -25,6 +38,18 @@ class FlushRecordingIO(io.StringIO):
         """Record the contents so far, then flush."""
         self.flushed.append(self.getvalue())
         super().flush()
+
+
+class FakeClock:
+    """A clock whose current time the test sets."""
+
+    def __init__(self) -> None:
+        """Start at zero."""
+        self.now = 0
+
+    def __call__(self) -> int:
+        """Return the current time."""
+        return self.now
 
 
 class TestOutputSink:
@@ -51,6 +76,84 @@ class TestOutputSink:
         sink = OutputSink(io.StringIO(), io.StringIO())
         with sink as entered:
             assert entered is sink
+
+
+class TestProgressLines:
+    """ProgressLines over a fake clock, a real tally and StringIO streams."""
+
+    def test_first_status_writes_a_line(self) -> None:
+        """The first status call writes one line to err."""
+        err = io.StringIO()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, FakeClock())
+        sink.status()
+
+        assert err.getvalue() == "progress 0.0s files 0 - hashed 0B -\n"
+
+    def test_status_within_interval_writes_nothing(self) -> None:
+        """A status call less than one interval after the last line adds none."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, clock)
+        sink.status()
+        clock.now = LOG_INTERVAL_NS - 1
+        sink.status()
+
+        assert len(err.getvalue().splitlines()) == 1
+
+    def test_status_after_interval_writes_again(self) -> None:
+        """A status call one full interval after the last line writes another."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, clock)
+        sink.status()
+        clock.now = LOG_INTERVAL_NS
+        sink.status()
+
+        lines = err.getvalue().splitlines()
+        assert len(lines) == 2
+        assert lines[1].startswith("progress 10.0s")
+
+    def test_calls_inside_interval_do_not_delay_the_next_line(self) -> None:
+        """The next line is due an interval after the last line, not the last call."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, clock)
+        sink.status()
+        clock.now = LOG_INTERVAL_NS - 1
+        sink.status()
+        clock.now = LOG_INTERVAL_NS
+        sink.status()
+
+        assert len(err.getvalue().splitlines()) == 2
+
+    def test_interval_is_a_parameter(self) -> None:
+        """The interval given at construction decides when the next line writes."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = ProgressLines(
+            ScanTally(), io.StringIO(), err, clock, interval_ns=10**9
+        )
+        sink.status()
+        clock.now = 10**9
+        sink.status()
+
+        assert len(err.getvalue().splitlines()) == 2
+
+    def test_exit_writes_a_final_line(self) -> None:
+        """Leaving the sink writes one line with the tally's counts and rates."""
+        tally, err, clock = ScanTally(), io.StringIO(), FakeClock()
+        hashed = mk_frec(size=1024, hash=Hash("A" * 24), hashed=1)
+        tally.see(event.FileScanned(PPP("a"), hashed, RecordChange.ADDED))
+        sink = ProgressLines(tally, io.StringIO(), err, clock)
+        clock.now = 2 * 10**9
+        with sink:
+            pass
+
+        expected = "progress 2.0s files 1 0.5/s hashed 1.0KiB 512B/s\n"
+        assert err.getvalue() == expected
+
+    def test_progress_line_is_flushed(self) -> None:
+        """The line from the first status call is flushed to err."""
+        err = FlushRecordingIO()
+        ProgressLines(ScanTally(), io.StringIO(), err, FakeClock()).status()
+
+        assert err.flushed[-1:] == ["progress 0.0s files 0 - hashed 0B -\n"]
 
 
 class TestHumanBytes:

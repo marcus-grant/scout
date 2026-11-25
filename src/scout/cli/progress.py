@@ -6,11 +6,15 @@ Created: 2026-11-20
 License: AGPL-3.0-or-later
 """
 
+import time
+from collections.abc import Callable
 from typing import Self, TextIO
 
 from scout.cli.render import Output
+from scout.lib.scan.tally import ScanTally
 
 RATE_WARMUP_NS = 2 * 10**9
+LOG_INTERVAL_NS = 10 * 10**9
 
 
 class OutputSink:
@@ -42,6 +46,45 @@ class OutputSink:
 
     def hashed(self, done: int) -> None:
         """No progress: nothing."""
+
+
+class ProgressLines(OutputSink):
+    """The --progress sink when stderr is not a terminal: plain lines, no CR."""
+
+    def __init__(
+        self,
+        tally: ScanTally,
+        out: TextIO,
+        err: TextIO,
+        clock: Callable[[], int] = time.monotonic_ns,
+        interval_ns: int = LOG_INTERVAL_NS,
+    ) -> None:
+        """Hold the tally, streams, clock and interval; start timing now."""
+        super().__init__(out, err)
+        self._tally = tally
+        self._clock = clock
+        self._interval_ns = interval_ns
+        self._start = clock()
+        self._last: int | None = None
+
+    def __exit__(self, *exc: object) -> None:
+        """Write one final progress line."""
+        self._emit(self._clock())
+
+    def status(self) -> None:
+        """Write a progress line at the first call, then once per interval."""
+        now = self._clock()
+        if self._last is None or now - self._last >= self._interval_ns:
+            self._emit(now)
+            self._last = now
+
+    def _emit(self, now: int) -> None:
+        """Write one progress line for time now to err and flush err."""
+        line = _progress_line(
+            now - self._start, self._tally.files_seen(), self._tally.bytes_hashed()
+        )
+        self._err.write(line + "\n")
+        self._err.flush()
 
 
 def _human_bytes(n: int) -> str:
