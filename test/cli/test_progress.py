@@ -12,11 +12,15 @@ import factory
 import pytest
 
 from scout.cli.progress import (
+    ERASE,
     LOG_INTERVAL_NS,
+    STATUS_INTERVAL_NS,
     OutputSink,
     ProgressLines,
+    StatusLine,
     _human_bytes,
     _progress_line,
+    _terminal_width,
     open_sink,
 )
 from scout.cli.render import Output
@@ -25,6 +29,8 @@ from scout.lib.models import Hash, RecordChange
 from scout.lib.scan.tally import ScanTally
 
 mk_frec = factory.mk_file_record
+
+L0 = "progress 0.0s files 0 - hashed 0B -"
 
 
 class FlushRecordingIO(io.StringIO):
@@ -155,6 +161,84 @@ class TestProgressLines:
         ProgressLines(ScanTally(), io.StringIO(), err, FakeClock()).status()
 
         assert err.flushed[-1:] == ["progress 0.0s files 0 - hashed 0B -\n"]
+
+
+class TestStatusLine:
+    """StatusLine over a fake clock, a fixed width and StringIO streams."""
+
+    def test_first_status_draws(self) -> None:
+        """The first status call draws the line after an erase, with no newline."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+
+        assert err.getvalue() == ERASE + L0
+
+    def test_status_within_interval_does_not_redraw(self) -> None:
+        """A status call less than one interval after the last draw adds none."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
+        sink.status()
+        clock.now = STATUS_INTERVAL_NS - 1
+        sink.status()
+
+        assert err.getvalue() == ERASE + L0
+
+    def test_calls_inside_interval_do_not_delay_redraw(self) -> None:
+        """The next draw is due an interval after the last draw, not the last call."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
+        sink.status()
+        clock.now = STATUS_INTERVAL_NS - 1
+        sink.status()
+        clock.now = STATUS_INTERVAL_NS
+        sink.status()
+
+        assert err.getvalue().count(ERASE) == 2
+
+    def test_write_erases_writes_redraws(self) -> None:
+        """Write erases the line, writes the output, then draws the line again."""
+        out, err = io.StringIO(), io.StringIO()
+        sink = StatusLine(ScanTally(), out, err, FakeClock(), lambda: 80)
+        sink.status()
+        sink.write(Output(out=("a",), err=("e",)))
+
+        assert out.getvalue() == "a\n"
+        assert err.getvalue() == ERASE + L0 + ERASE + "e\n" + ERASE + L0
+
+    def test_exit_erases_without_redraw(self) -> None:
+        """Leaving the sink erases the line and draws nothing after it."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+        with sink:
+            pass
+
+        assert err.getvalue() == ERASE + L0 + ERASE
+
+    def test_line_cut_to_width(self) -> None:
+        """The drawn text is cut to one column less than the width."""
+        err = io.StringIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 20)
+        sink.status()
+
+        assert err.getvalue() == ERASE + L0[:19]
+
+    def test_draw_is_flushed(self) -> None:
+        """The first draw is flushed to err."""
+        err = FlushRecordingIO()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        sink.status()
+
+        assert err.flushed[-1:] == [ERASE + L0]
+
+
+class TestTerminalWidth:
+    """_terminal_width on a stream that is not a terminal."""
+
+    def test_terminal_width_falls_back_to_80(self) -> None:
+        """A stream with no terminal gives 80 columns."""
+        assert _terminal_width(io.StringIO()) == 80
 
 
 class TestOpenSink:

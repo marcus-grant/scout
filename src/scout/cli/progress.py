@@ -6,6 +6,7 @@ Created: 2026-11-20
 License: AGPL-3.0-or-later
 """
 
+import os
 import time
 from collections.abc import Callable
 from typing import Self, TextIO
@@ -15,6 +16,8 @@ from scout.lib.scan.tally import ScanTally
 
 RATE_WARMUP_NS = 2 * 10**9
 LOG_INTERVAL_NS = 10 * 10**9
+STATUS_INTERVAL_NS = 500 * 10**6
+ERASE = "\r\x1b[K"
 
 
 class OutputSink:
@@ -85,6 +88,66 @@ class ProgressLines(OutputSink):
         )
         self._err.write(line + "\n")
         self._err.flush()
+
+
+def _terminal_width(stream: TextIO) -> int:
+    """The columns of stream's terminal, or 80 when stream is not a terminal."""
+    try:
+        return os.get_terminal_size(stream.fileno()).columns
+    except OSError:
+        return 80
+
+
+class StatusLine(OutputSink):
+    """The --progress sink on a terminal: one stderr line, erased and redrawn."""
+
+    def __init__(
+        self,
+        tally: ScanTally,
+        out: TextIO,
+        err: TextIO,
+        clock: Callable[[], int] = time.monotonic_ns,
+        width: Callable[[], int] | None = None,
+        interval_ns: int = STATUS_INTERVAL_NS,
+    ) -> None:
+        """Hold the tally, streams, clock, width and interval; start timing now."""
+        super().__init__(out, err)
+        self._tally = tally
+        self._clock = clock
+        self._width = width if width is not None else lambda: _terminal_width(err)
+        self._interval_ns = interval_ns
+        self._start = clock()
+        self._last: int | None = None
+
+    def __exit__(self, *exc: object) -> None:
+        """Erase the status line and leave nothing drawn."""
+        self._erase()
+
+    def status(self) -> None:
+        """Draw the status line at the first call, then once per interval."""
+        now = self._clock()
+        if self._last is None or now - self._last >= self._interval_ns:
+            self._draw(now)
+
+    def write(self, output: Output) -> None:
+        """Erase the status line, write output, then draw the status line again."""
+        self._erase()
+        super().write(output)
+        self._draw(self._clock())
+
+    def _erase(self) -> None:
+        """Clear the status line on err and flush err."""
+        self._err.write(ERASE)
+        self._err.flush()
+
+    def _draw(self, now: int) -> None:
+        """Draw the status line for time now on err, cut to the width, and flush."""
+        line = _progress_line(
+            now - self._start, self._tally.files_seen(), self._tally.bytes_hashed()
+        )
+        self._err.write(ERASE + line[: max(self._width() - 1, 0)])
+        self._err.flush()
+        self._last = now
 
 
 def open_sink(progress: bool, tally: ScanTally, out: TextIO, err: TextIO) -> OutputSink:
