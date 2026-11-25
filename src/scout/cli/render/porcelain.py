@@ -6,8 +6,6 @@ Revised: [2026-10-23]
 License: AGPL-3.0-or-later
 """
 
-import click
-
 from scout.cli import event
 from scout.cli.render import Output
 
@@ -75,12 +73,3 @@ def render(evt: event.CliEvent) -> Output:
         case event.ScanFinished():
             return _scan_finished(evt)
     raise TypeError(f"porcelain renderer has no handler for event: {type(evt)}")
-
-
-def echo_porcelain(evt: event.CliEvent) -> None:
-    """Render event with porcelain and echo out and err lines."""
-    output = render(evt)
-    for line in output.out:
-        click.echo(line)
-    for line in output.err:
-        click.echo(line, err=True)
