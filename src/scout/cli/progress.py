@@ -10,6 +10,8 @@ from typing import Self, TextIO
 
 from scout.cli.render import Output
 
+RATE_WARMUP_NS = 2 * 10**9
+
 
 class OutputSink:
     """Writes rendered output to its streams; no progress shown."""
@@ -53,3 +55,16 @@ def _human_bytes(n: int) -> str:
         value /= 1024
         unit += 1
     return f"{value:.1f}{units[unit]}"
+
+
+def _progress_line(elapsed_ns: int, files: int, hashed: int) -> str:
+    """One progress line: elapsed, files and hashed bytes with their average rates."""
+    if elapsed_ns < RATE_WARMUP_NS:
+        file_rate = byte_rate = "-"
+    else:
+        file_rate = f"{files * 10**9 / elapsed_ns:.1f}/s"
+        byte_rate = f"{_human_bytes(hashed * 10**9 // elapsed_ns)}/s"
+    return (
+        f"progress {elapsed_ns / 10**9:.1f}s files {files} {file_rate} "
+        f"hashed {_human_bytes(hashed)} {byte_rate}"
+    )

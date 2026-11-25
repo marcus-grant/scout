@@ -9,7 +9,7 @@ import io
 
 import pytest
 
-from scout.cli.progress import OutputSink, _human_bytes
+from scout.cli.progress import OutputSink, _human_bytes, _progress_line
 from scout.cli.render import Output
 
 
@@ -71,3 +71,40 @@ class TestHumanBytes:
     def test_human_bytes(self, n: int, expected: str) -> None:
         """A byte count renders in its largest IEC unit, one decimal above B."""
         assert _human_bytes(n) == expected
+
+
+class TestProgressLine:
+    """_progress_line over fixed elapsed times and counts."""
+
+    @pytest.mark.parametrize(
+        ("elapsed_ns", "files", "hashed", "expected"),
+        [
+            pytest.param(0, 0, 0, "progress 0.0s files 0 - hashed 0B -", id="start"),
+            pytest.param(
+                1_500_000_000,
+                3,
+                1024,
+                "progress 1.5s files 3 - hashed 1.0KiB -",
+                id="warming-up",
+            ),
+            pytest.param(
+                2_000_000_000,
+                4,
+                2048,
+                "progress 2.0s files 4 2.0/s hashed 2.0KiB 1.0KiB/s",
+                id="warmup-ends",
+            ),
+            pytest.param(
+                10_000_000_000,
+                318,
+                175 * 10 * 1024**2,
+                "progress 10.0s files 318 31.8/s hashed 1.7GiB 175.0MiB/s",
+                id="typical",
+            ),
+        ],
+    )
+    def test_progress_line(
+        self, elapsed_ns: int, files: int, hashed: int, expected: str
+    ) -> None:
+        """Rates show as - until the warmup, then as averages per second."""
+        assert _progress_line(elapsed_ns, files, hashed) == expected
