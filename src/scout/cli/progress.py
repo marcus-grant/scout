@@ -18,6 +18,7 @@ from scout.lib.scan.tally import ScanTally
 RATE_WARMUP_NS = 2 * 10**9
 LOG_INTERVAL_NS = 10 * 10**9
 STATUS_INTERVAL_NS = 500 * 10**6
+SLOW_FILE_NS = 10**9
 ERASE = "\r\x1b[K"
 SPINNER = "-\\|/"
 
@@ -122,6 +123,7 @@ class StatusLine(OutputSink):
         self._last: int | None = None
         self._spin = itertools.cycle(SPINNER)
         self._slow: tuple[str, int] | None = None
+        self._file_start: int | None = None
 
     def __exit__(self, *exc: object) -> None:
         """Erase the status line and leave nothing drawn."""
@@ -129,8 +131,9 @@ class StatusLine(OutputSink):
 
     def status(self) -> None:
         """Draw the status line at the first call, then once per interval;
-        leaving slow-file mode draws at once."""
+        leaving slow-file mode draws at once. Ends the current file's timing."""
         now = self._clock()
+        self._file_start = None
         if self._slow is not None:
             self._slow = None
             self._draw(now)
@@ -138,9 +141,16 @@ class StatusLine(OutputSink):
             self._draw(now)
 
     def hashed(self, done: int) -> None:
-        """Enter slow-file mode holding done, step the spinner, and draw at once."""
+        """Time the file from its first call since status; from SLOW_FILE_NS
+        on, step the spinner and draw with done appended."""
+        now = self._clock()
+        if self._file_start is None:
+            self._file_start = now
+            return
+        if now - self._file_start < SLOW_FILE_NS:
+            return
         self._slow = (next(self._spin), done)
-        self._draw(self._clock())
+        self._draw(now)
 
     def write(self, output: Output) -> None:
         """Erase the status line, write output, then draw the status line again."""

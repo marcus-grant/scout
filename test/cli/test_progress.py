@@ -14,6 +14,7 @@ import pytest
 from scout.cli.progress import (
     ERASE,
     LOG_INTERVAL_NS,
+    SLOW_FILE_NS,
     STATUS_INTERVAL_NS,
     OutputSink,
     ProgressLines,
@@ -31,6 +32,8 @@ from scout.lib.scan.tally import ScanTally
 mk_frec = factory.mk_file_record
 
 L0 = "progress 0.0s files 0 - hashed 0B -"
+L1 = "progress 1.0s files 0 - hashed 0B -"
+L15 = "progress 1.5s files 0 - hashed 0B -"
 
 
 class FlushRecordingIO(io.StringIO):
@@ -241,46 +244,93 @@ class TestStatusLine:
         assert err.flushed[-1:] == [ERASE + L0]
 
     def test_hashed_draws_spinner_and_bytes(self) -> None:
-        """A hashed call draws the line at once with a spinner and the bytes done."""
-        err = io.StringIO()
-        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        """A hashed call a second into a file draws the line with a spinner and
+        the bytes done."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
         sink.status()
+        sink.hashed(0)
+        clock.now = 10**9
         sink.hashed(1024)
 
-        assert err.getvalue().endswith(ERASE + L0 + " - 1.0KiB")
+        assert err.getvalue().endswith(ERASE + L1 + " - 1.0KiB")
 
     def test_spinner_advances_per_hashed(self) -> None:
-        """Each hashed call steps the spinner one character."""
-        err = io.StringIO()
-        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        """Each slow hashed call steps the spinner one character."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
         sink.status()
+        sink.hashed(0)
+        clock.now = 10**9
         sink.hashed(1024)
+        clock.now = 15 * 10**8
         sink.hashed(2048)
 
-        expected = ERASE + L0 + " - 1.0KiB" + ERASE + L0 + " \\ 2.0KiB"
+        expected = ERASE + L1 + " - 1.0KiB" + ERASE + L15 + " \\ 2.0KiB"
         assert err.getvalue().endswith(expected)
 
     def test_status_leaves_slow_mode_at_once(self) -> None:
-        """A status call after hashed redraws without the suffix, unthrottled."""
-        err = io.StringIO()
-        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        """A status call in slow-file mode redraws without the suffix, unthrottled."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
         sink.status()
+        sink.hashed(0)
+        clock.now = 10**9
         sink.hashed(1024)
         sink.status()
 
-        expected = ERASE + L0 + " - 1.0KiB" + ERASE + L0
+        expected = ERASE + L1 + " - 1.0KiB" + ERASE + L1
         assert err.getvalue().endswith(expected)
 
     def test_write_keeps_slow_suffix(self) -> None:
         """The redraw after a write keeps the spinner and bytes while slow."""
-        err = io.StringIO()
-        sink = StatusLine(ScanTally(), io.StringIO(), err, FakeClock(), lambda: 80)
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
         sink.status()
+        sink.hashed(0)
+        clock.now = 10**9
         sink.hashed(1024)
         sink.write(Output(err=("e",)))
 
-        expected = ERASE + "e\n" + ERASE + L0 + " - 1.0KiB"
+        expected = ERASE + "e\n" + ERASE + L1 + " - 1.0KiB"
         assert err.getvalue().endswith(expected)
+
+    def test_fast_file_draws_no_suffix(self) -> None:
+        """A hashed call within a second of the file's start draws nothing."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
+        sink.status()
+        sink.hashed(0)
+        clock.now = 10**8
+        sink.hashed(985)
+
+        assert err.getvalue() == ERASE + L0
+
+    def test_suffix_starts_at_slow_file_ns(self) -> None:
+        """The suffix is drawn from SLOW_FILE_NS on, not one nanosecond before."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
+        sink.status()
+        sink.hashed(0)
+        clock.now = SLOW_FILE_NS - 1
+        sink.hashed(1024)
+        clock.now = SLOW_FILE_NS
+        sink.hashed(1024)
+
+        assert err.getvalue().count("KiB") == 1
+
+    def test_status_resets_the_file_start(self) -> None:
+        """A status call ends the file, so the next hashed call starts a new one."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = StatusLine(ScanTally(), io.StringIO(), err, clock, lambda: 80)
+        sink.status()
+        sink.hashed(0)
+        clock.now = 5 * 10**8
+        sink.status()
+        clock.now = 12 * 10**8
+        sink.hashed(1024)
+
+        assert "KiB" not in err.getvalue()
 
 
 class TestTerminalWidth:
