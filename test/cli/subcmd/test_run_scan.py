@@ -160,6 +160,11 @@ class TestScanCommand:
         assert isinstance(opt.on_progress, MethodType)
         assert isinstance(opt.on_progress.__self__, ProgressLines)
 
+    def test_short_progress_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """-p is the short form of --progress."""
+        assert isinstance(p := self._options(monkeypatch, "-p").on_progress, MethodType)
+        assert isinstance(p.__self__, ProgressLines)
+
     def test_default_picks_plain_sink(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Without --progress the hashed callback belongs to a plain OutputSink."""
         opt = self._options(monkeypatch)

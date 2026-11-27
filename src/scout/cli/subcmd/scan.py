@@ -76,7 +76,7 @@ _HELP_SCAN_EXCLUDE = "Skip PATH under the root; repeatable"
 @click.option("--no-hash", is_flag=True, help="Stat only; leave hashes untouched.")
 @click.option("--rehash", is_flag=True, help="Hash every file, matching or not.")
 @click.option("-v", "--verbose", is_flag=True, help="One line per file.")
-@click.option("--progress", is_flag=True, help="Progress on stderr.")
+@click.option("-p", "--progress", is_flag=True, help="Progress on stderr.")
 @click.option("--exclude", multiple=True, metavar="PATH", help=_HELP_SCAN_EXCLUDE)
 def scan(
     repo: Path,
