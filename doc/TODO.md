@@ -61,9 +61,13 @@ into `doc/architecture.md`; this block empties as the sequence lands.
     lib subject + past participle (`FileScanned`);
   - event bases: the lib's is unprefixed `Event`, adapters prefix
     theirs (`CliEvent`).
-- The manifest is the primary operand of every verb: first
-  positional, default `"."`; `Manifest.open` owns interpretation;
-  `-r`/`--repo` as override while dogfooding judges both modes.
+- The manifest is given by `-r`/`--repo`, default `"."`,
+  a manifest file or the directory holding `.scout.db`;
+  `Manifest.open` owns interpretation.
+  - Positionals are paths under the root,
+    so `scan` stays free to take subtree operands later.
+  - Provisional: dogfooding judges it against a manifest positional;
+    verbs whose subject is manifests (`comm`, `diff`) may keep them.
 - Error placement and the repo / query / service taxonomy:
   moved to `doc/CONTRIBUTE.md` (2026-09-22), no longer staged here.
 - Promotion on second independent consumer, for types and functions;
@@ -86,77 +90,24 @@ where scan survives terabyte-scale runs and the code can be
 introspected when dogfooding surfaces problems.
 The restructure sections below come first, in order.
 
-### scan-cli
+### import-convention
 
-Split from the old `scan-cli` on 2026-10-16: output and terminal
-handling only; the lib boundary is `### scan-interface`.
+A small cleanup PR: every module imports lib and CLI modules by name,
+as `event` already is, so each name shows where it comes from.
 
-- `git checkout -b ft/scan-cli`, from `main` after
-  `ref/scan-interface` merges.
-- Module map, one role per module:
-  - `cli/render/`, a package now: `porcelain.py`, shared `Output`
-    (later the `Renderer` protocol and `select_renderer` from the
-    Renderer section below); future `rich.py`, `json.py` siblings;
-  - `cli/emit.py`, the emitter object: a pure router between the
-    renderer and the progress sinks (verbosity policy lives here;
-    no counting, no terminal mechanics);
-  - `cli/progress.py`, the status-line object, the only module
-    that knows what a carriage return is.
-- The manifest is THE primary operand:
-  - first positional on every verb, default `"."`;
-  - all interpretation in `Manifest.open` (resolve, dir to
-    `.scout.db`); positional meaning never depends on disk content;
-  - eliding it with later operands means typing `.`
-    (`scout ls . doc/finance`), accepted friction;
-  - `-r`/`--repo` kept as an explicit override to dogfood both
-    modes; flag wins when both are given (most intentional wins),
-    disagreement gets a stderr note; loser removed on evidence;
-  - verb operands follow: `init [manifest] [root]` (root defaults
-    to the manifest's dir); finer operand patterns left to
-    dogfooding.
-- `-v`/`--verbose` and `-p`/`--progress` are different concerns:
-  - verbose = stdout content policy (emitter routing): whether
-    per-file events become porcelain records downstream tools see;
-    automation may want it;
-  - progress = stderr human feedback (the progress sink): never
-    data, gone when stderr is not a tty; automation never wants it;
-  - independent and freely composed; humans often want both.
-- Single-letter args pair with a long alias where no collision:
-  `-v`/`--verbose`, `-p`/`--progress`.
-- Known bug: `_emitter`'s `--progress` count increments on every
-  `ScanGone`, which includes swept dir paths, so "N files" overcounts;
-  the status line reading `ScanTally` replaces that count.
-- One status-line object owning stderr under `--progress`:
-  - `log(line)` erases, writes, redraws; `status(...)` redraws at
-    most every 500 ms;
-  - spinner and byte count latency-gated: the first b3c32 callback
-    (`interval_ms=1000`) is itself the evidence of a slow file;
-    the file's completion event ends slow-file mode;
-  - final erase, no redraw, before the summary renders: nothing
-    carriage-returned survives into the log;
-  - not a tty: plain interval-throttled lines, no CR, no spinner;
-  - the CLI reads the injected `ScanTally` live for its numbers;
-    `expected` totals (db estimate `~N`, or an exact pre-scan count
-    behind a flag) are display-side and deferred until dogfooding
-    asks;
-  - porcelain rule stands: renderers produce lines; this object is
-    the terminal handling around them; Rich later replaces it
-    behind the same `log`/`status` seams.
-- Gaps from `ref/scan-interface`:
-  - `run_scan(path, opt, make_emit)`: the tally `make_emit` receives
-    has no reader yet; the `cli/emit.py` constructor becomes `make_emit`
-    and hands that tally to the status line.
-  - `-v` and `--progress` reach the emitter inside the callback's closure;
-    pass a frozen display choice instead if that wiring is tested as data.
-  - `TestScanCommand._invoke`, `test_default_prints_summary_only`,
-    `test_verbose_prints_file_lines` and `test_progress_writes_file_counts`
-    pin `_emitter`; they move to `cli/emit.py`'s tests when it replaces it.
-  - Module-name imports: `event` for one module, `lib_event` and
-    `cli_event` where both meet; CLI modules still import `events`,
-    `test/lib/scan/test_scan.py` rebinds names from `mod_scan`,
-    and `import scout.lib.error as Err` gets the same convention.
-- Doc commit: `doc/architecture.md` gains the adapter architecture,
-  as settled by the 2026-09-22 discussion round.
+- `git checkout -b ref/import-convention`, from `main` after
+  `ft/scan-cli` merges.
+- `import scout.lib.error as Err` becomes `from scout.lib import error`,
+  used as `error.<Name>`.
+  - Before any `sed`, find every local, parameter and field named `error`;
+    a colliding local becomes `err`.
+  - `ReadFailed.error` and `ScanError.error` keep their field names;
+    check how pyright reads a field annotated through the module.
+  - One identifier per commit, previewed with a per-file count.
+- The remaining `import scout.cli.event as events` imports become
+  `from scout.cli import event`; colliding locals become `evt`.
+- `test/lib/scan/test_scan.py` stops rebinding names from `mod_scan`.
+- Doc commit: CONTRIBUTE's error rule and examples follow the new import.
 - Pln commit: delete this section.
 
 ### Stamp v0.1.0
@@ -177,6 +128,19 @@ handling only; the lib boundary is `### scan-interface`.
   - CONTRIBUTE's "no CHANGELOG until MVP tags exist" line updated
 - Tag `v0.1.0` on `main`;
   - MVP means `init`, `scan`, and raw `sqlite3` queries against the manifest
+- Chore, its own commit before the version bump:
+  `requires-python` becomes `>=3.13`, the minimum tracking Debian stable;
+  `just check` must pass on 3.13.
+- Chore: remove the unused dependencies,
+  `attrs` from `dependencies` and `pyfakefs` and `pytest-mock` from the
+  dev group, then `uv lock`; nothing in `src/` or `test/` uses them.
+- Empty `### Restructure conventions` in `doc/TODO.md`,
+  since the restructure sequence has landed:
+  - delete the lines another doc already states
+    (error placement, promotion, history and `AccessLost`);
+  - first move what no doc states yet
+    (the naming rules, the manifest operand convention)
+    to `doc/architecture.md` or the crucial rules, in the stamp's `Doc:` commit.
 - Pin `b3c32` to the release that ships the streaming API
 
 ## Post-MVP Sequenced

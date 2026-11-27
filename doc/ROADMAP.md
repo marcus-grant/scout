@@ -44,6 +44,9 @@ planned.
     root-relative paths, no patterns;
   - a pattern changes only `util.is_excluded`; the walk already reports
     what it skipped, so reconciliation and `RecordExcluded` need nothing.
+- Optional litter defaults are wanted with it:
+  in field use, `._*` AppleDouble files and `.DS_Store`
+  on Mac-touched drives count as content missing from the NAS.
 - Needs a pattern language decision;
   - *(gitignore syntax or globs)* and management verbs;
     - interaction with `gone` when patterns change;
@@ -127,6 +130,10 @@ planned.
 - Sub-class `PurePosixPath` is clean only on Python 3.12 and later,
   through `with_segments`; before that, derived paths lose the subclass.
 - `PPP` is in every repo, event and test, so this is its own PR.
+- A `rel_path` view in the schema is wanted with it:
+  every path query in field use rebuilds `dir.path || '/' || file.name`;
+  a file at the root has `dir.path` of `.`, so the view must special-case
+  it or root files read `./name`.
 
 ### comment
 
@@ -154,6 +161,20 @@ planned.
     is hard to follow or to change;
   - the unlistable branch is the first candidate, since it shares
     no state with the listed path.
+
+### scan-subtree
+
+- `scout scan -r MANIFEST [PATH ...]` limits a scan to subtrees under
+  the root, for parts that change more often than the rest.
+  - It is why `scan` takes the manifest by `-r`,
+    keeping its positionals free for paths under the root.
+- Traps to design for:
+  - the gone pass is bounded to the given subtrees;
+    rows outside them are unseen, not gone,
+    the honesty rule of `--exclude` and `AccessLost` turned inside out;
+  - a `scan` row then claims less than the whole root,
+    so it records its scope, or history reads a partial scan as complete;
+  - several, overlapping and excluded operands need defined behavior.
 
 ### observation-log
 
@@ -200,15 +221,18 @@ planned.
 
 ### progress
 
-- Sequenced 2026-09-22: the status-line object is in `doc/TODO.md`
-  (`scan-cli`); Rich later replaces it behind the same `log`/`status`
-  seams.
+- Built in `ft/scan-cli`: the sinks in `src/scout/cli/progress.py`
+  (`doc/architecture.md`, Output); Rich later arrives as another
+  `OutputSink` behind the same `write` and `status` seams.
 - Still here: b3c32's defined error contract for path and stream
   failures, or confirmation that `OSError` pass-through is the
   contract.
-- Pre-scan tally / `expected` totals for X-of-N progress: db estimate
-  (`~N`, free) or exact pre-walk behind a flag; deferred until
-  dogfooding asks.
+- Pre-scan tally / `expected` totals for X-of-N progress and an ETA:
+  db estimate (`~N`, free) or exact pre-walk behind a flag.
+  - Field use asked for an ETA; low priority, effort over payoff for now.
+- Concurrent hashing of small files, when it comes, keeps events, emit
+  and sink calls on one thread; `StatusLine`'s slow-file display then
+  needs an aggregated in-flight byte count instead of one file's.
 
 ### resume
 
@@ -224,6 +248,26 @@ planned.
   one count, so a crash can lose an hour inside a single batch.
 - A time or byte trigger beside the count, same `wrote()` seam, when
   dogfooding on the NAS shows the loss.
+
+### commit-failure
+
+- Fix PR: a failed COMMIT is masked by
+  `cannot rollback - no transaction is active`.
+  - Seen: the manifest was moved during a hash scan;
+    the batch commit in `Manifest.wrote` raised
+    `OperationalError: disk I/O error`,
+    then the rollback in `commit_every`'s exit raised the masking error,
+    which is what reached the user.
+  - Expected: on a failed commit, roll back defensively
+    and re-raise the original error.
+    - Shape: wrap the rollback in `try`/`except OperationalError`
+      and return `False`, so the original propagates;
+      optionally hint that the manifest moved or its disk is gone,
+      and that a rerun resumes.
+  - Repro: scan across several batches, `mv` the `.scout.db`
+    and its journal mid-run, and wait for the next commit.
+  - Recovery that worked: rerun against the new path;
+    the hot journal rolls back on open and committed rows are kept.
 
 ### claimed-files
 
@@ -249,15 +293,37 @@ planned.
 
 ### fs-detail
 
-- The `detail=` seam on `run_scan` and `Manifest.init` keeps tests
+- The `detail=` seam on `run_init` and `Manifest.init` keeps tests
   isolated from the host's filesystem readers; any rework keeps it.
+  - `run_scan` has no seam since `ref/scan-interface`;
+    its tests patch `fs_meta.read_all`.
 - Its name is poor: the values identify the filesystem and host the
   root lives on (`fs_type`, `fs_uuid`, `fs_label`, `fs_model`,
   `hostname`).
 - Open: whether refreshing them is a scan policy, a `ScanOptions`
   field, or a CLI-wide option shared by most operations;
-  - decided together with the rename, across `run_scan`,
+  - decided together with the rename, across `run_scan`, `run_init`,
     `Manifest.init` and `MetaRepo.write_fs_detail`.
+- Fix PR: `fs_model` cannot be read on device-mapper stacks.
+  - Seen: `scout init` on btrfs over `/dev/mapper/<name>` (LUKS2)
+    prints `could not read fs_model`; a dm node has no `device/` in
+    sysfs, the model lives on the underlying disk,
+    and LVM and md stacks fail the same way.
+  - Fix: follow `/sys/block/<name>/slaves/` until a node has none,
+    strip the partition suffix (`sda1` to `sda`, `nvme0n1p1` to
+    `nvme0n1`, `mmcblk0p1` to `mmcblk0`), then read `device/model`;
+    a stack ending in several disks (md RAID, multi-device btrfs)
+    records all their models, or the first with a note.
+  - Also record that the mount is LUKS-backed;
+    in `fs_model` or its own `meta` entry is undecided.
+  - Check `fs_label` the same way: the filesystem's own label,
+    not the LUKS container's, which can differ.
+  - Repro: any btrfs or ext4 on a cryptsetup-opened LUKS2 device.
+  - The partition-suffix step also covers plain partitions,
+    whose model likewise lives on the parent disk.
+- The `could not read` line repeats on every init of layered storage
+  and keeps prompting questions; field use suggests printing it once,
+  or only under `-v`.
 
 ### error-members
 
@@ -270,6 +336,25 @@ planned.
   - `ManifestDomain`: likely the manifest each error concerns,
     unless a raise site such as `NestedTransaction`'s cannot know it;
   - `PathDomain`: every child concerns a path the user passed in.
+
+### field-frictions
+
+From draining loose drives into the two NAS with scout-eda (2026-10);
+each is untriaged until a plan picks it up.
+
+- The scan summary counts swept dirs in `gone`:
+  rescans reported 72157 and 78234 gone where only 30128 and 35804
+  were files; the summary should split files from dirs.
+- Unreadable files are recorded inconsistently:
+  the same six root-owned files left a row without a hash on one NAS
+  and no row at all on the other, so gate queries see different things;
+  an unreadable file should always keep a row with an error status.
+- Hash seeding: moving to a wider-rooted manifest rehashed trees
+  already hashed in other manifests; seeding hashes from another
+  manifest by path, size and mtime would turn that into a stat walk.
+  - It overlaps the reroot copy primitive; decide which owns it.
+- Lookups by hash (`has`, gate queries) want an index on `file.hash`,
+  if the schema has none.
 
 ### Undecided
 
@@ -292,7 +377,9 @@ Needs more thought before any of these become tasks.
 - Configuration stack:
   - args, env, config file, `meta` table
     - in precedence order
-  - feeding `select_renderer` and policy values like `rehash_after`.
+  - feeding `select_renderer` and policy values like `rehash_after`;
+  - and the progress intervals, whose code defaults are
+    `LOG_INTERVAL_NS` and `STATUS_INTERVAL_NS` in `cli/progress.py`.
 - Symlink ladder:
   - model as records;
     - resolve targets within the same manifest

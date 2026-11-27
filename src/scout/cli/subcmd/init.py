@@ -5,14 +5,16 @@ Created: 2026-09-16
 License: AGPL-3.0-or-later
 """
 
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import click
 
-import scout.cli.event as events
+from scout.cli import event
 from scout.cli.command import scout_command
-from scout.cli.render import echo_porcelain
+from scout.cli.progress import OutputSink
+from scout.cli.render import porcelain
 from scout.lib.fs import meta as fs_meta
 from scout.lib.manifest import Manifest
 
@@ -21,7 +23,7 @@ def run_init(
     target: Path,
     repo: Path | None,
     comment: str | None,
-    emit: Callable[[events.CliEvent], None],
+    emit: Callable[[event.CliEvent], None],
     detail: Mapping[str, str | None] | None = None,
 ) -> None:
     """Create a manifest for target and emit one InitDone."""
@@ -35,7 +37,7 @@ def run_init(
     Manifest.init(repo, target, comment=comment, detail=detail)
 
     # Collect emitted events for prints, logging, and testing
-    emit(events.InitDone(repo, target, missing=missing))
+    emit(event.InitDone(repo, target, missing=missing))
 
 
 @scout_command("init")
@@ -44,4 +46,5 @@ def run_init(
 @click.option("--comment", default=None)
 def init(target: Path, repo: Path | None, comment: str | None) -> None:
     """Create a manifest for TARGET; -r places the db file elsewhere."""
-    run_init(target, repo, comment, echo_porcelain)
+    sink = OutputSink(sys.stdout, sys.stderr)
+    run_init(target, repo, comment, lambda evt: sink.write(porcelain.render(evt)))
