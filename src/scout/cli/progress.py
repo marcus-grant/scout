@@ -84,6 +84,10 @@ class ProgressLines(OutputSink):
             self._emit(now)
             self._last = now
 
+    def hashed(self, done: int) -> None:
+        """Apply status()'s rule; done is not shown."""
+        self.status()
+
     def _emit(self, now: int) -> None:
         """Write one progress line for time now to err and flush err."""
         line = _progress_line(

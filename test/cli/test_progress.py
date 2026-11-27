@@ -153,6 +153,26 @@ class TestProgressLines:
 
         assert len(err.getvalue().splitlines()) == 2
 
+    def test_hashed_writes_the_first_line(self) -> None:
+        """The first hashed call writes one line to err, as status does."""
+        err = io.StringIO()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, FakeClock())
+        sink.hashed(0)
+
+        assert err.getvalue() == "progress 0.0s files 0 - hashed 0B -\n"
+
+    def test_hashed_follows_the_interval(self) -> None:
+        """Hashed calls write a line at the start and each full interval."""
+        err, clock = io.StringIO(), FakeClock()
+        sink = ProgressLines(ScanTally(), io.StringIO(), err, clock)
+        sink.hashed(0)
+        clock.now = LOG_INTERVAL_NS - 1
+        sink.hashed(0)
+        clock.now = LOG_INTERVAL_NS
+        sink.hashed(0)
+
+        assert len(err.getvalue().splitlines()) == 2
+
     def test_exit_writes_a_final_line(self) -> None:
         """Leaving the sink writes one line with the tally's counts and rates."""
         tally, err, clock = ScanTally(), io.StringIO(), FakeClock()
