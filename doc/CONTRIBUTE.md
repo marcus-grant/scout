@@ -284,8 +284,10 @@ Code conventions:
   - then a docstring:
     - one-sentence purpose,
     - `Author:`, `Created:` (ISO date),
-    - `License: AGPL-3.0-or-later`, there's only one for whole repo
-    - `Revision:` as a list of ISO dates when the module has been majorly revised.
+    - `Revised: [...]`, a list of ISO dates,
+      when the module has been majorly revised or moved;
+    - `License: AGPL-3.0-or-later` last,
+      the one license for the whole repo.
 
 ## Documentation discipline
 

@@ -34,7 +34,8 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
   - These parts are likely shared by later operations;
     - they live here provisionally, see ROADMAP `### verb-architecture`.
 - `cli/`: input, output, exit codes; renderers turn events into lines.
-  - A Click callback turns argv into the lib's options, nothing else.
+  - A Click callback turns argv into the lib's options and...
+    - builds the run's output path; see Output.
   - `run_<verb>`:
     - opens the manifest, runs the lib operation,
     - and emits each lib event translated to its `CliEvent`.
@@ -56,6 +57,7 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
   - a verb's events are named once as a union beside them (`ScanEvent`),
     - so a new event touches that union, not every signature.
 - tally: progress counting; summary: the run's contract counts.
+- sink: where rendered output goes (`OutputSink` and its subclasses).
 
 ## Walk
 
@@ -80,6 +82,30 @@ What the code is; how work is done lives in `CONTRIBUTE.md`.
     - so nothing excluded is claimed present or gone.
   - `scan` reports `RecordExcluded` for each one the manifest has a row for.
   - An exclude that names nothing under root stops the scan before it starts.
+
+## Output
+
+- Each event leaves the CLI through `render`, `emit`, then a sink.
+- `cli/render/`: one module per output format.
+  - Each exposes `render(event) -> Output`;
+    - porcelain is the reference.
+  - `Output` is the one carrier of rendered lines for every format,
+    - split into out and err.
+- `cli/emit.py`: `make_emit` decides on verbosity once per run.
+  - It hides `ScanFile` unless verbose and writes every other event,
+    - then refreshes the sink's status, after every event.
+- `cli/progress.py`: the sinks; `open_sink` is the one place one is chosen.
+  - `OutputSink` writes plainly.
+  - `ProgressLines`, when stderr is not a terminal:
+    - a line at the first event, at each interval, and at the end.
+  - `StatusLine`, on a terminal: one line redrawn in place, throttled,
+    - cut to stderr's width, erased on exit;
+      - b3c32's byte callback puts it in slow-file mode.
+  - Their intervals are code defaults beneath the configuration stack.
+- stdout carries data, stderr human feedback;
+  - progress never reaches stdout.
+- Events, emit and sink calls run on one thread;
+  - only `hashed` may later arrive from hashing workers.
 
 ## Promotion
 
