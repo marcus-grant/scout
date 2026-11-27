@@ -167,7 +167,10 @@ class StatusLine(OutputSink):
 
 
 def open_sink(progress: bool, tally: ScanTally, out: TextIO, err: TextIO) -> OutputSink:
-    """Return the run's sink: plain without progress, ProgressLines with it."""
+    """Return the run's sink: plain without progress; with progress, StatusLine
+    when err is a terminal, else ProgressLines."""
+    if progress and err.isatty():
+        return StatusLine(tally, out, err)
     if progress:
         return ProgressLines(tally, out, err)
     return OutputSink(out, err)

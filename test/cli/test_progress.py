@@ -59,6 +59,14 @@ class FakeClock:
         return self.now
 
 
+class TtyIO(io.StringIO):
+    """A StringIO that says it is a terminal."""
+
+    def isatty(self) -> bool:
+        """Return True."""
+        return True
+
+
 class TestOutputSink:
     """OutputSink over StringIO streams."""
 
@@ -296,13 +304,19 @@ class TestOpenSink:
         assert out.getvalue() == "a\n"
 
     def test_progress_lines_with_progress(self) -> None:
-        """With progress the sink is ProgressLines and status writes to err."""
+        """With progress and err not a terminal the sink is ProgressLines and
+        status writes to err."""
         err = io.StringIO()
         sink = open_sink(True, ScanTally(), io.StringIO(), err)
 
         assert isinstance(sink, ProgressLines)
         sink.status()
         assert len(err.getvalue().splitlines()) == 1
+
+    def test_status_line_on_a_terminal(self) -> None:
+        """With progress and err a terminal the sink is a StatusLine."""
+        sink = open_sink(True, ScanTally(), io.StringIO(), TtyIO())
+        assert isinstance(sink, StatusLine)
 
 
 class TestHumanBytes:
